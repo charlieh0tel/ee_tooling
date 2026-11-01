@@ -6,6 +6,9 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 
 - A board's `.kicad_*` files are its owner's: edit them only when handed
   over, with KiCad closed.
+- Board work goes in the repository's board file, in git, checkpoint by
+  checkpoint: stop at each checkpoint agreed with the owner for review,
+  and commit a step only once it has been reviewed.
 - The schematic's notes, text blocks and title block are documentation:
   keep them current in the same commit as the design change.
 
@@ -67,10 +70,23 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 ### Routing
 
 - Before routing, agree the stackup and the overall strategy with the
-  board's owner.  Often the ground vias go in first, but it depends.
+  board's owner.
+- Planes first, always: every plane net's zone (GND and any other) is
+  drawn and filled at the start of routing, with its vias, so every
+  review shows the planes.
 - Routed by hand, net by net.  No autorouter artifacts: meanders, mixed
   widths, needless jogs, stubs.  Differential pairs, Kelvin sense pairs
   included, run together.
+- No right-angle bends: every 90-degree bend is cut with a 45-degree
+  segment.
+- Where there is room, a track leaves a pad or via straight, about 1 mm,
+  before its first bend, and arrives the same way.  A preference, not a
+  rule: sometimes it cannot be done.
+- Neighboring SMD pads on one net are joined through their middles,
+  center to center, not along their ends.
+- An output whose straight exit would cross its neighbors' may escape
+  under the package, between the pad rows, leaving the other pins'
+  exits free.
 - With a ground plane, every GND pad gets a short N/S/E/W stub to a via
   into the plane (more than one for a big pad), the via inside the
   part's courtyard where it fits (outside is fine where it does not).
