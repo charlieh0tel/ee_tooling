@@ -23,8 +23,6 @@ a board with DRC or ERC violations.
   clearance, copper to edge and a via's hole clearance, which are lower
   at JLCPCB than a board would choose and which shape zone fills, are
   Board Setup minimums, not rules.
-- A `track_angle` limit is written without a unit: KiCad 10.0.8 ignores
-  one written `91deg`.
 - `jlcpcb-release` runs `kicad-cli ... --exit-code-violations`, which
   fails on a warning as on an error.
 
@@ -105,7 +103,6 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 | `Mounting hole plated` | Board finishing | a `MountingHole*` footprint's pad with a drill of 1 mm or more plated |
 | `Mounting hole vias` | Board finishing | between pads of one `MountingHole*` footprint (its stitching vias): JLCPCB's via hole-to-hole spacing, 0.2, not its pad spacing, 0.45 |
 | `Silkscreen text height` | Silkscreen | text at least 0.8 high: the house overrides JLCPCB's 1.0; the thickness stays JLCPCB's 0.15 |
-| `No right-angle bends` | Routing | joined segments at 91 degrees or more (180 straight, 135 a 45-degree bend) |
 | `Differential pair coupled` | Net classes, Routing | in a `*Z_DIFF` class: at most 5 mm uncoupled, 0.5 mm skew within the pair (house choices) |
 
 - The mounting hole's 0.5 mm ring is kicad-style-check's, which
@@ -114,9 +111,9 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
   it.
 - `A.Reference == B.Reference` tells one footprint's pads (KiCad 10.0.8
   compares `A.Parent` by reference too).
-- `track_angle` does not check a joint on a pad, nor one at a via.  It
-  also reports a branch (a T) at 90 degrees, a segment doubling back (0)
-  and a zero-length segment, and reports each joint twice.
+- No right-angle bends is kicad-style-check's: KiCad's `track_angle`
+  reports a branch (a T) at 90 degrees as it does a bend.  (It also
+  ignores a limit written with a unit, `91deg`, in KiCad 10.0.8.)
 - A differential pair's gap is its net class's: a `diff_pair_gap` rule
   would replace it, the router's gap included.
 
@@ -188,6 +185,7 @@ warning is for the owner to judge; both fail `jlcpcb-release`.
 | Mounting holes plated | `Mounting hole plated` | yes |
 | Mounting holes with an annular ring of 0.5 | none | no |
 | Mounting holes on a net | none | no |
+| No right-angle bends | none: `track_angle` also reports a T | no |
 | Connection points on the grid | `endpoint_off_grid` | no: KiCad checks pins and wire ends, not labels, junctions or no-connects |
 | No pin without a wire or no-connect | `pin_not_connected` | no: to KiCad a pin on another pin, or on a label, is connected |
 | No-connects on pins | `no_connect_dangling` | yes |

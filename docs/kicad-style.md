@@ -115,8 +115,8 @@ KiCad's ERC checks some of them with ee_tooling's severities
 
 `kicad-style-check` checks the zone, routing, net class and finishing
 rules it can (`docs/kicad-style-check.md`).
-KiCad's DRC checks mounting holes, right-angle bends and differential
-pairs' coupling with ee_tooling's rules (`docs/kicad-rules.md`).
+KiCad's DRC checks mounting holes and differential pairs' coupling
+with ee_tooling's rules (`docs/kicad-rules.md`).
 
 ### Board finishing
 

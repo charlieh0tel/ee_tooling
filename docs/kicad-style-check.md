@@ -84,6 +84,10 @@ the board or more.
   capacitor across a supply and a ground (`GND`, `AGND`, `VSS`, `0V`
   ...) decouples the nearest `U` or `IC` supply pin within 5 mm on that
   supply and ground (a power pin, where the board gives pin types).
+- No right-angle bend: two tracks' ends meeting on one layer and net,
+  where no other track ends or runs and off any pad or via, at 90
+  degrees between them (within 1 degree) or sharper.  A track ending on
+  another's run (a T) is a branch, not a bend.
 - A board with no tracks or vias is not checked.
 
 ## Project (.kicad_pro): kicad_style_netclass.py
