@@ -327,12 +327,26 @@ def test_via_in_pad() -> None:
     assert check(GND_PLANE, GND_PAD, via(10, 10, "GND")) == []
 
 
-def test_big_pad() -> None:
-    big = footprint("U1", 10, 10, pad("9", 0, 0, "GND", size=(2, 2)))
-    assert check(GND_PLANE, big, via(10, 10, "GND")) == [
-        "U1 pad 9 (GND): 2 x 2 mm pad with 1 via, needs 2"
+def qfn(center: str = "9") -> str:
+    """A QFN's 2 x 2 mm center pad, and three of its small signal pads."""
+    signals = [pad(str(k), 2, k - 2, f"S{k}", size=(0.3, 0.6)) for k in range(1, 4)]
+    return footprint("U1", 10, 10, pad(center, 0, 0, "GND", size=(2, 2)), *signals)
+
+
+@pytest.mark.parametrize("center", ["9", "EP"])
+def test_thermal_pad(center: str) -> None:
+    assert check(GND_PLANE, qfn(center), via(10, 10, "GND")) == [
+        f"U1 pad {center} (GND): 2 x 2 mm thermal pad with 1 via, needs 2"
     ]
-    assert check(GND_PLANE, big, via(9.5, 10, "GND"), via(10.5, 10, "GND")) == []
+    assert check(GND_PLANE, qfn(center), via(9.5, 10, "GND"), via(10.5, 10, "GND")) == []
+
+
+def test_big_pad_a_guideline() -> None:
+    """A big pad that is not a thermal one: two vias advised, a note."""
+    big = footprint("C1", 10, 10, pad("2", 0, 0, "GND", size=(1, 2.7)), pad("1", 3, 0, "X"))
+    assert check(GND_PLANE, big, via(10, 10, "GND")) == [
+        "note: C1 pad 2 (GND): 1 x 2.7 mm pad with 1 via, 2 advised"
+    ]
 
 
 def test_via_short_of_the_plane() -> None:

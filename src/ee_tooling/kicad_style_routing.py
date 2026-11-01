@@ -4,8 +4,9 @@ Board layout, Routing), read from the file, not through pcbnew.
 Ground vias (`check_vias`, `check_pad_to_pad`): every SMD pad on a plane
 net (`planes`) whose plane lies on another layer has a stub to a via
 into the plane: one or more straight tracks, all N/S/E/W the same way,
-the via's center within STUB_LENGTH of the pad.  A big pad (BIG_PAD_AREA)
-has BIG_PAD_VIAS or more, in it or on stubs.  A via outside the part's
+the via's center within STUB_LENGTH of the pad.  An exposed or thermal pad
+(`thermal_pads`) has BIG_PAD_VIAS or more, in it or on stubs; for any
+other pad of BIG_PAD_AREA or more that is a note.  A via outside the part's
 courtyard is fine.  Mounting hardware (MOUNTING_HARDWARE) is exempt: tied
 to ground, it needs no via.  A pad traced to a pad of its own part that
 reaches the plane (a connector's shell, a QFN's exposed pad) needs none
@@ -88,11 +89,18 @@ STUB_LENGTH = 1.0
 # 0.1 um, so a true N/S/E/W track is within 0.01 degree; anything routed
 # at 45 degrees is far outside.
 AXIS_TOLERANCE = 1.0
-# A pad this large, mm squared, needs more than one via: above any chip
-# pad up to 1206 (KiCad's 1206 pad is 1.15 x 1.8 mm, 2.1 mm squared),
-# below a 3 x 3 mm QFN's 1.7 x 1.7 mm exposed pad and a SOT-223's tab.
+# An exposed or thermal pad needs BIG_PAD_VIAS; any other pad this large,
+# mm squared, should have them, a note: above any chip pad up to 1206
+# (KiCad's 1206 pad is 1.15 x 1.8 mm, 2.1 mm squared), below a 3 x 3 mm
+# QFN's 1.7 x 1.7 mm exposed pad.
 BIG_PAD_AREA = 2.5
 BIG_PAD_VIAS = 2
+# An exposed or thermal pad: named so, or the largest pad of a part with
+# at least THERMAL_PADS pads, THERMAL_RATIO times the next largest's area
+# or more (a QFN's center pad, a SOT-223's tab).
+THERMAL_NAMES = frozenset(("EP", "PAD", "TAB"))
+THERMAL_PADS = 3
+THERMAL_RATIO = 2.0
 # Points on a pad's or via's edge are tested for fill this far inside it,
 # mm, so a thermal spoke that meets it is found.
 INSET = 0.01
@@ -731,6 +739,7 @@ def check_vias(
     reaches the plane (its plated-through shell, a pad with a via); no via
     serves two pads."""
     problems = []
+    thermal = thermal_pads(c)
     for name in sorted(plane):
         n = Net(c, name)
         served: dict[int, list[int]] = defaultdict(list)  # via: the pads it serves
@@ -769,11 +778,16 @@ def check_vias(
                 reaches.add(i)
             elif i not in fed:
                 via_less.append(i)
-            if reaching and p.area() >= BIG_PAD_AREA and len(reaching) < BIG_PAD_VIAS:
-                problems.append(
-                    f"{what}: {round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm pad"
-                    f" with {len(reaching)} via, needs {BIG_PAD_VIAS}"
-                )
+            if reaching and len(reaching) < BIG_PAD_VIAS:
+                size = f"{round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm"
+                if i in thermal:
+                    problems.append(
+                        f"{what}: {size} thermal pad with {len(reaching)} via, needs {BIG_PAD_VIAS}"
+                    )
+                elif p.area() >= BIG_PAD_AREA:
+                    problems.append(
+                        f"{NOTE}{what}: {size} pad with {len(reaching)} via, {BIG_PAD_VIAS} advised"
+                    )
         for i in via_less:
             p = c.pads[i]
             own = [
@@ -790,6 +804,19 @@ def check_vias(
                     f" {', '.join(str(c.pads[i]) for i in pads)}"
                 )
     return problems
+
+
+def thermal_pads(c: Copper) -> set[int]:
+    """The exposed or thermal pads (THERMAL_NAMES, THERMAL_PADS,
+    THERMAL_RATIO), by index."""
+    out = {i for i, p in enumerate(c.pads) if p.number.upper() in THERMAL_NAMES}
+    for pads in pads_by_reference(c).values():
+        if len(pads) < THERMAL_PADS:
+            continue
+        largest, second = sorted(pads, key=lambda p: p.area(), reverse=True)[:2]
+        if largest.area() >= THERMAL_RATIO * second.area():
+            out.add(c.pads.index(largest))
+    return out
 
 
 def track_tied(n: Net, pad: int) -> set[int]:

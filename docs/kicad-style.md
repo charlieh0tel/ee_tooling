@@ -92,7 +92,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   under the package, between the pad rows, leaving the other pins'
   exits free.
 - With a ground plane, every GND pad gets a short stub to a via into
-  the plane (more than one for a big pad), N/S/E/W by preference, the
+  the plane (more than one for an exposed or thermal pad, and as a
+  guideline for any big one), N/S/E/W by preference, the
   via inside the part's courtyard where it fits (outside is fine where
   it does not).  Other plane nets and power stubs the same.  Never a
   trace from pad to pad.  Mounting hardware tied to ground (a mounting

@@ -64,8 +64,10 @@ the board or more.
 - Every SMD pad on a plane net whose plane is on another layer: a stub
   of straight tracks to a via reaching the plane, the via's center
   within 1 mm of the pad's copper.  A stub not within 1 degree of N, S,
-  E or W is a `note:`.  Pads of
-  2.5 mm² or more need 2 vias.
+  E or W is a `note:`.  An exposed or thermal pad (named `EP`, `PAD`
+  or `TAB`, or the largest pad of a part with 3 or more, twice the next
+  one's area) needs 2 vias; any other pad of 2.5 mm² or more gets a
+  `note:` advising 2.
 - Mounting hardware (references `H` and a number: holes, standoffs) is
   exempt.  A via outside the part's courtyard is fine.
 - A pad traced to a pad of its own part that reaches the plane (a
