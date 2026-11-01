@@ -39,15 +39,8 @@ choices are not checked.
 
 ## Board layout
 
-- Routed by hand, net by net.  No autorouter artifacts: meanders, mixed
-  widths, needless jogs, stubs.  Differential pairs run together.
-- Plane nets get a short N/S/E/W stub to a via (more than one for a big
-  pad), never a trace from pad to pad.
-- Pours are copper zones, never filled shapes on a copper layer.  A
-  zone's outline runs past the board's edge on every side, so the
-  board's edge clearance, not the outline, bounds the fill.
-- Zones are locked.  Edge.Cuts, connectors and connectorized modules
-  (an RP2040 board, say) are locked once their places are decided.
+### Placement
+
 - Decoupling capacitors tight against their part's package, placed and
   turned for the shortest connections to its VDD (or VCC) and GND pins,
   the supply pad in line with the supply pin (same x or same y).  With
@@ -66,6 +59,36 @@ choices are not checked.
   board clear of the drawing sheet's title block.
 - The area under a module is not a keepout unless something physical
   says so.
+- Edge.Cuts, connectors and connectorized modules (an RP2040 board,
+  say) are locked once their places are decided.
+
+### Net classes
+
+- Power nets get a net class, even at the default width.
+- Every differential pair (USB, say) and every controlled-impedance net
+  gets one, named for its impedance and kind: `90Z_DIFF`, `50Z_SE`.
+- Otherwise a net class wherever a group of nets shares a width,
+  clearance or impedance.
+
+### Routing
+
+- Before routing, agree the stackup and the overall strategy with the
+  board's owner.  Often the ground vias go in first, but it depends.
+- Routed by hand, net by net.  No autorouter artifacts: meanders, mixed
+  widths, needless jogs, stubs.  Differential pairs run together.
+- With a ground plane, every GND pad gets a short N/S/E/W stub to a via
+  into the plane (more than one for a big pad), the via inside the
+  part's courtyard where it fits.  Other plane nets the same.  Never a
+  trace from pad to pad.
+- A supply runs from its trace or plane to the decoupling capacitor,
+  then from the capacitor to the package's pin.
+
+### Zones
+
+- Pours are copper zones, never filled shapes on a copper layer.  A
+  zone's outline runs past the board's edge on every side, so the
+  board's edge clearance, not the outline, bounds the fill.
+- Zones are locked.
 
 `kicad-style-check BOARD.kicad_pcb` checks a board's zones: no filled
 graphic shape on a copper layer; every zone locked; every copper zone's
@@ -73,6 +96,12 @@ outline off the board all the way round (past the edge, or in a slot or
 cutout; along the edge counts as on it).  Keepouts are checked only for
 the lock.  Edge.Cuts, connectors and modules are not: when their places
 are decided is the owner's call.
+
+### Board finishing
+
+- Stitching vias around the board's edge.
+- Mounting holes plated, with an annular ring, and stitched with vias
+  where that makes sense.
 
 ## Silkscreen
 
