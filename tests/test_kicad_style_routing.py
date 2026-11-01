@@ -249,7 +249,7 @@ def test_via_off_the_stub() -> None:
 )
 def test_stub_not_on_an_axis(tracks: list[str]) -> None:
     assert check(GND_PLANE, GND_PAD, *tracks, via(10.7, 10.7, "GND")) == [
-        "R1 pad 1 (GND): stub to the via at (10.7, 10.7) not N/S/E/W"
+        "note: R1 pad 1 (GND): stub to the via at (10.7, 10.7) not N/S/E/W"
     ]
 
 
@@ -258,7 +258,7 @@ def test_stub_arc() -> None:
         '(arc (start 10 10) (mid 10.6 10.25) (end 11.2 10) (width 0.25) (layer "F.Cu") (net "GND"))'
     )
     assert check(GND_PLANE, GND_PAD, arc, via(11.2, 10, "GND")) == [
-        "R1 pad 1 (GND): stub to the via at (11.2, 10) not N/S/E/W"
+        "note: R1 pad 1 (GND): stub to the via at (11.2, 10) not N/S/E/W"
     ]
 
 

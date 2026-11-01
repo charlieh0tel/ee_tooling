@@ -62,8 +62,9 @@ Plane nets are the `poured` nets of `placement.toml` beside the board
 the board or more.
 
 - Every SMD pad on a plane net whose plane is on another layer: a stub
-  of straight tracks within 1 degree of N, S, E or W to a via reaching
-  the plane, the via's center within 1 mm of the pad's copper.  Pads of
+  of straight tracks to a via reaching the plane, the via's center
+  within 1 mm of the pad's copper.  A stub not within 1 degree of N, S,
+  E or W is a `note:`.  Pads of
   2.5 mm² or more need 2 vias.
 - Mounting hardware (references `H` and a number: holes, standoffs) is
   exempt.  A via outside the part's courtyard is fine.

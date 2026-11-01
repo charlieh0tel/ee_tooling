@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from ee_tooling.kicad_style_board import (
     CAPACITOR,
     COPPER,
+    NOTE,
     POWER_PIN_TYPES,
     STEP,
     UNCONNECTED,
@@ -705,7 +706,7 @@ def check_vias(
                     continue
                 reaching.add(s.via)
                 if not s.straight(c):
-                    problems.append(f"{what}: stub to the {at_via} not N/S/E/W")
+                    problems.append(f"{NOTE}{what}: stub to the {at_via} not N/S/E/W")
                 gap = p.gap(v.position)
                 if gap > STUB_LENGTH:
                     problems.append(
