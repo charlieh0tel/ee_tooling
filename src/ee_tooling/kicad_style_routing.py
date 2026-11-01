@@ -7,8 +7,10 @@ into the plane: one or more straight tracks, all N/S/E/W the same way,
 the via's center within STUB_LENGTH of the pad.  A big pad (BIG_PAD_AREA)
 has BIG_PAD_VIAS or more, in it or on stubs.  A via outside the part's
 courtyard is fine.  Mounting hardware (MOUNTING_HARDWARE) is exempt: tied
-to ground, it needs no via.  No via serves two pads, and no trace on a
-plane net runs from pad to pad.  A
+to ground, it needs no via.  A pad traced to a pad of its own part that
+reaches the plane (a connector's shell, a QFN's exposed pad) needs none
+either.  No via serves two pads, and no trace on a plane net runs from
+pad to pad but within a part.  A
 decoupled supply pin is exempt, being fed through its capacitor, and so
 is the run from it to its capacitors; a capacitor's supply pad needs no
 via of its own (the supply check sees that it is fed).
@@ -725,11 +727,15 @@ def check_vias(
 ) -> list[str]:
     """Rule one: each SMD pad on a plane net, but those in exempt, has
     stubs to vias into the plane, or for those in fed (a capacitor's
-    supply pad) may have none; no via serves two pads."""
+    supply pad) may have none, or is traced to a pad of its own part that
+    reaches the plane (its plated-through shell, a pad with a via); no via
+    serves two pads."""
     problems = []
     for name in sorted(plane):
         n = Net(c, name)
         served: dict[int, list[int]] = defaultdict(list)  # via: the pads it serves
+        via_less: list[int] = []  # pads with no via of their own
+        reaches: set[int] = set()  # pads that reach the plane themselves
         for i in n.pads:
             p = c.pads[i]
             if p.through or i in exempt or not p.layers or not (plane[name] - p.layers):
@@ -759,13 +765,24 @@ def check_vias(
             for j in reaching:
                 if not any(p.same_copper(c.pads[k]) for k in served[j]):
                     served[j].append(i)
-            if not reaching and i not in fed:
-                problems.append(f"{what} at {where(p.position)}: no via into the plane")
-            elif reaching and p.area() >= BIG_PAD_AREA and len(reaching) < BIG_PAD_VIAS:
+            if reaching:
+                reaches.add(i)
+            elif i not in fed:
+                via_less.append(i)
+            if reaching and p.area() >= BIG_PAD_AREA and len(reaching) < BIG_PAD_VIAS:
                 problems.append(
                     f"{what}: {round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm pad"
                     f" with {len(reaching)} via, needs {BIG_PAD_VIAS}"
                 )
+        for i in via_less:
+            p = c.pads[i]
+            own = [
+                k
+                for k in track_tied(n, i)
+                if c.pads[k].reference == p.reference and (c.pads[k].through or k in reaches)
+            ]
+            if not own:
+                problems.append(f"{p} ({name}) at {where(p.position)}: no via into the plane")
         for j, pads in sorted(served.items()):
             if len(pads) > 1:
                 problems.append(
@@ -775,11 +792,30 @@ def check_vias(
     return problems
 
 
+def track_tied(n: Net, pad: int) -> set[int]:
+    """The pads tracks alone join to pad: not through a via or another pad."""
+    tied: set[int] = set()
+    seen: set[Node] = set()
+    todo: list[Node] = [m for m in n.links[("pad", pad)] if m[0] == "track"]
+    while todo:
+        node = todo.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        for m in n.links[node]:
+            if m[0] == "track":
+                todo.append(m)
+            elif m[0] == "pad" and m[1] != pad:
+                tied.add(m[1])
+    return tied
+
+
 def check_pad_to_pad(
     c: Copper, plane: dict[str, frozenset[str]], groups: list[set[int]]
 ) -> list[str]:
     """Rule one: no trace on a plane net runs from pad to pad, but within
-    a group (a decoupled pin and its capacitors' pads)."""
+    a group (a decoupled pin and its capacitors' pads) or a part (a QFN's
+    pin to its exposed pad, a connector's pins to its shell)."""
     problems = []
     for name in sorted(plane):
         n = Net(c, name)
@@ -799,7 +835,9 @@ def check_pad_to_pad(
             pads = sorted({m[1] for t in run for m in n.links[("track", t)] if m[0] == "pad"})
             for k, a in enumerate(pads):
                 for b in pads[k + 1 :]:
-                    if c.pads[a].same_copper(c.pads[b]) or any({a, b} <= g for g in groups):
+                    if c.pads[a].reference == c.pads[b].reference or any(
+                        {a, b} <= g for g in groups
+                    ):
                         continue
                     problems.append(
                         f"{name}: trace from {c.pads[a]} to {c.pads[b]} on {c.tracks[i].layer}"

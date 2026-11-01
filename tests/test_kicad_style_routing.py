@@ -247,6 +247,32 @@ def test_custom_pad_copper(angle: float) -> None:
     assert stub == []
 
 
+SHELL = pad("SH", 3, 0, "GND", size=(1.2, 1.2), kind="thru_hole", layers='"*.Cu" "*.Mask"')
+
+
+def test_pin_traced_to_its_own_shell() -> None:
+    """A connector's GND pin traced to its plated-through shell: the shell
+    is its way into the plane, and the trace stays within the part."""
+    j1 = footprint("J1", 10, 10, pad("A1", 0, 0, "GND"), SHELL)
+    assert check(GND_PLANE, j1, segment((10, 10), (13, 10), "GND")) == []
+
+
+def test_pin_traced_to_its_own_pad_with_a_via() -> None:
+    """A QFN's GND pin traced to its exposed pad, which has the vias."""
+    u1 = footprint("U1", 10, 10, pad("2", 0, 0, "GND"), pad("25", 2, 0, "GND", size=(1, 1)))
+    tie = segment((10, 10), (12, 10), "GND")
+    assert check(GND_PLANE, u1, tie, via(12, 10, "GND")) == []
+
+
+def test_pin_traced_to_another_parts_shell() -> None:
+    j1 = footprint("J1", 10, 10, pad("A1", 0, 0, "GND"))
+    j2 = footprint("J2", 13, 10, SHELL.replace("(at 3 0", "(at 0 0"))
+    assert check(GND_PLANE, j1, j2, segment((10, 10), (13, 10), "GND")) == [
+        "J1 pad A1 (GND) at (10, 10): no via into the plane",
+        "GND: trace from J1 pad A1 to J2 pad SH on F.Cu",
+    ]
+
+
 def test_via_outside_the_courtyard() -> None:
     """A via outside the part's courtyard is fine, even where one would fit."""
     r1 = footprint("R1", 10, 10, pad("1", 0, 0, "GND", size=(1, 1)), courtyard=(-2, -0.6, 0.6, 0.6))

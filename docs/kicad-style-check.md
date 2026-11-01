@@ -68,7 +68,11 @@ the board or more.
   2.5 mm² or more need 2 vias.
 - Mounting hardware (references `H` and a number: holes, standoffs) is
   exempt.  A via outside the part's courtyard is fine.
-- No via serving two pads; no trace on a plane net from pad to pad.
+- A pad traced to a pad of its own part that reaches the plane (a
+  connector's plated-through shell, a QFN's exposed pad with vias) needs
+  no via of its own.
+- No via serving two pads; no trace on a plane net from pad to pad but
+  within one part.
 - A supply pin is reached through its decoupling capacitor: with the
   capacitor's pad taken away, the pin reaches no zone and no other
   part's pad.  The decoupling map is `placement.toml`'s, or inferred: a
