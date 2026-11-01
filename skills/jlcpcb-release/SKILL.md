@@ -54,7 +54,8 @@ the board's directory and `sources` have no uncommitted changes
 
 | File | Use |
 |---|---|
-| `NAME-REV-jlcpcb.zip` | JLCPCB PCB order: Gerbers (each copper layer, mask, paste, silk, Edge.Cuts; Protel extensions, no X2, soldermask subtracted from silk) and Excellon drill in mm, PTH and NPTH separate |
+| `NAME-REV-jlcpcb.zip` | JLCPCB PCB order: Gerbers (each copper layer, mask, paste, silk, Edge.Cuts; Protel extensions, no X2, soldermask subtracted from silk) and Excellon drill in mm, PTH and NPTH separate; `README.txt`, the Gerber map |
+| `NAME-REV-gerber-map.txt` | the Gerber map, as in the zip: each file's name, KiCad layer, function (copper L1 top to Ln bottom, mask, paste, silkscreen, outline, plated and non-plated drill), side and polarity, from KiCad's Gerber job file and the drill files' X2 comments |
 | `NAME-REV-odb.tgz` | ODB++ job (one `odb/` directory: `matrix/`, `steps/`, ...), mm, 6 decimals: for the record and for ODB++ tools such as `tools/odb_current`; not the order's upload |
 | `NAME-REV-bom.csv` | assembly BOM: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
 | `NAME-REV-cpl.csv` | assembly placement: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM |

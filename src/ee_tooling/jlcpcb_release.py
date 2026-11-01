@@ -2,7 +2,9 @@
 
 Reads jlcpcb.toml at the root of the git repository it is run in, and writes
 the board's production directory, YYYYMMDD-REV/, with:
-  NAME-REV-jlcpcb.zip   Gerbers and drill files, for the PCB order
+  NAME-REV-jlcpcb.zip   Gerbers and drill files, for the PCB order, and
+                        README.txt, the Gerber map
+  NAME-REV-gerber-map.txt  what each file in the Gerber zip is
   NAME-REV-odb.tgz      ODB++ job, for the record and ODB++ tools
   NAME-REV-bom.csv      BOM in JLCPCB's columns, for assembly
   NAME-REV-cpl.csv      placement in JLCPCB's columns, for assembly
@@ -31,7 +33,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ee_tooling.fabrication import gerber_files, gerber_map
+
 CONFIG = "jlcpcb.toml"
+# The Gerber map's name in the Gerber zip.
+GERBER_README = "README.txt"
 
 # Every board's non-copper Gerber layers.
 OTHER_LAYERS = (
@@ -233,7 +239,8 @@ class Release:
         commit = self.run("git", "rev-parse", "--short", "HEAD").stdout.strip()
         return commit + ("-dirty" if status else "")
 
-    def gerbers(self, out: Path) -> None:
+    def gerbers(self, out: Path, title: str) -> str:
+        """The Gerber zip, with the Gerber map, titled title; return the map."""
         b = self.board
         g = self.work / "gerbers"
         g.mkdir()
@@ -269,9 +276,15 @@ class Release:
             f"{g}/",
             self.path(b.pcb),
         )
+        try:
+            text = gerber_map(title, gerber_files(g, b.name, b.layers))
+        except (ValueError, KeyError, IndexError) as e:
+            sys.exit(f"no Gerber map: {e}")
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             for f in sorted(g.iterdir()):
                 z.write(f, f.name)
+            z.writestr(GERBER_README, text)
+        return text
 
     def odb(self, out: Path) -> None:
         self.kicad(
@@ -417,7 +430,10 @@ def main() -> None:
         commit = r.check(a.allow_dirty)
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
-        r.gerbers(dest / f"{base}-jlcpcb.zip")
+        gerbers = f"{base}-jlcpcb.zip"
+        (dest / f"{base}-gerber-map.txt").write_text(
+            r.gerbers(dest / gerbers, f"{b.name} {rev}: the files in {gerbers}")
+        )
         r.odb(dest / f"{base}-odb.tgz")
         refs = r.bom(dest / f"{base}-bom.csv")
         r.cpl(dest / f"{base}-cpl.csv", refs, parts)
