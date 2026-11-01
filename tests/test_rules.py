@@ -179,19 +179,53 @@ def test_kicad_drc(tmp_path: Path) -> None:
     right_angle = [segment("5 5", "15 5", "A"), segment("15 5", "15 10", "A")]
     forty_five = [segment("5 15", "10 15", "B"), segment("10 15", "13 18", "B")]
     thin = [segment("20 5", "30 5", "C", width=0.09)]
-    hole = (
-        '(footprint "MountingHole:MountingHole_3.2mm_M3_Pad" (layer "F.Cu") (at 30 20)'
-        ' (pad "1" thru_hole circle (at 0 0) (size 4 4) (drill 3.2) (layers "*.Cu" "*.Mask")'
-        ' (net "GND")))'
-    )
-    found = drc(tmp_path, *right_angle, *forty_five, *thin, hole)
+    found = drc(tmp_path, *right_angle, *forty_five, *thin)
     angles = [v for v in found if v.startswith("track_angle: ")]
     assert angles and all("'No right-angle bends'" in v and "actual 90" in v for v in angles)
     assert any(v.startswith("track_width: ") and "'JLCPCB track width'" in v for v in found)
-    assert any(
-        v.startswith("annular_width: ") and "'Mounting hole ring'" in v and "actual 0.4" in v
-        for v in found
+
+
+def plated(x: float, drill: float, size: float = 0) -> str:
+    """A plated GND pad at (x, 0) in its footprint."""
+    size = size or drill + 0.4
+    return (
+        f'(pad "1" thru_hole circle (at {x} 0) (size {size} {size}) (drill {drill})'
+        ' (layers "*.Cu" "*.Mask") (net "GND"))'
     )
+
+
+def footprint(lib_id: str, reference: str, x: float, y: float, *pads: str) -> str:
+    return (
+        f'(footprint "{lib_id}" (layer "F.Cu") (at {x} {y})'
+        f' (property "Reference" "{reference}" (at 0 0 0) (layer "F.Fab")) {" ".join(pads)})'
+    )
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_mounting_hole(tmp_path: Path) -> None:
+    """A mounting hole's own via pads take JLCPCB's via spacing; another
+    footprint's pad takes the pad spacing; the ring is kicad-style-check's."""
+    hole = "MountingHole:MountingHole_3.2mm_M3_Pad_Via"
+    # Hole radius 1.6, via drill 0.3: a via at 2.05 is 0.3 clear, at 1.9 0.15.
+    clear = footprint(hole, "H1", 8, 8, plated(0, 3.2, size=4.0), plated(2.05, 0.3))
+    close = footprint(hole, "H2", 20, 8, plated(0, 3.2, size=4.0), plated(1.9, 0.3))
+    neighbor = footprint("Test:Peg", "TP1", 32.3, 8, plated(0, 0.6))
+    beside = footprint(hole, "H3", 30, 8, plated(0, 3.2, size=4.0))
+    unplated = footprint(
+        "MountingHole:MountingHole_3.2mm_M3",
+        "H4",
+        8,
+        20,
+        '(pad "" np_thru_hole circle (at 0 0) (size 3.2 3.2) (drill 3.2) (layers "*.Cu" "*.Mask"))',
+    )
+    found = drc(tmp_path, clear, close, neighbor, beside, unplated)
+    spacing = [v for v in found if v.startswith("hole_to_hole: ")]
+    assert any("'Mounting hole vias'" in v and "actual 0.15" in v for v in spacing)
+    assert any("'JLCPCB pad hole to pad hole'" in v and "actual 0.4" in v for v in spacing)
+    assert not any("actual 0.3" in v for v in spacing)
+    # H3, ring 0.4: the 0.5 mm ring is kicad-style-check's.
+    assert not any(v.startswith("annular_width: ") and "actual 0.4" in v for v in found)
+    assert any(v.startswith("assertion_failure: ") and "'Mounting hole plated'" in v for v in found)
 
 
 def silk_text(text: str, x: float, height: float, thickness: float) -> str:

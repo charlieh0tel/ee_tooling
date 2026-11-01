@@ -128,16 +128,22 @@
 
 # --- House rules (docs/kicad-style.md) -------------------------------------
 
-# Board finishing: mounting holes (footprints named MountingHole*) plated,
-# with an annular ring of at least 0.5 mm.  The hole is the pad with a
-# drill of 1 mm or more: KiCad's MountingHole_*_Pad_Via footprints ring it
-# with via pads of 0.8 mm drill or less.
-(rule "Mounting hole ring"
-	(condition "A.Type == 'Pad' && A.memberOfFootprint('*:MountingHole*') && A.Hole_Size_X >= 1mm")
-	(constraint annular_width (min 0.5mm)))
+# Board finishing: mounting holes (footprints named MountingHole*)
+# plated.  The hole is the pad with a drill of 1 mm or more: KiCad's
+# MountingHole_*_Pad_Via footprints ring it with via pads of 0.8 mm drill
+# or less.  The ring of 0.5 mm is kicad-style-check's, which measures the
+# land: KiCad's annular width stops at the nearest of those vias' holes.
 (rule "Mounting hole plated"
 	(condition "A.Type == 'Pad' && A.memberOfFootprint('*:MountingHole*') && A.Hole_Size_X >= 1mm")
 	(constraint assertion "A.isPlated()"))
+
+# A mounting hole's own stitching pads are vias to JLCPCB: between pads of
+# one MountingHole* footprint, JLCPCB's via hole-to-hole spacing (0.2 mm),
+# not its pad hole-to-hole spacing (0.45 mm).  One footprint: one
+# reference (a pad has its footprint's).
+(rule "Mounting hole vias"
+	(condition "A.Type == 'Pad' && B.Type == 'Pad' && A.Reference == B.Reference && A.memberOfFootprint('*:MountingHole*')")
+	(constraint hole_to_hole (min 0.2mm)))
 
 # Silkscreen: text at least 0.8 mm high, overriding JLCPCB's stated
 # 1.0 mm.  The thickness stays JLCPCB's 0.15 mm (JLCPCB silkscreen text):
