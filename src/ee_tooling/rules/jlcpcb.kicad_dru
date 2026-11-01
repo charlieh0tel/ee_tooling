@@ -151,7 +151,7 @@
 
 # Net classes and routing: a differential pair's skew within the pair, by
 # the interface its class names, <ohms>Z_DIFF_<INTERFACE> (docs/kicad-rules.md;
-# the naming is a proposal).  A class naming no interface (90Z_DIFF) gets
+# DVI takes HDMI).  A class naming no interface (90Z_DIFF) gets
 # no rule.  Uncoupled length has no cited figure and no rule.  The gap is
 # the class's own (Board Setup, Net Classes): a diff_pair_gap rule here
 # would replace it, the router's gap included.

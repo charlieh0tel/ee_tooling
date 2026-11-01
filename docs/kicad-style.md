@@ -68,6 +68,8 @@ severities (`docs/kicad-rules.md`).
 - Power nets get a net class, even at the default width.
 - Every differential pair (USB, say) and every controlled-impedance net
   gets one, named for its impedance and kind: `90Z_DIFF`, `50Z_SE`.  A
+  pair's class names its interface where it has one, setting its skew
+  (`docs/kicad-rules.md`, Differential pairs): `90Z_DIFF_USBHS`.  A
   Kelvin sense pair, not impedance-controlled, needs none: KiCad pairs
   it by its names.
 - Otherwise a net class wherever a group of nets shares a width,

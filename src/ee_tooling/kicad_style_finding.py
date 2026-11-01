@@ -85,6 +85,7 @@ ROUTING_RULES = {
 # The net class rules: each id and its subject's fields.
 NETCLASS_RULES = {
     "class-impedance-name": ("netclass",),
+    "class-interface": ("netclass",),
     "class-undefined": ("netclass",),
     "power-net-class": ("net",),
     "half-pair": ("net",),

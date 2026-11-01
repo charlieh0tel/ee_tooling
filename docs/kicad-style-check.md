@@ -119,9 +119,11 @@ patterns and assignments.
   named for a supply (`+3V3`, `VDD...`, `VCC...`, `GND`, `VBUS`, `VIN`
   ...), named by a power symbol, or on a power pin.
 - Every differential pair (KiCad's `+`/`-` or `P`/`N`, and USB's
-  `DP`/`DM`) in one `<ohms>Z_DIFF` class, but a Kelvin sense pair (its
-  name says `SENSE`, `SNS` or `KELVIN`).
-- A class named for an impedance named `<ohms>Z_DIFF` or `<ohms>Z_SE`.
+  `DP`/`DM`) in one `<ohms>Z_DIFF` or `<ohms>Z_DIFF_<INTERFACE>` class,
+  but a Kelvin sense pair (its name says `SENSE`, `SNS` or `KELVIN`).
+- A class named for an impedance named `<ohms>Z_DIFF`,
+  `<ohms>Z_DIFF_<INTERFACE>` or `<ohms>Z_SE`; the interface one of
+  `docs/kicad-rules.md`'s (Differential pairs), `INTERFACES`.
 - A net named like half a pair (ending `+`, `-`, `_P`, `DP` or `DM`) with
   no other half is a `note:`; a lone `_N`, often active low, is not.
 - A class assigned or in a pattern but not defined.
@@ -218,6 +220,7 @@ item.  Ids and subject fields are part of the semver API.
 | Routing | `supply-unfed` | `pin`, `capacitor` | the capacitor reaching no zone or other part |
 | Routing | `bend` | `net`, `layer`, `at` | a right-angle or sharper bend, at its corner |
 | Project | `class-impedance-name` | `netclass` | a class named for an impedance, misnamed |
+| Project | `class-interface` | `netclass` | a differential class naming an unknown interface |
 | Project | `class-undefined` | `netclass` | a class assigned or in a pattern, not defined |
 | Project | `power-net-class` | `net` | a power net with no class |
 | Project | `half-pair` | `net` | a net named like half a pair (note) |
