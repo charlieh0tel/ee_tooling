@@ -72,8 +72,9 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 - Before routing, agree the stackup and the overall strategy with the
   board's owner.
 - Planes first, always: every plane net's zone (GND and any other) is
-  drawn and filled at the start of routing, with its vias, so every
-  review shows the planes.
+  drawn and filled at the start of routing, so every review shows the
+  planes.  The vias tying pads to the planes usually come next, but it
+  depends.
 - Routed by hand, net by net.  No autorouter artifacts: meanders, mixed
   widths, needless jogs, stubs.  Differential pairs, Kelvin sense pairs
   included, run together.
