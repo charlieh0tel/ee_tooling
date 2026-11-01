@@ -1,0 +1,6 @@
+# The hardware tools' environment, with ee_tooling from its submodule.
+[project]
+name = "@NAME@-hardware"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []

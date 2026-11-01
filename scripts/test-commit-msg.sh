@@ -60,13 +60,16 @@ expect refuse messages 'Fix it
 
 Claude-Session: https://claude.ai/code/session_x'
 
-# The hook as a board repository runs it: scripts/consumer-commit-msg
-# as its .githooks/commit-msg, the hook in its ee_tooling submodule.
+# The hook as a board repository runs it: ee-tooling-adopt's wrapper
+# (src/ee_tooling/templates/commit-msg) as its .githooks/commit-msg,
+# the hook in its ee_tooling submodule.
 CONSUMER=$(mktemp -d)
 trap 'rm -f "$SAMPLE"; rm -rf "$CONSUMER"' EXIT
 git init -q "$CONSUMER"
 mkdir -p "$CONSUMER/.githooks" "$CONSUMER/hardware/ee_tooling/.githooks" "$CONSUMER/subdirectory"
-cp "$(dirname "$0")/consumer-commit-msg" "$CONSUMER/.githooks/commit-msg"
+sed "s|@EE_TOOLING@|hardware/ee_tooling|" "$(dirname "$0")/../src/ee_tooling/templates/commit-msg" \
+    >"$CONSUMER/.githooks/commit-msg"
+chmod +x "$CONSUMER/.githooks/commit-msg"
 git -C "$CONSUMER" config core.hooksPath .githooks
 
 # expect_commit pass|refuse NAME MESSAGE: a commit by NAME with MESSAGE,

@@ -1,0 +1,33 @@
+# Written by ee-tooling-adopt (ee_tooling's docs/adopting.md): rerun it
+# rather than editing this file.
+name: ee_tooling
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  attribution:
+    # No commit credits an AI assistant: ee_tooling's commit-msg hook's
+    # checks of every commit's message, author and committer.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: true
+      - run: >-
+          git log --format=%B HEAD
+          | sh @EE_TOOLING@/.githooks/commit-msg --messages /dev/stdin
+      - run: >-
+          git log --format='%an <%ae>%n%cn <%ce>' HEAD
+          | sh @EE_TOOLING@/.githooks/commit-msg --identities /dev/stdin
+  adopted:
+    # The files ee-tooling-adopt writes match the submodule's ee_tooling.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv run --directory @HARDWARE@ ee-tooling-adopt --check

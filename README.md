@@ -12,18 +12,18 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path` |
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
-| `docs/adopting.md` | taking ee_tooling into a board repository as a submodule |
-| `scripts/consumer-commit-msg` | a board repository's commit-msg hook, running this one from the submodule |
+| `docs/adopting.md` | taking ee_tooling into a board repository |
+| `src/ee_tooling/adopt.py` | `ee-tooling-adopt`: puts ee_tooling in place in a board repository |
+| `src/ee_tooling/templates/` | the files `ee-tooling-adopt` writes |
 
 ## Use from a board's repository
 
-As a git submodule, installed into the repository's uv project
-(`docs/adopting.md` gives the whole set-up):
+As a git submodule following `main`, put in place by
+`ee-tooling-adopt` (`docs/adopting.md`):
 
 ```
-git submodule add https://github.com/charlieh0tel/ee_tooling.git hardware/ee_tooling
-uv add --dev --editable ./ee_tooling      # in hardware/
-uv run jlcpcb-release
+uvx --from git+https://github.com/charlieh0tel/ee_tooling ee-tooling-adopt --yes
+cd hardware && uv run jlcpcb-release
 ```
 
 `jlcpcb-release` reads `jlcpcb.toml` at the repository root; the

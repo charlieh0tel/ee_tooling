@@ -1,8 +1,8 @@
 # Releasing
 
 A release is a tag; nothing is published to a registry.  A board
-repository takes ee_tooling as a git submodule (README.md) and pins a
-release, or a commit for work not yet released.
+repository takes ee_tooling as a git submodule following `main`
+(`docs/adopting.md`); a release names a version of `main`.
 
 ## Versions and tags
 

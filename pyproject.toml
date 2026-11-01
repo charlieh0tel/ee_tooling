@@ -13,6 +13,7 @@ dependencies = []
 
 [project.scripts]
 jlcpcb-release = "ee_tooling.jlcpcb_release:main"
+ee-tooling-adopt = "ee_tooling.adopt:main"
 
 [build-system]
 requires = ["uv_build>=0.13.2,<0.14.0"]
