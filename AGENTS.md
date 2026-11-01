@@ -100,8 +100,8 @@
 - A type with a name or a printed form implements `Display`, and
   `FromStr` if it can be named, not `name()` and `from_name()`; the
   parse error is `Parse<Type>Error`.
-- Do not use `anyhow` at all, in libraries or binaries.  Use typed
-  errors via `thiserror`.
+- Libraries use typed errors via `thiserror`, never `anyhow`.
+  Binaries and CLIs may use `anyhow`.
 - An error prints its cause in its message or exposes it as
   `source()`, never both: a wrapper that adds context keeps the cause
   in a field named `error`; one that adds none is
