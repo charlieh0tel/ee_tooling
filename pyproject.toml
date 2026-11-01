@@ -9,11 +9,14 @@ authors = [
     { name = "Christopher Hoover", email = "ch@murgatroid.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pillow>=13.0.0",
+]
 
 [project.scripts]
 jlcpcb-release = "ee_tooling.jlcpcb_release:main"
 ee-tooling-adopt = "ee_tooling.adopt:main"
+placement-score = "ee_tooling.placement_kicad:main"
 
 [build-system]
 requires = ["uv_build>=0.13.2,<0.14.0"]
@@ -29,6 +32,11 @@ select = ["E", "F", "W", "I", "UP", "B", "ANN", "RUF"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+
+# KiCad's pcbnew is in the system Python only, untyped.
+[[tool.mypy.overrides]]
+module = "pcbnew"
+ignore_missing_imports = true
 
 [dependency-groups]
 dev = [
