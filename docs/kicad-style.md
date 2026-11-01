@@ -24,6 +24,17 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   carries Manufacturer, MPN and LCSC fields; every capacitor shows its
   dielectric type and working voltage ("50V X7R").
 
+`kicad-style-check SCH...` checks a schematic file against these rules,
+one problem a line, exiting non-zero on any: connection points on the
+grid (`--grid`, 2.54 mm); pins touching, power symbols on pins, pins on
+a wire's run, pins with no wire; a pin's wire at least one grid unit
+long and its only one; a junction on every join of three or more and
+nowhere else; no-connects on pins (hidden ones count); zero-length and
+overlapping wires; Manufacturer, MPN and LCSC on every part in the BOM
+and not DNP; a dielectric (C0G, NP0, X5R, X7R ...) and a voltage in
+every capacitor's value.  Labels, text placement and wire-versus-label
+choices are not checked.
+
 ## Board layout
 
 - Routed by hand, net by net.  No autorouter artifacts: meanders, mixed

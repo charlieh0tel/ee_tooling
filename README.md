@@ -9,6 +9,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `src/ee_tooling/jlcpcb_release.py` | `jlcpcb-release`: a board's JLCPCB order package from its KiCad files |
 | `src/ee_tooling/placement*.py` | `placement-score`: a board's ratsnest crossings and length, decoupling distances and order, courtyard overlaps, and a render (`docs/placement.md`) |
 | `src/ee_tooling/sexpr.py` | KiCad's S-expressions: parse, write, library symbol lookup (`KICAD10_SYMBOL_DIR`, else `/usr/share/kicad/symbols`) |
+| `src/ee_tooling/kicad_style_check.py` | `kicad-style-check SCH...`: a schematic against `docs/kicad-style.md`'s drawing rules |
 | `src/ee_tooling/parts.toml` | JLCPCB's rotation and offset corrections, by LCSC part |
 | `tools/odb_current/` | DC resistance and current capacity of a net, from ODB++ |
 | `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path` |
