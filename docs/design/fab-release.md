@@ -66,7 +66,16 @@ with JLCPCB's parser until a real order; the skill says to check the
 first one.
 
 Checks before writing, as now plus: ERC and DRC clean; sources
-committed (unless `--allow-dirty`); a stackup; every fab value.
+committed (unless `--allow-dirty`); a stackup, and its table on
+User.Drawings matching it (kicad-style-check, `kicad_style_stackup.py`);
+every fab value.
+
+New: User.Drawings, the stackup table's layer, plotted as a Gerber in
+the zip (the map names it a drawing, not a layer to build) and in the
+board PDF.  Today's release plots neither.  `stackup.txt` stays for
+what the table lacks: each layer's Gerber, the board-wide settings
+(finish, edge plating ...) and the impedance requirements.  Whether
+JLCPCB's parser ignores a drawing Gerber is unverified.
 
 ## Profiles
 
