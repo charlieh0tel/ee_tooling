@@ -63,7 +63,9 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 
 - Power nets get a net class, even at the default width.
 - Every differential pair (USB, say) and every controlled-impedance net
-  gets one, named for its impedance and kind: `90Z_DIFF`, `50Z_SE`.
+  gets one, named for its impedance and kind: `90Z_DIFF`, `50Z_SE`.  A
+  Kelvin sense pair, not impedance-controlled, needs none: KiCad pairs
+  it by its names.
 - Otherwise a net class wherever a group of nets shares a width,
   clearance or impedance.
 

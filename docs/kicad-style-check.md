@@ -87,6 +87,7 @@ patterns and assignments.
   named for a supply (`+3V3`, `VDD...`, `VCC...`, `GND`, `VBUS`, `VIN`
   ...), named by a power symbol, or on a power pin.
 - Every differential pair (KiCad's `+`/`-` or `P`/`N`, and USB's
-  `DP`/`DM`) in one `<ohms>Z_DIFF` class.
+  `DP`/`DM`) in one `<ohms>Z_DIFF` class, but a Kelvin sense pair (its
+  name says `SENSE`, `SNS` or `KELVIN`).
 - A class named for an impedance named `<ohms>Z_DIFF` or `<ohms>Z_SE`.
 - A class assigned or in a pattern but not defined.

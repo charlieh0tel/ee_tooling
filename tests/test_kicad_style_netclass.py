@@ -291,6 +291,12 @@ def test_pair_in_no_diff_class() -> None:
     ]
 
 
+@pytest.mark.parametrize("name", ["/SENSE", "ISNS_", "KELVIN", "/I_sense"])
+def test_kelvin_pair_needs_no_class(name: str) -> None:
+    b = pair_board(f"{name}+", f"{name}-")
+    assert check_netclasses(project(), b, []) == []
+
+
 def test_pair_in_different_diff_classes() -> None:
     b = pair_board("/D+", "/D-")
     settings = project(("90Z_DIFF", "100Z_DIFF"), (("/D+", "90Z_DIFF"),), {"/D-": ["100Z_DIFF"]})

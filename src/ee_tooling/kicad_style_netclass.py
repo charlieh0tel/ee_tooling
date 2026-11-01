@@ -1,6 +1,8 @@
 """A KiCad project's net classes against the house style (docs/kicad-style.md,
 Board layout, Net classes): every power net has a net class; both nets of
-every differential pair share a class named <ohms>Z_DIFF; a class named
+every differential pair share a class named <ohms>Z_DIFF, but for a Kelvin
+sense pair (KELVIN), which is not impedance-controlled and which KiCad
+pairs by name alone; a class named
 for an impedance is named <ohms>Z_DIFF or <ohms>Z_SE; every class a
 pattern or an assignment names is defined.
 
@@ -47,6 +49,9 @@ USB_COMPLEMENT = {"P": "M", "M": "P"}
 # Each pair form: its pattern, its swaps, and the characters that mark
 # the positive net.
 PAIR_FORMS = ((PAIR, COMPLEMENT, "+P"), (USB_PAIR, USB_COMPLEMENT, "P"))
+# A Kelvin sense pair, by its name: not impedance-controlled, it needs no
+# class (KiCad pairs it by name; its class only sets width and gap).
+KELVIN = re.compile(r"SENSE|SNS|KELVIN", re.I)
 # A class name that says impedance: ohms (90Z, 50R, 100ohm), DIFF, _SE.
 IMPEDANCE = re.compile(
     r"(?<![A-Z0-9.])\d+(?:\.\d+)?\s*(?:Z|R|OHMS?)(?![A-Z])|DIFF|_SE(?![A-Z])", re.I
@@ -253,6 +258,8 @@ def check_netclasses(
 
     problems += [f"power net {net}: no net class" for net in sorted(power) if not defined(net)]
     for positive, negative in pairs(nets - power):
+        if KELVIN.search(positive):
+            continue
         p, n = ({c for c in defined(x) if DIFF_CLASS.match(c)} for x in (positive, negative))
         if p & n:
             continue
