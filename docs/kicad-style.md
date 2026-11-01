@@ -43,6 +43,11 @@ choices are not checked.
   widths, needless jogs, stubs.  Differential pairs run together.
 - Plane nets get a short N/S/E/W stub to a via (more than one for a big
   pad), never a trace from pad to pad.
+- Pours are copper zones, never filled shapes on a copper layer.  A
+  zone's outline runs past the board's edge on every side, so the
+  board's edge clearance, not the outline, bounds the fill.
+- Zones are locked.  Edge.Cuts, connectors and connectorized modules
+  (an RP2040 board, say) are locked once their places are decided.
 - Decoupling capacitors tight against their part's package, placed and
   turned for the shortest connections to its VDD (or VCC) and GND pins,
   the supply pad in line with the supply pin (same x or same y).  With
