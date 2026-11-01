@@ -62,6 +62,7 @@ from ee_tooling.kicad_style_board import (
     on_board,
     place,
     polyline,
+    segments,
     unplace,
     where,
 )
@@ -150,17 +151,25 @@ class Pad:
     net: str  # "" for none
     position: Point
     angle: float  # degrees, counterclockwise on screen, footprint's included
-    size: tuple[float, float]  # in the pad's own frame
+    size: tuple[float, float]  # its copper's box, in the pad's own frame
     layers: frozenset[str]  # copper only
     through: bool  # plated through hole
     pintype: str  # the schematic pin's electrical type, "" if not given
+    # The box's center in the pad's own frame: off the anchor when a custom
+    # pad's primitives reach further one way.
+    offset: Point = (0.0, 0.0)
+
+    def local(self, p: Point) -> Point:
+        """p in the pad's frame, from its copper box's center."""
+        u, v = unplace(self.position, self.angle, p)
+        return u - self.offset[0], v - self.offset[1]
 
     def __str__(self) -> str:
         return f"{self.reference} pad {self.number}"
 
     def gap(self, p: Point) -> float:
         """p's distance from the pad's copper; 0 on or in it."""
-        u, v = unplace(self.position, self.angle, p)
+        u, v = self.local(p)
         return math.hypot(max(abs(u) - self.size[0] / 2, 0), max(abs(v) - self.size[1] / 2, 0))
 
     def contains(self, p: Point) -> bool:
@@ -168,7 +177,7 @@ class Pad:
 
     def segment_gap(self, s: Segment) -> float:
         """s's distance from the pad's copper; 0 if it crosses it."""
-        a, b = (unplace(self.position, self.angle, p) for p in s)
+        a, b = (self.local(p) for p in s)
         half = (self.size[0] / 2, self.size[1] / 2)
         if meets_box(a, b, half):
             return 0.0
@@ -196,7 +205,10 @@ class Pad:
                 (a[0] + (b[0] - a[0]) * k / PAD_SAMPLES, a[1] + (b[1] - a[1]) * k / PAD_SAMPLES)
                 for k in range(PAD_SAMPLES)
             ]
-        return [place(self.position, self.angle, p) for p in out]
+        return [
+            place(self.position, self.angle, (u + self.offset[0], v + self.offset[1]))
+            for u, v in out
+        ]
 
 
 @dataclass(frozen=True)
@@ -316,6 +328,39 @@ def text(item: Expression, keyword: str) -> str:
     return str(c[1]) if c and len(c) > 1 else ""
 
 
+def copper_box(pad: Expression) -> tuple[tuple[float, float], Point]:
+    """A pad's copper as a box in its own frame: its size, and its center.
+    A custom pad's copper is its anchor and its primitives, each shape
+    widened by half its stroke."""
+    size = child(pad, "size")
+    if size is None:
+        raise BoardError(f"pad {pad[1]} without size")
+    w, h = number(size[1]) / 2, number(size[2]) / 2
+    xs, ys = [-w, w], [-h, h]
+    for shape in (child(pad, "primitives") or [])[1:]:
+        if not isinstance(shape, list):
+            continue
+        stroke = child(shape, "width")
+        half = number(stroke[1]) / 2 if stroke else 0.0
+        if shape[0] == "gr_circle":
+            # Its extent exactly, not its chords'.
+            center, end = (child(shape, k) for k in ("center", "end"))
+            if center is None or end is None:
+                raise BoardError(f"pad {pad[1]}: a gr_circle without center and end")
+            cx, cy = number(center[1]), number(center[2])
+            half += math.dist((cx, cy), (number(end[1]), number(end[2])))
+            points: list[Point] = [(cx, cy)]
+        else:
+            points = [q for s in segments(shape) for q in s]
+        for x, y in points:
+            xs += [x - half, x + half]
+            ys += [y - half, y + half]
+    return (max(xs) - min(xs), max(ys) - min(ys)), (
+        (max(xs) + min(xs)) / 2,
+        (max(ys) + min(ys)) / 2,
+    )
+
+
 def read(board: Expression) -> Copper:
     """A board's copper, from its parsed file."""
     if not board or board[0] != "kicad_pcb":
@@ -328,9 +373,7 @@ def read(board: Expression) -> Copper:
         reference = next((str(p[2]) for p in children(f, "property") if p[1] == "Reference"), "?")
         for p in children(f, "pad"):
             position, pad_angle = at(p)
-            size = child(p, "size")
-            if size is None:
-                raise BoardError(f"{reference} pad {p[1]} without size")
+            box, offset = copper_box(p)
             c.pads.append(
                 Pad(
                     reference,
@@ -338,10 +381,11 @@ def read(board: Expression) -> Copper:
                     net(p),
                     place(origin, angle, position),
                     pad_angle,
-                    (number(size[1]), number(size[2])),
+                    box,
                     frozenset(copper_of(p, stack)),
                     p[2] == "thru_hole",
                     text(p, "pintype"),
+                    offset,
                 )
             )
     for s in children(board, "segment") + children(board, "arc"):
@@ -719,8 +763,8 @@ def check_vias(
                 problems.append(f"{what} at {where(p.position)}: no via into the plane")
             elif reaching and p.area() >= BIG_PAD_AREA and len(reaching) < BIG_PAD_VIAS:
                 problems.append(
-                    f"{what}: {p.size[0]:g} x {p.size[1]:g} mm pad with {len(reaching)} via,"
-                    f" needs {BIG_PAD_VIAS}"
+                    f"{what}: {round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm pad"
+                    f" with {len(reaching)} via, needs {BIG_PAD_VIAS}"
                 )
         for j, pads in sorted(served.items()):
             if len(pads) > 1:

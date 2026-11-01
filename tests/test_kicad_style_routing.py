@@ -219,6 +219,34 @@ def test_no_via() -> None:
     assert check(GND_PLANE, GND_PAD) == ["R1 pad 1 (GND) at (10, 10): no via into the plane"]
 
 
+# A custom pad: a 0.8 mm square anchor, and primitives (a polygon, a circle
+# rounding its end) reaching 2 mm to its -x side, so its copper is
+# 2.4 x 0.8 mm, centered 0.8 mm off the anchor.
+CUSTOM = (
+    '(pad "1" smd custom (at 0 0 ANGLE+0) (size 0.8 0.8) (layers "F.Cu" "F.Mask")'
+    ' (net "GND") (options (clearance outline) (anchor rect))'
+    " (primitives (gr_poly (pts (xy -2 -0.4) (xy 0 -0.4) (xy 0 0.4) (xy -1.6 0.4))"
+    " (width 0) (fill yes)) (gr_circle (center -1.6 0) (end -2 0) (width 0) (fill yes))))"
+)
+
+
+@pytest.mark.parametrize("angle", [0, 90])
+def test_custom_pad_copper(angle: float) -> None:
+    """A via off the primitive's end is measured from the copper, not the
+    anchor: 0.9 mm from the anchor's center, 0.5 mm from the copper."""
+    pad_board = footprint("J1", 10, 10, CUSTOM, angle=angle)
+    (pad,) = read(parse(board(pad_board))).pads
+    assert pad.size == pytest.approx((2.4, 0.8))
+    assert pad.area() == pytest.approx(1.92)
+    # -x in the pad's frame: on screen, at 90 degrees, that is +y (down).
+    end = (7.5, 10.0) if angle == 0 else (10.0, 12.5)
+    corner = (8.0, 10.0) if angle == 0 else (10.0, 12.0)
+    assert pad.gap(end) == pytest.approx(0.5)
+    assert pad.contains(corner)
+    stub = check(GND_PLANE, pad_board, segment(corner, end, "GND"), via(*end, "GND"))
+    assert stub == []
+
+
 def test_via_outside_the_courtyard() -> None:
     """A via outside the part's courtyard is fine, even where one would fit."""
     r1 = footprint("R1", 10, 10, pad("1", 0, 0, "GND", size=(1, 1)), courtyard=(-2, -0.6, 0.6, 0.6))
