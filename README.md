@@ -28,6 +28,7 @@ uv run jlcpcb-release
 
 ```
 make hooks                 # once per clone
+make hook-test
 uv run ruff format
 uv run ruff check
 uv run mypy

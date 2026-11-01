@@ -1,5 +1,9 @@
-# Repository set-up; the checks are uv commands (README.md).
+# Repository set-up and the hook's tests; the other checks are uv
+# commands (README.md).
 hooks:
 	git config core.hooksPath .githooks
 
-.PHONY: hooks
+hook-test:
+	sh scripts/test-commit-msg.sh
+
+.PHONY: hooks hook-test

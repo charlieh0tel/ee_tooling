@@ -16,3 +16,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv run mypy
+  attribution:
+    # No commit credits an AI assistant (AGENTS.md): the commit-msg
+    # hook's checks of the messages, authors and committers over the
+    # whole history, for a commit made in a clone without the hook; and
+    # the hook's own tests.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git log --format=%B HEAD | sh .githooks/commit-msg --messages /dev/stdin
+      - run: >-
+          git log --format='%an <%ae>%n%cn <%ce>' HEAD
+          | sh .githooks/commit-msg --identities /dev/stdin
+      - run: make hook-test
