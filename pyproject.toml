@@ -1,0 +1,42 @@
+[project]
+name = "ee-tooling"
+version = "0.1.0"
+description = "Tools, agent skills and house style for KiCad boards made at JLCPCB"
+readme = "README.md"
+license = "BSD-3-Clause"
+authors = [
+    { name = "Christopher Hoover", email = "ch@murgatroid.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+jlcpcb-release = "ee_tooling.jlcpcb_release:main"
+
+[build-system]
+requires = ["uv_build>=0.13.2,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ANN", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[dependency-groups]
+dev = [
+    "mypy==2.4.0",
+    "pytest>=9.2.0",
+    "ruff==0.17.0",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Standalone PEP 723 scripts with their own dependencies: not type-checked.
+# odb_current came from ee_stuff with its long lines and loose zips.
+"tools/**" = ["ANN"]
+"tools/odb_current/odb_current.py" = ["E501", "B007", "B905", "RUF005"]
