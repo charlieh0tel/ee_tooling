@@ -75,7 +75,9 @@ A profile is a small Python object in `src/ee_tooling/profiles/`:
 ```python
 class Profile(Protocol):
     name: str
+
     def assembly(self, release: Release, out: Path) -> list[Path]: ...
+
     rules: str | None  # its .kicad_dru in package data, if any
 ```
 
