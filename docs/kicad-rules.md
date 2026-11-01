@@ -75,7 +75,7 @@ and 6 layers.  mm.
 | Traces: inner layer PTH pad hole to copper | - | 0.3 | `JLCPCB inner plated hole clearance` |
 | Outline: copper from routed edges and slots | 0.2 | 0.2 | Board Setup `min_copper_edge_clearance` 0.2 |
 | Legend: minimum line width | 0.15 | 0.15 | `JLCPCB silkscreen text` thickness (text only) |
-| Legend: minimum text height | 1.0 | 1.0 | `JLCPCB silkscreen text` height |
+| Legend: minimum text height | 1.0 | 1.0 | `JLCPCB silkscreen text` height, overridden by the house's 0.8 |
 | Legend: pad to silkscreen | 0.15 | 0.15 | `JLCPCB silkscreen to pad` |
 
 `JLCPCB silkscreen to pad` holds a footprint's own silkscreen graphics
@@ -104,6 +104,7 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 |---|---|---|
 | `Mounting hole ring` | Board finishing | a `MountingHole*` footprint's pad with a drill of 1 mm or more: annular ring 0.5 |
 | `Mounting hole plated` | Board finishing | that pad plated |
+| `Silkscreen text height` | Silkscreen | text at least 0.8 high: the house overrides JLCPCB's 1.0; the thickness stays JLCPCB's 0.15 |
 | `No right-angle bends` | Routing | joined segments at 91 degrees or more (180 straight, 135 a 45-degree bend) |
 | `Differential pair coupled` | Net classes, Routing | in a `*Z_DIFF` class: at most 5 mm uncoupled, 0.5 mm skew within the pair (house choices) |
 
