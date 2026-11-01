@@ -188,9 +188,15 @@ def test_venv_without_system_packages_remade(tmp_path: Path) -> None:
     ) in commands(plan(layout))
 
 
+# A git identity for the test's commits: CI's runner has none.
+IDENTITY = ("-c", "user.name=Test", "-c", "user.email=test@example.com")
+
+
 def git(*args: str) -> None:
     subprocess.run(
-        ["git", "-c", "protocol.file.allow=always", *args], check=True, capture_output=True
+        ["git", "-c", "protocol.file.allow=always", *IDENTITY, *args],
+        check=True,
+        capture_output=True,
     )
 
 
