@@ -8,8 +8,9 @@ By the file's suffix:
 - .kicad_pro: its net classes (kicad_style_netclass.py), with the board
   and schematic of its name beside it;
 - .kicad_pcb: its zones (kicad_style_board.py), finishing
-  (kicad_style_finishing.py) and routing (kicad_style_routing.py), the
-  last with placement.toml beside it if there is one (placement.py);
+  (kicad_style_finishing.py), stackup table (kicad_style_stackup.py) and
+  routing (kicad_style_routing.py), the last with placement.toml beside
+  it if there is one (placement.py);
 - .kicad_sch: the drawing rules (docs/kicad-style.md, Schematic drawing):
 connection points on the grid; no pin touching another part's pin, no
 power symbol on a pin, no pin on a wire's run; a wire off every pin, at
@@ -33,6 +34,7 @@ from ee_tooling.kicad_style_board import CAPACITOR, NOTE, check_board
 from ee_tooling.kicad_style_finishing import check_finishing
 from ee_tooling.kicad_style_netclass import check_project
 from ee_tooling.kicad_style_routing import check_routing
+from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.placement import Rules
 from ee_tooling.placement_kicad import RULES
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
@@ -305,7 +307,12 @@ def check_file(path: Path, grid: float) -> list[str]:
             board = parse(path.read_text())
             rules_file = path.parent / RULES
             rules = Rules.load(rules_file.read_text()) if rules_file.exists() else None
-            return [*check_board(board), *check_finishing(board), *check_routing(board, rules)]
+            return [
+                *check_board(board),
+                *check_finishing(board),
+                *check_stackup(board),
+                *check_routing(board, rules),
+            ]
         case ".kicad_pro":
             return check_project(path)
         case _:
