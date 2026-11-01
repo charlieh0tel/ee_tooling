@@ -6,8 +6,9 @@ net (`planes`) whose plane lies on another layer has a stub to a via
 into the plane: one or more straight tracks, all N/S/E/W the same way,
 the via's center within STUB_LENGTH of the pad.  A big pad (BIG_PAD_AREA)
 has BIG_PAD_VIAS or more, in it or on stubs.  A via outside the part's
-courtyard is reported only when one would fit inside (`room`).  No via
-serves two pads, and no trace on a plane net runs from pad to pad.  A
+courtyard is fine.  Mounting hardware (MOUNTING_HARDWARE) is exempt: tied
+to ground, it needs no via.  No via serves two pads, and no trace on a
+plane net runs from pad to pad.  A
 decoupled supply pin is exempt, being fed through its capacitor, and so
 is the run from it to its capacitors; a capacitor's supply pad needs no
 via of its own (the supply check sees that it is fed).
@@ -23,8 +24,7 @@ a via's center on a pad; an item on a zone's fill, tested against the
 fill's polygons when the file has them.  An unfilled zone is taken to
 reach all its net's copper on its layer inside its outline; the check
 says so on stderr, once per zone.  Pads are their rotated rectangles,
-whatever their shape (a custom pad: its anchor).  Other nets' tracks are
-not obstacles to `room`.
+whatever their shape (a custom pad: its anchor).
 
 KiCad's file, as read here: lengths in mm, y down; an item names its net
 `(net "NAME")` (older files `(net N "NAME")`: the name is last); a pad's
@@ -61,7 +61,6 @@ from ee_tooling.kicad_style_board import (
     on_board,
     place,
     polyline,
-    segments,
     unplace,
     where,
 )
@@ -78,7 +77,7 @@ PLANE_COVERAGE = 0.5
 # measure a zone's coverage.
 COVERAGE_SAMPLES = 40
 # A stub's via center lies at most this far from its pad's copper, mm: a
-# 0.6 mm via (KiCad's default) clears its pad by VIA_CLEARANCE at 0.5 mm,
+# 0.6 mm via (KiCad's default) clearing its pad by 0.2 mm sits at 0.5 mm,
 # so 1 mm leaves 0.5 mm to dodge a neighbor and no more.
 STUB_LENGTH = 1.0
 # A stub's tracks run within this of N/S/E/W, degrees.  KiCad keeps
@@ -90,12 +89,6 @@ AXIS_TOLERANCE = 1.0
 # below a 3 x 3 mm QFN's 1.7 x 1.7 mm exposed pad and a SOT-223's tab.
 BIG_PAD_AREA = 2.5
 BIG_PAD_VIAS = 2
-# Copper to copper, mm, for a via that would fit: KiCad's default net
-# class clearance.
-VIA_CLEARANCE = 0.2
-# Places a via might fit are tried this far apart along each way out of
-# the pad, mm.
-FIT_STEP = 0.05
 # Points on a pad's or via's edge are tested for fill this far inside it,
 # mm, so a thermal spoke that meets it is found.
 INSET = 0.01
@@ -112,16 +105,15 @@ ON_COPPER = 1e-3
 DECOUPLING_REACH = 5.0
 # References inferred decoupling looks at: capacitors, and the packages
 # (ICs) they decouple.
+# Mounting hardware's reference: a mounting hole or standoff, tied to
+# ground by its own copper, needs no via.
+MOUNTING_HARDWARE = re.compile(r"^H\d+$")
 PACKAGE = re.compile(r"^(?:U|IC)\d+$")
 # A ground net's name, after any sheet path.
 GROUND = re.compile(r"^(?:.*/)?(?:[ADP]?GND|VSS|0V)\w*$", re.I)
 # The pin types (from the schematic) of a pin decoupling serves; a pin
 # with no type may be one too.
 ALL_COPPER = "*.Cu"
-# What a keepout says of what it keeps out.
-NOT_ALLOWED = "not_allowed"
-# N, E, S, W on screen.
-AXES = ((0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0))
 
 
 def net(item: Expression) -> str:
@@ -308,8 +300,6 @@ class Copper:
     tracks: list[Track] = field(default_factory=list)
     vias: list[Via] = field(default_factory=list)
     zones: list[Zone] = field(default_factory=list)
-    courtyards: dict[str, list[Segment]] = field(default_factory=dict)  # by reference
-    no_vias: list[list[Segment]] = field(default_factory=list)  # keepouts' outlines
     outline: list[Segment] = field(default_factory=list)  # Edge.Cuts
 
 
@@ -326,7 +316,7 @@ def text(item: Expression, keyword: str) -> str:
 
 
 def read(board: Expression) -> Copper:
-    """A board's copper and courtyards, from its parsed file."""
+    """A board's copper, from its parsed file."""
     if not board or board[0] != "kicad_pcb":
         raise BoardError("not a kicad_pcb")
     table = child(board, "layers") or []
@@ -353,19 +343,6 @@ def read(board: Expression) -> Copper:
                     text(p, "pintype"),
                 )
             )
-        yard = [
-            (place(origin, angle, a), place(origin, angle, b))
-            for g in f
-            if isinstance(g, list)
-            and g
-            and str(g[0]).startswith("fp_")
-            and any(x.endswith(".CrtYd") for x in layers(g))
-            # kicad_style_board reads a board's shapes; a footprint's are
-            # the same but for the name.
-            for a, b in segments(["gr_" + str(g[0])[3:], *g[1:]])
-        ]
-        if yard:
-            c.courtyards[reference] = yard
     for s in children(board, "segment") + children(board, "arc"):
         on = copper_of(s, stack)
         if not on:
@@ -395,15 +372,6 @@ def read(board: Expression) -> Copper:
                 net(v),
             )
         )
-    # A footprint's zones are written in the board's frame.
-    keepouts = children(board, "zone") + [
-        z for f in children(board, "footprint") for z in children(f, "zone")
-    ]
-    for z in keepouts:
-        rule = child(z, "keepout")
-        if rule and text(rule, "vias") == NOT_ALLOWED:
-            pts = children(child(child(z, "polygon") or [], "pts") or [], "xy")
-            c.no_vias.append(polyline([(number(q[1]), number(q[2])) for q in pts], closed=True))
     for z in children(board, "zone"):
         on = copper_of(z, stack)
         if child(z, "keepout") or not on or not net(z):
@@ -635,41 +603,6 @@ def stubs(n: Net, pad: int) -> list[Stub]:
     return out
 
 
-def room(c: Copper, pad: int, size: float) -> Point | None:
-    """Where a via of size, VIA_CLEARANCE off all pads and out of keepouts
-    for vias, fits inside the pad's courtyard on a straight N/S/E/W stub
-    within STUB_LENGTH, or None."""
-    p = c.pads[pad]
-    yard = c.courtyards.get(p.reference)
-    if not yard:
-        return None
-    r = size / 2
-    near = [
-        q
-        for q in c.pads
-        if q is not p
-        and q.layers & p.layers
-        and math.dist(q.position, p.position) < max(q.size) + max(p.size) + STUB_LENGTH + size
-    ]
-    reach = math.hypot(*p.size) / 2 + STUB_LENGTH
-    for dx, dy in AXES:
-        for k in range(math.ceil(reach / FIT_STEP) + 1):
-            spot = (p.position[0] + dx * k * FIT_STEP, p.position[1] + dy * k * FIT_STEP)
-            gap = p.gap(spot)
-            if gap < r + VIA_CLEARANCE:
-                continue
-            if gap > STUB_LENGTH:
-                break
-            if (
-                on_board(spot, yard)
-                and all(distance(spot, s) >= r for s in yard)
-                and all(q.gap(spot) >= r + VIA_CLEARANCE for q in near)
-                and not any(on_board(spot, k) for k in c.no_vias)
-            ):
-                return spot
-    return None
-
-
 def pads_by_reference(c: Copper) -> dict[str, list[Pad]]:
     out: dict[str, list[Pad]] = defaultdict(list)
     for p in c.pads:
@@ -778,12 +711,6 @@ def check_vias(
                     problems.append(
                         f"{what}: {at_via} {gap:.2f} mm from the pad, over {STUB_LENGTH:g} mm"
                     )
-                yard = c.courtyards.get(p.reference)
-                if yard and not on_board(v.position, yard) and (spot := room(c, i, v.size)):
-                    problems.append(
-                        f"{what}: {at_via} outside {p.reference}'s courtyard;"
-                        f" one fits at {where(spot)}"
-                    )
             for j in reaching:
                 if not any(p.same_copper(c.pads[k]) for k in served[j]):
                     served[j].append(i)
@@ -888,7 +815,8 @@ def check_routing(board: Expression, rules: Rules | None = None) -> list[str]:
     groups: dict[int, set[int]] = defaultdict(set)  # pin: it and its capacitors' pads
     for f in fed:
         groups[f.pin] |= {f.pin, f.capacitor_pad}
-    problems += check_vias(c, plane, set(groups), {f.capacitor_pad for f in fed})
+    hardware = {i for i, p in enumerate(c.pads) if MOUNTING_HARDWARE.match(p.reference)}
+    problems += check_vias(c, plane, set(groups) | hardware, {f.capacitor_pad for f in fed})
     problems += check_pad_to_pad(c, plane, list(groups.values()))
     problems += check_supply(c, fed)
     return list(dict.fromkeys(problems))

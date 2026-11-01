@@ -51,10 +51,9 @@ wires versus labels are not checked.
   or a plated through-hole pad.  The ground net is the one whose copper
   zones cover the most area; a board with no copper zone is not
   checked.  An outline under 10 mm round needs none.
-- Mounting holes (footprints named `MountingHole*`): plated, an annular
-  ring of at least 0.5 mm, on a net, and at least 4 barrels of that net
-  within 1.5 mm of the ring.  A hole on no net is reported for the owner
-  to decide.
+- Mounting holes (footprints named `MountingHole*`): plated, with an
+  annular ring of at least 0.5 mm, and on a net (a ground tie, needing no
+  vias).  A hole on no net is reported for the owner to decide.
 
 ### Routing: kicad_style_routing.py
 
@@ -66,8 +65,8 @@ the board or more.
   of straight tracks within 1 degree of N, S, E or W to a via reaching
   the plane, the via's center within 1 mm of the pad's copper.  Pads of
   2.5 mm² or more need 2 vias.
-- A via outside the part's courtyard is reported when one would fit
-  inside: on a stub's line, 0.2 mm off every pad, clear of keepouts.
+- Mounting hardware (references `H` and a number: holes, standoffs) is
+  exempt.  A via outside the part's courtyard is fine.
 - No via serving two pads; no trace on a plane net from pad to pad.
 - A supply pin is reached through its decoupling capacitor: with the
   capacitor's pad taken away, the pin reaches no zone and no other

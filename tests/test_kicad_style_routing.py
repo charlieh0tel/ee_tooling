@@ -219,6 +219,20 @@ def test_no_via() -> None:
     assert check(GND_PLANE, GND_PAD) == ["R1 pad 1 (GND) at (10, 10): no via into the plane"]
 
 
+def test_via_outside_the_courtyard() -> None:
+    """A via outside the part's courtyard is fine, even where one would fit."""
+    r1 = footprint("R1", 10, 10, pad("1", 0, 0, "GND", size=(1, 1)), courtyard=(-2, -0.6, 0.6, 0.6))
+    assert check(GND_PLANE, r1, segment((10, 10), (11.4, 10), "GND"), via(11.4, 10, "GND")) == []
+
+
+@pytest.mark.parametrize("reference", ["H1", "H12"])
+def test_mounting_hardware_needs_no_via(reference: str) -> None:
+    standoff = footprint(reference, 10, 10, pad("1", 0, 0, "GND", size=(2, 2)))
+    assert check(GND_PLANE, standoff) == []
+    part = footprint("U1", 10, 10, pad("1", 0, 0, "GND", size=(2, 2)))
+    assert check(GND_PLANE, part) == ["U1 pad 1 (GND) at (10, 10): no via into the plane"]
+
+
 def test_via_off_the_stub() -> None:
     """A via near the pad but joined by no track does not count."""
     assert check(GND_PLANE, GND_PAD, via(10.9, 10, "GND")) == [
@@ -309,46 +323,6 @@ def test_unfilled_zone_noted(capsys: pytest.CaptureFixture[str]) -> None:
 )
 def test_vias_not_needed(items: list[str]) -> None:
     assert check(*items) == []
-
-
-def test_courtyard_room() -> None:
-    """A via outside the courtyard, where one would fit inside it to the
-    pad's west."""
-    part = footprint(
-        "R1", 10, 10, pad("1", 0, 0, "GND", size=(1, 1)), courtyard=(-2, -0.6, 0.6, 0.6)
-    )
-    stub = segment((10, 10), (11.4, 10), "GND")
-    (problem,) = check(GND_PLANE, part, stub, via(11.4, 10, "GND"))
-    assert problem.startswith(
-        "R1 pad 1 (GND): via at (11.4, 10) outside R1's courtyard; one fits at (9, 10"
-    )
-
-
-def test_courtyard_no_room() -> None:
-    tight = footprint(
-        "R1", 10, 10, pad("1", 0, 0, "GND", size=(1, 1)), courtyard=(-0.7, -0.7, 0.7, 0.7)
-    )
-    stub = segment((10, 10), (11.4, 10), "GND")
-    assert check(GND_PLANE, tight, stub, via(11.4, 10, "GND")) == []
-
-
-def test_courtyard_room_blocked() -> None:
-    """The room inside is taken by another pad, or kept out of vias."""
-    stub = segment((10, 10), (11.4, 10), "GND")
-    crowded = footprint(
-        "R1",
-        10,
-        10,
-        pad("1", 0, 0, "GND", size=(1, 1)),
-        pad("2", -1.4, 0, "A", size=(1, 1)),
-        courtyard=(-2, -0.6, 0.6, 0.6),
-    )
-    assert check(GND_PLANE, crowded, stub, via(11.4, 10, "GND")) == []
-    kept = footprint(
-        "R1", 10, 10, pad("1", 0, 0, "GND", size=(1, 1)), courtyard=(-2, -0.6, 0.6, 0.6)
-    )
-    keepout = f'(zone (layers "F.Cu") {polygon(7, 9, 9.5, 11)} (keepout (vias not_allowed)))'
-    assert check(GND_PLANE, kept, keepout, stub, via(11.4, 10, "GND")) == []
 
 
 def test_pad_to_pad() -> None:

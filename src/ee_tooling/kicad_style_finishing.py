@@ -14,10 +14,9 @@ Mounting holes: a footprint whose name, after its library, starts with
 ..._Pad_Via); a connector's pegs, and a footprint named for its mounting
 holes (DSUB-9_..._MountingHolesOffset9.12mm), are not.  Its hole is its
 pad with the largest drill: plated, with an annular ring of at least
-MIN_RING (its widest concentric pad on any copper layer), on a net, and
-with at least MIN_HOLE_VIAS barrels of that net around it.  An unplated
-hole, or one on no net, is reported and not checked for stitching: the
-owner decides whether stitching makes sense there.
+MIN_RING (its widest concentric pad on any copper layer), and on a net:
+tied to ground by its own copper, it needs no vias.  An unplated hole, or
+one on no net, is reported for the owner to decide.
 """
 
 import itertools
@@ -67,10 +66,6 @@ PLATED = "thru_hole"
 MIN_RING = 0.5
 # A pad centered this close to the hole is part of its land, mm.
 CONCENTRIC = 0.01
-# Vias around a mounting hole: at least one per quadrant (KiCad's _Pad_Via
-# footprints have 8), centered no further than HOLE_REACH past its land.
-MIN_HOLE_VIAS = 4
-HOLE_REACH = 1.5
 
 
 @dataclass(frozen=True)
@@ -210,8 +205,8 @@ def size(pad: Expression) -> float:
     return min(number(x) for x in s[1:]) if s else 0.0
 
 
-def mounting_hole(footprint: Expression, plated: list[tuple[Point, str | None]]) -> list[str]:
-    """A mounting hole's problems: plated, ring, net, stitching."""
+def mounting_hole(footprint: Expression) -> list[str]:
+    """A mounting hole's problems: plated, ring, net."""
     reference = next(
         (str(p[2]) for p in children(footprint, "property") if p[1] == "Reference"), "?"
     )
@@ -230,14 +225,8 @@ def mounting_hole(footprint: Expression, plated: list[tuple[Point, str | None]])
     problems = []
     if ring < MIN_RING:
         problems.append(f"{what}: annular ring {ring:.2f} mm, under {MIN_RING:g} mm")
-    name = net(hole)
-    if name is None:
-        return [*problems, f"{what}: on no net, so not stitched; the owner decides"]
-    at = placed(footprint, center)
-    reach = radius + ring + HOLE_REACH
-    found = sum(n == name and radius < math.dist(p, at) <= reach for p, n in plated)
-    if found < MIN_HOLE_VIAS:
-        problems.append(f"{what}: {found} {name} vias within {reach:g} mm, under {MIN_HOLE_VIAS}")
+    if net(hole) is None:
+        problems.append(f"{what}: on no net, not a ground tie; the owner decides")
     return problems
 
 
@@ -267,8 +256,7 @@ def check_finishing(board: Expression) -> list[str]:
             problems.append(
                 f"{ground} stitching gap {gap.length:.1f} mm, over {MAX_GAP:g} mm, {span}"
             )
-    plated = barrels(board)
     for footprint in children(board, "footprint"):
         if str(footprint[1]).rpartition(":")[2].startswith(MOUNTING_HOLE):
-            problems += mounting_hole(footprint, plated)
+            problems += mounting_hole(footprint)
     return problems

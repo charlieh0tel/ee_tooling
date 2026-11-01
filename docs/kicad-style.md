@@ -73,8 +73,10 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   included, run together.
 - With a ground plane, every GND pad gets a short N/S/E/W stub to a via
   into the plane (more than one for a big pad), the via inside the
-  part's courtyard where it fits.  Other plane nets the same.  Never a
-  trace from pad to pad.
+  part's courtyard where it fits (outside is fine where it does not).
+  Other plane nets the same.  Never a trace from pad to pad.  Mounting
+  hardware tied to ground (a mounting hole's pad, a standoff) needs no
+  via.
 - A supply runs from its trace or plane to the decoupling capacitor,
   then from the capacitor to the package's pin.
 
@@ -92,8 +94,8 @@ rules it can (`docs/kicad-style-check.md`).
 ### Board finishing
 
 - Stitching vias around the board's edge.
-- Mounting holes plated, with an annular ring, and stitched with vias
-  where that makes sense.
+- Mounting holes plated, with an annular ring.  A hole tied to ground
+  needs no vias of its own.
 
 ## Silkscreen
 

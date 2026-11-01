@@ -6,7 +6,6 @@ from ee_tooling.kicad_style_board import BoardError, Point, edge
 from ee_tooling.kicad_style_finishing import (
     EDGE_BAND,
     MAX_GAP,
-    MIN_HOLE_VIAS,
     check_finishing,
     outlines,
     placed,
@@ -271,40 +270,20 @@ def test_mounting_hole_ring() -> None:
 @pytest.mark.parametrize("net", [None, "unconnected-(H1-Pad1)"])
 def test_mounting_hole_no_net(net: str | None) -> None:
     assert hole(pad(net=net)) == [
-        "mounting hole H1 at (20, 15): on no net, so not stitched; the owner decides"
+        "mounting hole H1 at (20, 15): on no net, not a ground tie; the owner decides"
     ]
-
-
-def test_mounting_hole_unstitched() -> None:
-    assert hole(pad(), *VIA_PADS[: MIN_HOLE_VIAS - 1]) == [
-        f"mounting hole H1 at (20, 15): {MIN_HOLE_VIAS - 1} GND vias within 4.7 mm,"
-        f" under {MIN_HOLE_VIAS}"
-    ]
-
-
-def test_mounting_hole_board_vias() -> None:
-    near = [
-        via((10 + 4 * math.cos(k * math.pi / 2), 10 + 4 * math.sin(k * math.pi / 2)))
-        for k in range(4)
-    ]
-    far = via((10, 15))
-    other = via((12, 10), "+3V3")
-    fp = footprint(PAD_VIA, "10 10", pad())
-    assert problems(EDGE, zone(), STITCHED, fp, *near) == []
-    (found,) = problems(EDGE, zone(), STITCHED, fp, *near[1:], far, other)
-    assert "3 GND vias" in found
 
 
 def test_mounting_hole_rotated() -> None:
-    """The hole off the footprint's origin, rotated 90 degrees: board vias
-    count round where it lands."""
+    """The hole off the footprint's origin, rotated 90 degrees, lands
+    where KiCad puts it."""
     fp = footprint(PAD_VIA, "10 10 90", pad(at=(5, 0)))
     assert placed(parse(fp), (5, 0)) == pytest.approx((10, 5))
-    vias = [
-        via((10 + 3 * math.cos(k * math.pi / 2), 5 + 3 * math.sin(k * math.pi / 2)))
-        for k in range(4)
-    ]
-    assert problems(EDGE, zone(), STITCHED, fp, *vias) == []
+
+
+def test_mounting_hole_ground_tie() -> None:
+    """A hole on the ground net needs no vias round it."""
+    assert hole(pad()) == []
 
 
 @pytest.mark.parametrize(
