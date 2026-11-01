@@ -1,8 +1,10 @@
-"""Check KiCad schematics against the house style's drawing rules.
+"""Check KiCad schematics and boards against the house style.
 
-kicad-style-check SCH...: each problem on a line, `SCH: problem`.  Exits
-1 if there are problems, 2 if a file cannot be read; an unreadable file
-is never clean.  The rules (docs/kicad-style.md, Schematic drawing):
+kicad-style-check FILE...: each problem on a line, `FILE: problem`.
+Exits 1 if there are problems, 2 if a file cannot be read; an unreadable
+file is never clean.  A .kicad_pcb is checked by kicad_style_board.py's
+zone rules; a .kicad_sch by the drawing rules (docs/kicad-style.md,
+Schematic drawing):
 connection points on the grid; no pin touching another part's pin, no
 power symbol on a pin, no pin on a wire's run; a wire off every pin, at
 least one grid unit long and the pin's only one; a junction on every
@@ -21,6 +23,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ee_tooling.kicad_style_board import check_board
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
 GRID = 2.54  # mm (docs/kicad-style.md)
@@ -285,17 +288,23 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
 
 
 def check_file(path: Path, grid: float) -> list[str]:
-    return check(read(parse(path.read_text())), grid)
+    match path.suffix:
+        case ".kicad_sch":
+            return check(read(parse(path.read_text())), grid)
+        case ".kicad_pcb":
+            return check_board(parse(path.read_text()))
+        case _:
+            raise ValueError("not a .kicad_sch or .kicad_pcb")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    ap.add_argument("schematics", nargs="+", type=Path, metavar="SCH")
-    ap.add_argument("--grid", type=float, default=GRID, help="mm")
+    ap.add_argument("files", nargs="+", type=Path, metavar="FILE")
+    ap.add_argument("--grid", type=float, default=GRID, help="a schematic's grid, mm")
     a = ap.parse_args()
     found = 0
     unreadable = False
-    for path in a.schematics:
+    for path in a.files:
         try:
             problems = check_file(path, a.grid)
         except (OSError, UnicodeDecodeError, ValueError, IndexError) as e:

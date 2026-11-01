@@ -67,6 +67,13 @@ choices are not checked.
 - The area under a module is not a keepout unless something physical
   says so.
 
+`kicad-style-check BOARD.kicad_pcb` checks a board's zones: no filled
+graphic shape on a copper layer; every zone locked; every copper zone's
+outline off the board all the way round (past the edge, or in a slot or
+cutout; along the edge counts as on it).  Keepouts are checked only for
+the lock.  Edge.Cuts, connectors and modules are not: when their places
+are decided is the owner's call.
+
 ## Silkscreen
 
 - On a board that is not dense, every reference designator horizontal,

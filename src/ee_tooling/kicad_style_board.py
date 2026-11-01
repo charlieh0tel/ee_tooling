@@ -1,0 +1,195 @@
+"""A KiCad board against the house style's zone rules (docs/kicad-style.md,
+Board layout): pours are copper zones, never filled shapes on a copper
+layer; a copper zone's outline lies off the board all the way round, past
+its edge (or in a slot or cutout); every zone is locked.
+"""
+
+import itertools
+import math
+
+from ee_tooling.sexpr import Atom, Expression, child, children, number
+
+Point = tuple[float, float]  # mm, KiCad's axes (y down)
+Segment = tuple[Point, Point]
+
+EDGE = "Edge.Cuts"
+COPPER = ".Cu"  # a copper layer's name ends so: F.Cu, In1.Cu, B.Cu, *.Cu
+FILLABLE = ("gr_poly", "gr_rect", "gr_circle")
+EDGE_SHAPES = ("gr_line", "gr_arc", "gr_rect", "gr_circle", "gr_poly")
+# What a shape's (fill ...) says when it is not filled.
+UNFILLED = ("no", "none")
+# Arcs and circles are walked as chords no longer than this, and a zone's
+# outline is tested for lying on the board at points this far apart, mm.
+STEP = 0.25
+# A point this close to the board's edge is on it, mm: a zone's outline
+# along the edge is not past it.
+ON_EDGE = 0.001
+
+
+class BoardError(ValueError):
+    """A board that parses but is not one KiCad could have written."""
+
+
+def xy(expression: Expression, keyword: str) -> Point | None:
+    c = child(expression, keyword)
+    return (number(c[1]), number(c[2])) if c else None
+
+
+def required(expression: Expression, *keywords: str) -> list[Point]:
+    points = [xy(expression, k) for k in keywords]
+    if any(p is None for p in points):
+        raise BoardError(f"a {expression[0]} without {' and '.join(keywords)}")
+    return [p for p in points if p is not None]
+
+
+def polyline(points: list[Point], closed: bool) -> list[Segment]:
+    ends = [*points, points[0]] if closed else points
+    return list(itertools.pairwise(ends))
+
+
+def circle(center: Point, radius: float, start: float, sweep: float) -> list[Point]:
+    """Points along a circle from angle start through sweep, radians."""
+    n = max(2, math.ceil(abs(sweep) * radius / STEP))
+    return [
+        (
+            center[0] + radius * math.cos(start + sweep * k / n),
+            center[1] + radius * math.sin(start + sweep * k / n),
+        )
+        for k in range(n + 1)
+    ]
+
+
+def arc(start: Point, middle: Point, end: Point) -> list[Point]:
+    """Points along the arc from start through middle to end."""
+    (ax, ay), (bx, by), (cx, cy) = start, middle, end
+    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if d == 0:
+        return [start, end]
+    ux = (
+        (ax**2 + ay**2) * (by - cy) + (bx**2 + by**2) * (cy - ay) + (cx**2 + cy**2) * (ay - by)
+    ) / d
+    uy = (
+        (ax**2 + ay**2) * (cx - bx) + (bx**2 + by**2) * (ax - cx) + (cx**2 + cy**2) * (bx - ax)
+    ) / d
+    a0, am, a1 = (math.atan2(p[1] - uy, p[0] - ux) for p in (start, middle, end))
+    sweep = (a1 - a0) % math.tau
+    if (am - a0) % math.tau > sweep:  # the middle is on the other way round
+        sweep -= math.tau
+    return circle((ux, uy), math.dist((ux, uy), start), a0, sweep)
+
+
+def segments(shape: Expression) -> list[Segment]:
+    """A graphic shape's outline as straight segments."""
+    match shape[0]:
+        case "gr_line":
+            a, b = required(shape, "start", "end")
+            return [(a, b)]
+        case "gr_arc":
+            a, m, b = required(shape, "start", "mid", "end")
+            return polyline(arc(a, m, b), closed=False)
+        case "gr_rect":
+            (x0, y0), (x1, y1) = required(shape, "start", "end")
+            return polyline([(x0, y0), (x1, y0), (x1, y1), (x0, y1)], closed=True)
+        case "gr_circle":
+            center, end = required(shape, "center", "end")
+            return polyline(circle(center, math.dist(center, end), 0, math.tau), closed=True)
+        case _:
+            pts = children(child(shape, "pts") or [], "xy")
+            return polyline([(number(p[1]), number(p[2])) for p in pts], closed=True)
+
+
+def layers(item: Expression) -> list[str]:
+    one = child(item, "layer")
+    if one:
+        return [str(one[1])]
+    return [str(x) for x in (child(item, "layers") or [])[1:]]
+
+
+def edge(board: Expression) -> list[Segment]:
+    """The board's Edge.Cuts outlines, as segments."""
+    return [
+        s
+        for kind in EDGE_SHAPES
+        for shape in children(board, kind)
+        if EDGE in layers(shape)
+        for s in segments(shape)
+    ]
+
+
+def distance(p: Point, s: Segment) -> float:
+    (ax, ay), (bx, by) = s
+    length = math.dist(*s) ** 2
+    t = 0.0 if length == 0 else ((p[0] - ax) * (bx - ax) + (p[1] - ay) * (by - ay)) / length
+    t = min(1.0, max(0.0, t))
+    return math.dist(p, (ax + t * (bx - ax), ay + t * (by - ay)))
+
+
+def on_board(p: Point, outline: list[Segment]) -> bool:
+    """Whether p is on the board: on its edge, or inside its outlines (an
+    odd number of them cross a ray from p, so slots and cutouts are off)."""
+    if any(distance(p, s) <= ON_EDGE for s in outline):
+        return True
+    x, y = p
+    crossings = 0
+    for (x0, y0), (x1, y1) in outline:
+        if (y0 > y) != (y1 > y) and x < x0 + (y - y0) * (x1 - x0) / (y1 - y0):
+            crossings += 1
+    return crossings % 2 == 1
+
+
+def walk(outline: list[Point]) -> list[Point]:
+    """Points along a closed outline, STEP apart."""
+    out = []
+    for a, b in polyline(outline, closed=True):
+        n = max(1, math.ceil(math.dist(a, b) / STEP))
+        out += [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n) for k in range(n)]
+    return out
+
+
+def locked(item: Expression) -> bool:
+    if Atom("locked") in item:
+        return True
+    c = child(item, "locked")
+    return c is not None and (len(c) == 1 or c[1] == "yes")
+
+
+def where(p: Point) -> str:
+    return f"({round(p[0], 2):g}, {round(p[1], 2):g})"
+
+
+def check_board(board: Expression) -> list[str]:
+    """The board's zone problems, each a line."""
+    if not board or board[0] != "kicad_pcb":
+        raise BoardError("not a kicad_pcb")
+    problems = []
+    for kind in FILLABLE:
+        for shape in children(board, kind):
+            fill = child(shape, "fill")
+            on_copper = [x for x in layers(shape) if x.endswith(COPPER)]
+            if on_copper and fill and str(fill[1]) not in UNFILLED:
+                first = segments(shape)[0][0]
+                problems.append(
+                    f"filled {kind} on {', '.join(on_copper)} at {where(first)}: pours are zones"
+                )
+    outline = edge(board)
+    if not outline:
+        problems.append(f"no {EDGE} outline")
+    for zone in children(board, "zone"):
+        net = child(zone, "net")
+        what = (
+            f"zone {net[1] if net and len(net) > 1 else 'with no net'} on {', '.join(layers(zone))}"
+        )
+        if not locked(zone):
+            problems.append(f"{what}: not locked")
+        pts = children(child(child(zone, "polygon") or [], "pts") or [], "xy")
+        if not pts:
+            raise BoardError(f"{what} has no polygon")
+        if child(zone, "keepout") or not outline:
+            continue
+        inside = next(
+            (p for p in walk([(number(q[1]), number(q[2])) for q in pts]) if on_board(p, outline)),
+            None,
+        )
+        if inside:
+            problems.append(f"{what}: outline on the board at {where(inside)}, not past its edge")
+    return problems
