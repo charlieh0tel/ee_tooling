@@ -8,6 +8,7 @@ a board with DRC or ERC violations.
 |---|---|
 | `jlcpcb.kicad_dru` | custom DRC rules: JLCPCB's limits, JLCPCB's price, then the house rules |
 | `jlcpcb_board_setup.json` | a `.kicad_pro` fragment: Board Setup minimums from JLCPCB's limits |
+| `erc_severities.json` | a `.kicad_pro` fragment: every ERC check's severity, and the connection grid |
 
 ## How KiCad applies them
 
@@ -37,6 +38,10 @@ By hand, with KiCad closed (`ee-tooling-adopt` does not yet):
 2. In `NAME.kicad_pro`, raise each of `board.design_settings.rules` to
    at least its value in `jlcpcb_board_setup.json` (Board Setup, Design
    Rules, Constraints).
+3. In `NAME.kicad_pro`, set each of `erc.rule_severities` and
+   `schematic.connection_grid_size` to its value in
+   `erc_severities.json` (Schematic Setup, Electrical Rules, Violation
+   Severity; Formatting, Connection grid).
 
 ## JLCPCB's numbers
 
@@ -112,6 +117,67 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 - A differential pair's gap is its net class's: a `diff_pair_gap` rule
   would replace it, the router's gap included.
 
+## ERC severities
+
+`erc_severities.json` sets every ERC check KiCad 10.0.8 has
+(`eeschema/erc/erc_item.cpp`; defaults, `erc_settings.cpp`), and the
+connection grid, 100 mils (2.54 mm, `docs/kicad-style.md`), which
+`endpoint_off_grid` measures against (eeschema manual, Electrical Rules
+Check).  `pin_to_pin` at `ignore` turns off the pin conflict map's
+warnings and errors; at anything else they stay as the map has them.
+An error is always a mistake; a
+warning is for the owner to judge; both fail `jlcpcb-release`.
+
+| Check | KiCad's default | Here | Why |
+|---|---|---|---|
+| `bus_definition_conflict` | error | error | a mistake |
+| `bus_entry_needed` | error | error | a mistake |
+| `bus_to_bus_conflict` | error | error | a mistake |
+| `bus_to_net_conflict` | error | error | a mistake |
+| `different_unit_footprint` | error | error | a mistake |
+| `different_unit_net` | error | error | a mistake |
+| `duplicate_reference` | error | error | a mistake |
+| `duplicate_sheet_names` | error | error | a mistake |
+| `endpoint_off_grid` | warning | error | style: every connection point on the 2.54 mm grid |
+| `extra_units` | error | error | a mistake |
+| `field_name_whitespace` | warning | warning | may be meant |
+| `footprint_filter` | ignore | ignore | a part's footprint is chosen for its LCSC part, often outside the symbol's filters |
+| `footprint_link_issues` | warning | warning | `--schematic-parity` catches a wrong footprint at release |
+| `four_way_junction` | ignore | ignore | style allows a four-way join, with its junction |
+| `ground_pin_not_ground` | warning | warning | may be meant (an isolated ground) |
+| `hier_label_mismatch` | error | error | a mistake |
+| `isolated_pin_label` | warning | warning | may be meant (a test point's net) |
+| `label_dangling` | error | error | a mistake |
+| `label_multiple_wires` | warning | error | such a label names no one net |
+| `lib_symbol_issues` | warning | warning | for the owner: a library not in the table |
+| `lib_symbol_mismatch` | warning | warning | for the owner: a symbol edited in place |
+| `missing_bidi_pin` | warning | warning | may be meant (an unused unit) |
+| `missing_input_pin` | warning | warning | may be meant (an unused unit) |
+| `missing_power_pin` | error | error | a unit's supply left off |
+| `missing_unit` | warning | warning | may be meant (an unused unit) |
+| `multiple_net_names` | warning | error | a net has one name; KiCad keeps one, and net class patterns may miss it |
+| `net_not_bus_member` | warning | warning | for the owner |
+| `no_connect_connected` | warning | error | a pin is either connected or not |
+| `no_connect_dangling` | warning | error | style: no-connects on pins |
+| `pin_not_connected` | error | error | style: every pin wired or no-connect |
+| `pin_not_driven` | error | error | a mistake |
+| `pin_to_pin` | warning | warning | the pin conflict map's warnings are judgments |
+| `power_pin_not_driven` | error | error | a mistake (a `PWR_FLAG` where a supply comes from a connector) |
+| `same_local_global_label` | warning | warning | may be meant |
+| `same_local_global_power` | warning | warning | may be meant |
+| `similar_label_and_power` | warning | warning | may be meant |
+| `similar_labels` | warning | warning | may be meant |
+| `similar_power` | warning | warning | may be meant |
+| `simulation_model_issue` | ignore | ignore | boards are not simulated |
+| `single_global_label` | ignore | ignore | a global label used once is not a mistake |
+| `stacked_pin_name` | warning | warning | may be meant |
+| `unannotated` | error | error | a mistake |
+| `unconnected_wire_endpoint` | warning | error | a wire end on nothing is unfinished |
+| `undefined_netclass` | error | error | a mistake |
+| `unit_value_mismatch` | error | error | a mistake |
+| `unresolved_variable` | error | error | a mistake |
+| `wire_dangling` | error | error | a mistake |
+
 ## Overlap with kicad-style-check
 
 | kicad-style-check rule | KiCad's check | Redundant |
@@ -119,3 +185,8 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 | Mounting holes plated | `Mounting hole plated` | yes |
 | Mounting holes with an annular ring of 0.5 | `Mounting hole ring` | no: KiCad's ring stops at the nearest hole, kicad-style-check's at the widest pad |
 | Mounting holes on a net | none | no |
+| Connection points on the grid | `endpoint_off_grid` | no: KiCad checks pins and wire ends, not labels, junctions or no-connects |
+| No pin without a wire or no-connect | `pin_not_connected` | no: to KiCad a pin on another pin, or on a label, is connected |
+| No-connects on pins | `no_connect_dangling` | yes |
+| A junction on every join of three or more, and nowhere else | none | no |
+| Schematic: the other rules | none | no |

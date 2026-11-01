@@ -2,17 +2,26 @@
 
 import importlib.resources
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from ee_tooling.kicad_style_check import GRID
 from ee_tooling.sexpr import Expression, child, children, number, parse
 
 RULES = importlib.resources.files("ee_tooling").joinpath("rules")
 DRU = RULES.joinpath("jlcpcb.kicad_dru").read_text()
 BOARD_SETUP = json.loads(RULES.joinpath("jlcpcb_board_setup.json").read_text())
+ERC = json.loads(RULES.joinpath("erc_severities.json").read_text())
+# The companion doc, whose ERC table gives each check's severity here.
+DOC = Path(__file__).parent.parent / "docs" / "kicad-rules.md"
+# A row of that table: | `check` | KiCad's default | here | why |
+ERC_ROW = re.compile(r"^\| `(\w+)` \| (error|warning|ignore) \| (error|warning|ignore) \|", re.M)
+SEVERITIES = {"error", "warning", "ignore"}
+MM_PER_MIL = 0.0254
 
 # KiCad 10's custom rule constraint types (pcbnew manual, Custom design
 # rules, Constraint type).
@@ -183,3 +192,15 @@ def test_kicad_drc(tmp_path: Path) -> None:
         v.startswith("annular_width: ") and "'Mounting hole ring'" in v and "actual 0.4" in v
         for v in found
     )
+
+
+def test_erc_severities() -> None:
+    severities = ERC["erc"]["rule_severities"]
+    assert severities and set(severities.values()) <= SEVERITIES
+    assert ERC["schematic"]["connection_grid_size"] * MM_PER_MIL == pytest.approx(GRID)
+
+
+def test_erc_severities_documented() -> None:
+    """Each check's severity is the one docs/kicad-rules.md gives it."""
+    documented = {m[1]: m[3] for m in ERC_ROW.finditer(DOC.read_text())}
+    assert documented == ERC["erc"]["rule_severities"]

@@ -35,7 +35,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 
 `kicad-style-check` checks these rules (`docs/kicad-style-check.md`); a
 break judged intentional is waived, with its reason, in the board's
-`kicad-style.toml`.
+`kicad-style.toml`.  KiCad's ERC checks some of them with ee_tooling's
+severities (`docs/kicad-rules.md`).
 
 ## Board layout
 
