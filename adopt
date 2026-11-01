@@ -1,0 +1,5 @@
+#!/bin/sh
+# ee-tooling-adopt, run from this checkout's own uv project, so a board
+# repository can run it from its submodule before anything else is in
+# place (docs/adopting.md).
+exec uv run --quiet --project "$(dirname "$0")" ee-tooling-adopt "$@"

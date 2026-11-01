@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs ee_tooling's commit-msg hook from its submodule.  Written by
-# ee-tooling-adopt (ee_tooling's docs/adopting.md): rerun it rather than
-# editing this file.  Git runs a hook from the top of the work tree, so
+# @EE_TOOLING@/adopt (ee_tooling's docs/adopting.md): rerun it rather
+# than editing this file.  Git runs a hook from the top of the work tree, so
 # the path is from there.  Until `git submodule update --init` the hook
 # is missing, and the commit is refused rather than left unchecked.
 HOOK=@EE_TOOLING@/.githooks/commit-msg

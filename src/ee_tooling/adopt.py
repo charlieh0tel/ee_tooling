@@ -1,14 +1,16 @@
 """Put ee_tooling in place in a board repository (docs/adopting.md).
 
-Run from anywhere in the repository.  Without --yes it prints what it
-would do; with --yes it does it; with --check it fails if a file it
-manages differs from what this ee_tooling would write.  It never
-overwrites a file the project owns once written.
+Runs from the board repository's ee_tooling submodule (its `adopt`
+script), whatever the directory.  Without --yes it prints what it would
+do; with --yes it does it; with --check it fails if a file it manages
+differs from what this ee_tooling would write.  It never overwrites a
+file the project owns once written.
 """
 
 import argparse
 import importlib.resources
 import math
+import os
 import re
 import subprocess
 import sys
@@ -18,12 +20,10 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from ee_tooling.jlcpcb_release import CONFIG, repository_root
+from ee_tooling.jlcpcb_release import CONFIG
 
-URL = "https://github.com/charlieh0tel/ee_tooling.git"
-# The branch a board repository's submodule follows.
-BRANCH = "main"
-DEFAULT_PATH = Path("hardware/ee_tooling")
+# This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
+CHECKOUT = Path(__file__).resolve().parents[2]
 SYSTEM_PYTHON = "/usr/bin/python3"
 HOOKS_PATH = ".githooks"
 AGENTS = Path("AGENTS.md")
@@ -89,6 +89,21 @@ class Layout:
             .replace("@HARDWARE@", self.hardware.as_posix())
             .replace("@NAME@", self.root.name)
         )
+
+
+def git(directory: Path, *args: str) -> str:
+    """git's output, or "" if it fails (a missing key, no superproject)."""
+    r = subprocess.run(["git", *args], cwd=directory, capture_output=True, text=True, check=False)
+    return r.stdout.strip()
+
+
+def locate(checkout: Path) -> Layout:
+    """The board repository that has checkout as its submodule."""
+    superproject = git(checkout, "rev-parse", "--show-superproject-working-tree")
+    if not superproject:
+        raise ValueError(f"{checkout} is not a submodule of a board repository")
+    root = Path(superproject)
+    return Layout(root, checkout.relative_to(root))
 
 
 def copper_layers(pcb_text: str) -> list[str]:
@@ -163,11 +178,6 @@ def system_site_packages(venv: Path) -> bool:
     return config.exists() and "include-system-site-packages = true" in config.read_text()
 
 
-def git(root: Path, *args: str) -> str:
-    r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
-    return r.stdout.strip()
-
-
 def files(layout: Layout) -> list[File]:
     """The files ee_tooling puts in a board repository."""
     root = layout.root
@@ -201,16 +211,10 @@ def files(layout: Layout) -> list[File]:
     return out
 
 
-def plan(layout: Layout, url: str) -> list[Step]:
+def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
-    steps: list[Step] = []
-    if not (root / submodule / ".git").exists():
-        if git(root, "config", "-f", ".gitmodules", "--get", f"submodule.{submodule}.path"):
-            steps.append(Command(("git", "submodule", "update", "--init", str(submodule))))
-        else:
-            steps.append(Command(("git", "submodule", "add", "-b", BRANCH, url, str(submodule))))
-    steps += [f for f in files(layout) if f.action(root)]
+    steps: list[Step] = [f for f in files(layout) if f.action(root)]
     venv = root / hardware / ".venv"
     if not system_site_packages(venv):
         clear = ("--clear",) if venv.exists() else ()
@@ -241,7 +245,7 @@ def describe(step: Step, root: Path) -> str:
 
 def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path], None]) -> None:
     for step in steps:
-        print(describe(step, root))
+        print(describe(step, root), flush=True)
         match step:
             case File():
                 target = root / step.path
@@ -254,7 +258,9 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
 
 
 def run_command(args: Sequence[str], directory: Path) -> None:
-    subprocess.run(args, cwd=directory, check=True)
+    # Not in the venv adopt runs in (its submodule's), but the directory's own.
+    environment = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    subprocess.run(args, cwd=directory, env=environment, check=True)
 
 
 def stale(layout: Layout) -> list[Path]:
@@ -264,20 +270,23 @@ def stale(layout: Layout) -> list[Path]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    ap.add_argument("--path", type=Path, default=DEFAULT_PATH, help="the submodule, from the root")
-    ap.add_argument("--url", default=URL, help="the repository the submodule is added from")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--yes", action="store_true", help="do it, rather than print it")
     mode.add_argument("--check", action="store_true", help="fail if a managed file is stale")
     a = ap.parse_args()
 
-    layout = Layout(repository_root(), a.path)
+    try:
+        layout = locate(CHECKOUT)
+    except ValueError as e:
+        sys.exit(str(e))
     if a.check:
         out_of_date = stale(layout)
         for p in out_of_date:
-            print(f"out of date: {p.as_posix()}; run ee-tooling-adopt --yes", file=sys.stderr)
+            print(
+                f"out of date: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr
+            )
         sys.exit(1 if out_of_date else 0)
-    steps = plan(layout, a.url)
+    steps = plan(layout)
     if not steps:
         print("nothing to do")
     elif a.yes:

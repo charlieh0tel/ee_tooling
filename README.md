@@ -13,16 +13,17 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
 | `docs/adopting.md` | taking ee_tooling into a board repository |
-| `src/ee_tooling/adopt.py` | `ee-tooling-adopt`: puts ee_tooling in place in a board repository |
+| `adopt`, `src/ee_tooling/adopt.py` | `ee-tooling-adopt`: puts ee_tooling in place in a board repository, run from its submodule |
 | `src/ee_tooling/templates/` | the files `ee-tooling-adopt` writes |
 
 ## Use from a board's repository
 
-As a git submodule following `main`, put in place by
-`ee-tooling-adopt` (`docs/adopting.md`):
+As a git submodule following `main`, with the rest put in place by its
+`adopt` script (`docs/adopting.md`):
 
 ```
-uvx --from git+https://github.com/charlieh0tel/ee_tooling ee-tooling-adopt --yes
+git submodule add -b main https://github.com/charlieh0tel/ee_tooling.git hardware/ee_tooling
+hardware/ee_tooling/adopt --yes
 cd hardware && uv run jlcpcb-release
 ```
 

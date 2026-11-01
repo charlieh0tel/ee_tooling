@@ -1,24 +1,27 @@
 # Adopting ee_tooling in a board repository
 
-A board repository takes ee_tooling as a git submodule at
-`hardware/ee_tooling`, following ee_tooling's `main`, with a
-`hardware/` directory holding the KiCad projects and the hardware
-tools' uv project.  `ee-tooling-adopt` puts it in place.
+A board repository takes ee_tooling as a git submodule, following
+ee_tooling's `main`, in the directory that holds the KiCad projects
+and the hardware tools' uv project (`hardware/` here).  The
+submodule's `adopt` script puts the rest in place.
 
 ## Running it
 
-The first time, from anywhere in the repository:
+From the board repository's root:
 
 ```
-uvx --from git+https://github.com/charlieh0tel/ee_tooling ee-tooling-adopt
-uvx --from git+https://github.com/charlieh0tel/ee_tooling ee-tooling-adopt --yes
+git submodule add -b main https://github.com/charlieh0tel/ee_tooling.git hardware/ee_tooling
+hardware/ee_tooling/adopt          # prints what it would do
+hardware/ee_tooling/adopt --yes    # does it
 ```
 
-The first prints what it would do; `--yes` does it.  After that, from
-`hardware/`, `uv run ee-tooling-adopt` (and `--yes`) brings the files
-it manages up to date, and `--check` fails if one is stale.  `--path`
-puts the submodule elsewhere (default `hardware/ee_tooling`); its
-parent is the hardware tools' uv project.
+`adopt` runs `ee-tooling-adopt` in the submodule's own uv project
+(`hardware/ee_tooling/.venv`, ignored by ee_tooling's `.gitignore`).
+It finds the board repository as the submodule's superproject, so it
+runs from any directory, and the submodule's parent is the hardware
+tools' uv project.  Rerun with `--yes` to bring the files it manages up
+to date; `--check` fails if one is stale.  A fresh clone needs
+`git submodule update --init` first.
 
 ## What it writes
 
@@ -45,13 +48,11 @@ by hand and is left alone.
 
 What it runs, each only when needed:
 
-- `git submodule add -b main` (or `git submodule update --init` in a
-  clone that has the submodule registered);
 - `uv venv --system-site-packages --python /usr/bin/python3` in
   `hardware/`, with `--clear` for a venv without system packages:
   uv has no project setting for it, and KiCad's `pcbnew` is only in
   the system Python.  A venv uv remakes itself (after `.venv` is
-  deleted) has no `pcbnew`; rerun `ee-tooling-adopt --yes`;
+  deleted) has no `pcbnew`; rerun `adopt --yes`;
 - `uv add --dev --editable --no-workspace ./ee_tooling` in `hardware/`;
 - `git config core.hooksPath .githooks`, once per clone.
 
@@ -82,7 +83,7 @@ board repository:
 
 ```
 git submodule update --remote hardware/ee_tooling
-cd hardware && uv run ee-tooling-adopt --yes
+hardware/ee_tooling/adopt --yes
 ```
 
 and commit the new pointer with any files it rewrote.

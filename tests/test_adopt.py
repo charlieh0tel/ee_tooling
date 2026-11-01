@@ -7,7 +7,6 @@ import pytest
 from ee_tooling.adopt import (
     AGENTS_BEGIN,
     AGENTS_END,
-    URL,
     Command,
     File,
     Layout,
@@ -16,6 +15,7 @@ from ee_tooling.adopt import (
     apply,
     copper_layers,
     jlcpcb_config,
+    locate,
     plan,
     stale,
 )
@@ -99,9 +99,8 @@ def test_jlcpcb_config_no_project(tmp_path: Path) -> None:
 
 
 def test_plan_fresh_repository(tmp_path: Path) -> None:
-    steps = plan(repository(tmp_path, "main"), URL)
+    steps = plan(repository(tmp_path, "main"))
     assert commands(steps) == [
-        ("git", "submodule", "add", "-b", "main", URL, "hardware/ee_tooling"),
         ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
         ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
         ("git", "config", "core.hooksPath", ".githooks"),
@@ -120,7 +119,7 @@ def ran(tmp_path: Path) -> list[tuple[str, ...]]:
     """Adopt with every command recorded, not run; returns the commands."""
     layout = repository(tmp_path, "main")
     calls: list[tuple[str, ...]] = []
-    apply(tmp_path, plan(layout, URL), lambda args, _: calls.append(tuple(args)))
+    apply(tmp_path, plan(layout), lambda args, _: calls.append(tuple(args)))
     return calls
 
 
@@ -132,10 +131,11 @@ def test_apply_writes_files(tmp_path: Path) -> None:
     assert "@" not in hook.read_text().replace('"$@"', "")
     workflow = (tmp_path / ".github/workflows/ee-tooling.yml").read_text()
     assert "sh hardware/ee_tooling/.githooks/commit-msg --messages" in workflow
-    assert "uv run --directory hardware ee-tooling-adopt --check" in workflow
+    assert "run: hardware/ee_tooling/adopt --check" in workflow
     agents = (tmp_path / "AGENTS.md").read_text()
     assert "\n@hardware/ee_tooling/docs/kicad-style.md\n" in agents
     assert "git submodule update --remote hardware/ee_tooling" in agents
+    assert "`hardware/ee_tooling/adopt --yes`" in agents
     assert (
         f'name = "{tmp_path.name}-hardware"' in (tmp_path / "hardware/pyproject.toml").read_text()
     )
@@ -144,7 +144,7 @@ def test_apply_writes_files(tmp_path: Path) -> None:
 def test_project_files_not_overwritten(tmp_path: Path) -> None:
     ran(tmp_path)
     (tmp_path / "jlcpcb.toml").write_text("# edited\n")
-    steps = plan(Layout(tmp_path, SUBMODULE), URL)
+    steps = plan(Layout(tmp_path, SUBMODULE))
     assert "jlcpcb.toml" not in written(steps)
 
 
@@ -155,7 +155,7 @@ def test_managed_files_updated(tmp_path: Path) -> None:
     (tmp_path / ".githooks/commit-msg").write_text("#!/bin/sh\n")
     (tmp_path / "AGENTS.md").write_text("# Mine\n\n" + (tmp_path / "AGENTS.md").read_text())
     assert stale(layout) == [Path(".githooks/commit-msg")]
-    assert written(plan(layout, URL)) == {".githooks/commit-msg": Owner.MANAGED}
+    assert written(plan(layout)) == {".githooks/commit-msg": Owner.MANAGED}
 
 
 def test_rerun_has_nothing_to_do(tmp_path: Path) -> None:
@@ -171,7 +171,7 @@ def test_rerun_has_nothing_to_do(tmp_path: Path) -> None:
     subprocess.run(
         ["git", "-C", str(tmp_path), "config", "core.hooksPath", ".githooks"], check=True
     )
-    assert plan(layout, URL) == []
+    assert plan(layout) == []
 
 
 def test_venv_without_system_packages_remade(tmp_path: Path) -> None:
@@ -185,18 +185,39 @@ def test_venv_without_system_packages_remade(tmp_path: Path) -> None:
         "--system-site-packages",
         "--python",
         "/usr/bin/python3",
-    ) in commands(plan(layout, URL))
+    ) in commands(plan(layout))
 
 
-@pytest.mark.parametrize("registered", [True, False])
-def test_submodule_init_or_add(tmp_path: Path, registered: bool) -> None:
-    layout = repository(tmp_path, "main")
-    if registered:
-        (tmp_path / ".gitmodules").write_text(
-            f'[submodule "hardware/ee_tooling"]\n\tpath = hardware/ee_tooling\n\turl = {URL}\n'
-        )
-    first = commands(plan(layout, URL))[0]
-    if registered:
-        assert first == ("git", "submodule", "update", "--init", "hardware/ee_tooling")
-    else:
-        assert first[:3] == ("git", "submodule", "add")
+def git(*args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "protocol.file.allow=always", *args], check=True, capture_output=True
+    )
+
+
+def test_locate_from_submodule(tmp_path: Path) -> None:
+    upstream = tmp_path / "upstream"
+    git("init", "-q", "-b", "main", str(upstream))
+    git("-C", str(upstream), "commit", "-q", "--allow-empty", "-m", "x")
+    board = tmp_path / "board"
+    git("init", "-q", str(board))
+    git(
+        "-C",
+        str(board),
+        "submodule",
+        "add",
+        "-q",
+        "-b",
+        "main",
+        str(upstream),
+        "hardware/ee_tooling",
+    )
+    layout = locate(board / "hardware/ee_tooling")
+    assert layout.root == board.resolve()
+    assert layout.submodule == Path("hardware/ee_tooling")
+    assert layout.hardware == Path("hardware")
+
+
+def test_locate_not_a_submodule(tmp_path: Path) -> None:
+    git("init", "-q", str(tmp_path))
+    with pytest.raises(ValueError, match="not a submodule"):
+        locate(tmp_path)
