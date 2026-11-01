@@ -11,11 +11,19 @@ from ee_tooling.kicad_style_finding import (
     RULES,
     SCHEMATIC_RULES,
     SET_FIELDS,
+    STACKUP_RULES,
     ZONE_RULES,
     found,
 )
 
-GROUPS = (SCHEMATIC_RULES, ZONE_RULES, FINISHING_RULES, ROUTING_RULES, NETCLASS_RULES)
+GROUPS = (
+    SCHEMATIC_RULES,
+    ZONE_RULES,
+    FINISHING_RULES,
+    STACKUP_RULES,
+    ROUTING_RULES,
+    NETCLASS_RULES,
+)
 
 
 def test_rule_ids_unique() -> None:
@@ -23,7 +31,7 @@ def test_rule_ids_unique() -> None:
 
 
 def test_subject_fields_known() -> None:
-    names = {"net", "pad", "pin", "capacitor", "reference", "netclass"}
+    names = {"net", "pad", "pin", "capacitor", "reference", "netclass", "layer"}
     fields = {f for subject in RULES.values() for f in subject}
     assert fields <= names | SET_FIELDS | {POSITION_FIELD}
 

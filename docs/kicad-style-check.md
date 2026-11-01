@@ -62,6 +62,17 @@ wires versus labels are not checked.
   annular ring of at least 0.5 mm, and on a net (a ground tie, needing no
   vias).  A hole on no net is reported for the owner to decide.
 
+### Stackup table: kicad_style_stackup.py
+
+- A physical stackup (Board Setup), and KiCad 10's stackup table (Place
+  > Add Stackup Table: a table headed `Layer Name`, `Type`, `Material`,
+  `Thickness`, `Color`, `Epsilon R`, `Loss Tangent`) on User.Drawings.
+  The header is found in English only.  A pre-KiCad 10 table (the group
+  `group-boardStackUp`) is reported for replacing.
+- The table matching the stackup: a row per layer or dielectric
+  sublayer, and each material, thickness (any of KiCad's units), Er and
+  loss tangent the stackup gives.
+
 ### Routing: kicad_style_routing.py
 
 Plane nets are the `poured` nets of `placement.toml` beside the board
@@ -148,9 +159,10 @@ reason = "GND return across the breakaway tab, beside +5V and 1PPS."
 
 Each finding names its rule's id and its subject: the fields that say
 what it is about.  A pad is written as printed, `R1 pad 2`; a pin
-`U1 pin 3`; `pads`, `pins`, `nets` and `layers` are sets; `at` is a
-position in mm, used only where nothing else names the item.  Ids and
-subject fields are part of the semver API.
+`U1 pin 3`; `layer` a layer's name as the file writes it (`F.Cu`, or a
+dielectric's in the stackup); `pads`, `pins`, `nets` and `layers` are
+sets; `at` is a position in mm, used only where nothing else names the
+item.  Ids and subject fields are part of the semver API.
 
 | Checker | Id | Subject | Finding |
 |---|---|---|---|
@@ -179,6 +191,11 @@ subject fields are part of the semver API.
 | Finishing | `mounting-hole-unplated` | `reference` | a mounting hole not plated |
 | Finishing | `mounting-hole-ring` | `reference` | a mounting hole's ring under 0.5 mm |
 | Finishing | `mounting-hole-no-net` | `reference` | a mounting hole on no net |
+| Stackup | `stackup-missing` | none | no physical stackup (Board Setup) |
+| Stackup | `stackup-table-missing` | none | no stackup table on User.Drawings |
+| Stackup | `stackup-table-layer` | `layer` | a stackup table on another layer, the one it is on |
+| Stackup | `stackup-table-rows` | none | a stackup table with a row count not the stackup's |
+| Stackup | `stackup-table-row` | `layer` | a stackup table's row not matching its stackup layer |
 | Routing | `decoupling-no-pin` | `capacitor`, `pin` | placement.toml's pin not on the board |
 | Routing | `decoupling-no-pad` | `capacitor`, `pin` | the capacitor has no pad on the pin's net |
 | Routing | `via-off-plane` | `net`, `pad` | a stub's via not reaching the plane |

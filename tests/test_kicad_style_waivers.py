@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from test_kicad_style_stackup import ROWS, SETUP, table
 
 from ee_tooling.kicad_style_finding import Finding, found
 from ee_tooling.kicad_style_waivers import Waiver, WaiverError, load, matches, waive
@@ -15,9 +16,10 @@ pads = ["J8 pad 3", "J7 pad 3"]
 reason = "GND return across the breakaway tab."
 """
 
-# A 4 x 1 mm board, under the stitching gap round, with two through-hole
-# GND pins traced pad to pad on F.Cu.
-BOARD = """(kicad_pcb (version 20260206)
+# A 4 x 1 mm board, under the stitching gap round, with a stackup table
+# matching its stackup and two through-hole GND pins traced pad to pad on
+# F.Cu.
+BOARD = f"""(kicad_pcb (version 20260206)
  (layers (0 "F.Cu" signal) (4 "In1.Cu" signal) (6 "In2.Cu" signal) (2 "B.Cu" signal))
  (gr_rect (start 0 0) (end 4 1) (layer "Edge.Cuts"))
  (zone (net "GND") (locked yes) (layer "In1.Cu")
@@ -26,7 +28,8 @@ BOARD = """(kicad_pcb (version 20260206)
   (pad "3" thru_hole circle (at 0 0) (size 0.6 0.6) (drill 0.3) (layers "*.Cu") (net "GND")))
  (footprint "Lib:Part" (layer "F.Cu") (at 3 0.5) (property "Reference" "J8")
   (pad "3" thru_hole circle (at 0 0) (size 0.6 0.6) (drill 0.3) (layers "*.Cu") (net "GND")))
- (segment (start 3 0.5) (end 1 0.5) (width 0.25) (layer "F.Cu") (net "GND")))
+ (segment (start 3 0.5) (end 1 0.5) (width 0.25) (layer "F.Cu") (net "GND"))
+ {SETUP} {table(ROWS)})
 """
 FINDING = "GND: trace from J7 pad 3 to J8 pad 3 on F.Cu [trace-pad-to-pad]"
 

@@ -1,8 +1,8 @@
 """kicad-style-check's findings and its rules' ids (docs/kicad-style-check.md).
 
 A finding names its rule and its subject, the fields that say what it is
-about: a net, a pad as "R1 pad 2", a part's reference, a set of them, or
-a position where nothing else names it.
+about: a net, a pad as "R1 pad 2", a part's reference, a layer, a set of
+them, or a position where nothing else names it.
 """
 
 from dataclasses import dataclass
@@ -55,6 +55,15 @@ FINISHING_RULES = {
     "mounting-hole-no-net": ("reference",),
 }
 
+# The stackup table rules: each id and its subject's fields.
+STACKUP_RULES = {
+    "stackup-missing": (),
+    "stackup-table-missing": (),
+    "stackup-table-layer": ("layer",),
+    "stackup-table-rows": (),
+    "stackup-table-row": ("layer",),
+}
+
 # The routing rules: each id and its subject's fields.
 ROUTING_RULES = {
     "decoupling-no-pin": ("capacitor", "pin"),
@@ -82,7 +91,9 @@ NETCLASS_RULES = {
 }
 
 # Every rule: its id and its subject's fields, in order.
-RULES = SCHEMATIC_RULES | ZONE_RULES | FINISHING_RULES | ROUTING_RULES | NETCLASS_RULES
+RULES = (
+    SCHEMATIC_RULES | ZONE_RULES | FINISHING_RULES | STACKUP_RULES | ROUTING_RULES | NETCLASS_RULES
+)
 # Subject fields that hold a set of names, matched as a set.
 SET_FIELDS = frozenset({"pins", "pads", "nets", "layers"})
 # The subject field that holds a position, for a finding nothing else names.

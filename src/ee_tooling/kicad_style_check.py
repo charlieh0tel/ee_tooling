@@ -11,8 +11,9 @@ By the file's suffix:
 - .kicad_pro: its net classes (kicad_style_netclass.py), with the board
   and schematic of its name beside it;
 - .kicad_pcb: its zones (kicad_style_board.py), finishing
-  (kicad_style_finishing.py) and routing (kicad_style_routing.py), the
-  last with placement.toml beside it if there is one (placement.py);
+  (kicad_style_finishing.py), stackup table (kicad_style_stackup.py) and
+  routing (kicad_style_routing.py), the last with placement.toml beside
+  it if there is one (placement.py);
 - .kicad_sch: the drawing rules (docs/kicad-style.md, Schematic drawing):
 connection points on the grid; no pin touching another part's pin, no
 power symbol on a pin, no pin on a wire's run; a wire off every pin, at
@@ -37,6 +38,7 @@ from ee_tooling.kicad_style_finding import SCHEMATIC_RULES, Checked, Finding, fo
 from ee_tooling.kicad_style_finishing import check_finishing
 from ee_tooling.kicad_style_netclass import check_project
 from ee_tooling.kicad_style_routing import check_routing
+from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.kicad_style_waivers import WAIVERS, Waiver, WaiverError, load, waive
 from ee_tooling.placement import Rules
 from ee_tooling.placement_kicad import RULES
@@ -377,7 +379,12 @@ def check_file(path: Path, grid: float) -> Checked:
             board = parse(path.read_text())
             rules_file = path.parent / RULES
             rules = Rules.load(rules_file.read_text()) if rules_file.exists() else None
-            parts = [check_board(board), check_finishing(board), check_routing(board, rules)]
+            parts = [
+                check_board(board),
+                check_finishing(board),
+                check_stackup(board),
+                check_routing(board, rules),
+            ]
             return Checked(
                 [f for c in parts for f in c.findings], frozenset().union(*(c.ran for c in parts))
             )

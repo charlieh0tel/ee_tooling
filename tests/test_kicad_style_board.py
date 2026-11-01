@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from test_kicad_style_stackup import ROWS, SETUP, table
 
 from ee_tooling.kicad_style_board import (
     BoardError,
@@ -245,8 +246,9 @@ def test_arc(start: Point, middle: Point, end: Point) -> None:
 
 
 # A board too small round its edge to need stitching (kicad_style_finishing),
-# with no tracks to route, so only the zone rules apply.
-SMALL = rectangle(0, 0, 2, 2)
+# with no tracks to route and a stackup table matching its stackup
+# (kicad_style_stackup), so only the zone rules apply.
+SMALL = f"{rectangle(0, 0, 2, 2)} {SETUP} {table(ROWS)}"
 
 
 def test_command(tmp_path: Path) -> None:
