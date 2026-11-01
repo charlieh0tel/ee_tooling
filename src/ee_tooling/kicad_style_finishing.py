@@ -6,7 +6,8 @@ panel's boards', a slot's or cutout's), barrels on the ground plane's net
 within EDGE_BAND of it, on the board, no further apart along it than
 MAX_GAP.  A barrel is a through via or a footprint's plated through-hole
 pad (a connector's shield leg, a mounting hole's vias).  The ground
-plane's net is the net whose copper zones cover the most area.  An
+plane's net is the net named GROUND with a copper zone, or else the net
+whose copper zones cover the most area.  An
 outline shorter than MAX_GAP round needs no via.
 
 Mounting holes: a footprint whose name, after its library, starts with
@@ -21,6 +22,7 @@ one on no net, is reported for the owner to decide.
 
 import itertools
 import math
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -56,6 +58,8 @@ MAX_GAP = 10.0
 JOIN = 0.01
 # Via kinds that do not go through the board, so cannot stitch it.
 PARTIAL_VIAS = ("blind", "buried", "micro")
+# The ground net's name, after any sheet path.
+GROUND = re.compile(r"^(?:.*/)?GND$")
 # Mounting holes: the footprint's name, after the library, starts so.
 MOUNTING_HOLE = "MountingHole"
 PLATED = "thru_hole"
@@ -90,7 +94,8 @@ def area(points: list[Point]) -> float:
 
 
 def plane_net(board: Expression) -> str | None:
-    """The net whose copper zones cover the most area, summed over layers."""
+    """The ground net (GROUND) if it has a copper zone, or else the net
+    whose copper zones cover the most area, summed over layers."""
     covered: dict[str, float] = defaultdict(float)
     for zone in children(board, "zone"):
         name = net(zone)
@@ -100,6 +105,9 @@ def plane_net(board: Expression) -> str | None:
         for polygon in children(zone, "polygon"):
             pts = children(child(polygon, "pts") or [], "xy")
             covered[name] += len(copper) * area([(number(p[1]), number(p[2])) for p in pts])
+    named = sorted(k for k in covered if GROUND.match(k))
+    if named:
+        return named[0]
     return max(covered, key=lambda k: covered[k]) if covered else None
 
 

@@ -48,9 +48,9 @@ wires versus labels are not checked.
 - Edge stitching: along every closed Edge.Cuts outline (a board's, a
   panel's, a slot's or cutout's), barrels of the ground net within 2 mm
   of it, no more than 10 mm apart along it.  A barrel is a through via
-  or a plated through-hole pad.  The ground net is the one whose copper
-  zones cover the most area; a board with no copper zone is not
-  checked.  An outline under 10 mm round needs none.
+  or a plated through-hole pad.  The ground net is `GND` (or `.../GND`)
+  if it has a copper zone, else the one whose copper zones cover the
+  most area; a board with no copper zone is not checked.  An outline under 10 mm round needs none.
 - Mounting holes (footprints named `MountingHole*`): plated, with an
   annular ring of at least 0.5 mm, and on a net (a ground tie, needing no
   vias).  A hole on no net is reported for the owner to decide.

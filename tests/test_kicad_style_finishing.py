@@ -114,7 +114,15 @@ def test_plane_net_covers_the_most_area() -> None:
     silk = zone("+5V", "F.SilkS", size=9)
     assert plane_net(parse(board(small, zone(), keepout, silk))) == "GND"
     assert plane_net(parse(board(small))) == "+3V3"
+    assert plane_net(parse(board(small, zone("+5V", "In1.Cu", size=9)))) == "+5V"
     assert plane_net(parse(board(EDGE))) is None
+
+
+@pytest.mark.parametrize("ground", ["GND", "/power/GND"])
+def test_plane_net_named_ground(ground: str) -> None:
+    """GND, though a power pour covers more."""
+    big = zone("+3V3", "In2.Cu", size=9)
+    assert plane_net(parse(board(big, zone(ground, "In1.Cu", size=1)))) == ground
 
 
 def test_no_plane() -> None:
