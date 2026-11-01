@@ -38,4 +38,4 @@ Checked on Impulse_IMX8M Rev 3.4, VIN_12V:
 | J1 → J7.2 | 25.0 mΩ | 25.1 mΩ at 25 µm |
 | J2 → J7.2 | 96.8 mΩ | 96.2 mΩ at 25 µm |
 
-The Claude Code skill that drives this tool is in `agent/skills/pcb-current-path/`.
+The Claude Code skill that drives this tool is in `skills/pcb-current-path/`.

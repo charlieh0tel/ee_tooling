@@ -233,11 +233,7 @@ class Job:
 
         syms, feats, units = self.parse_features(self.sdir / "profile")
         return unary_union(
-            [
-                g
-                for g in (feature_geom(syms, f, units, self)[0] for f in feats)
-                if g is not None
-            ]
+            [g for g in (feature_geom(syms, f, units, self)[0] for f in feats) if g is not None]
         )
 
     # features -----------------------------------------------------------
@@ -373,9 +369,7 @@ def sym_shape(name, units, job):
         )
         g = Point(0, 0).buffer(od / 2, 64).difference(Point(0, 0).buffer(i_d / 2, 64))
         for k in range(n):
-            bar = affinity.rotate(
-                box(0, -gap / 2, od, gap / 2), ang + k * 360 / n, origin=(0, 0)
-            )
+            bar = affinity.rotate(box(0, -gap / 2, od, gap / 2), ang + k * 360 / n, origin=(0, 0))
             g = g.difference(bar)
         return g, od, True
     if m := re.fullmatch(rf"ths{num}x{num}x{num}x(\d+)x{num}", name):
@@ -390,9 +384,7 @@ def sym_shape(name, units, job):
             box(-i_d / 2, -i_d / 2, i_d / 2, i_d / 2)
         )
         for k in range(n):
-            bar = affinity.rotate(
-                box(0, -gap / 2, od, gap / 2), ang + k * 360 / n, origin=(0, 0)
-            )
+            bar = affinity.rotate(box(0, -gap / 2, od, gap / 2), ang + k * 360 / n, origin=(0, 0))
             g = g.difference(bar)
         return g, od, False
     if m := re.fullmatch(rf"uds_oblong_th{num}x{num}x.*", name):
@@ -477,19 +469,15 @@ def feature_geom(syms, f, units, job):
         if k == "L":
             xs, ys, xe, ye = (float(v) * c for v in tok[1:5])
             sh, w, rnd = sym_shape(syms[int(tok[5])], units, job)
-            ls = (
-                LineString([(xs, ys), (xe, ye)])
-                if (xs, ys) != (xe, ye)
-                else Point(xs, ys)
-            )
+            ls = LineString([(xs, ys), (xe, ye)]) if (xs, ys) != (xe, ye) else Point(xs, ys)
             return ls.buffer(w / 2, 16, cap_style="round" if rnd else "square"), tok[6]
         if k == "A":
             xs, ys, xe, ye, xc, yc = (float(v) * c for v in tok[1:7])
             sh, w, _ = sym_shape(syms[int(tok[7])], units, job)
             cw = len(tok) > 10 and tok[10] == "Y"
-            return LineString([(xs, ys)] + _arc(xs, ys, xe, ye, xc, yc, cw)).buffer(
-                w / 2, 16
-            ), tok[8]
+            return LineString([(xs, ys)] + _arc(xs, ys, xe, ye, xc, yc, cw)).buffer(w / 2, 16), tok[
+                8
+            ]
     except ValueError as e:
         print(f"  warning: {e}; feature skipped", file=sys.stderr)
     return None, "P"
@@ -549,17 +537,14 @@ def net_geometry(job, net):
         keep = [
             p
             for p in parts
-            if any(
-                p.intersects(Point(x, y).buffer(d / 2 + 0.05)) for x, y, d, *_ in mine
-            )
+            if any(p.intersects(Point(x, y).buffer(d / 2 + 0.05)) for x, y, d, *_ in mine)
         ]
         if keep:
             g = unary_union(keep)
             bad = [
                 h
                 for h in foreign
-                if h[3] <= li <= h[4]
-                and g.intersects(Point(h[0], h[1]).buffer(h[2] / 2))
+                if h[3] <= li <= h[4] and g.intersects(Point(h[0], h[1]).buffer(h[2] / 2))
             ]
             msg = f"  plane {name}: {len(keep)} region(s), {g.area:.0f} mm2 connected to {net}"
             if bad:
@@ -603,9 +588,7 @@ def solve(args):
 
     job = Job(args.odb, args.step)
     if args.cu:
-        job.set_copper(
-            {k.lower(): float(v) for k, v in (s.split("=") for s in args.cu)}
-        )
+        job.set_copper({k.lower(): float(v) for k, v in (s.split("=") for s in args.cu)})
     comps = job.components()
     geom, holes = net_geometry(job, args.net)
     h, plate, rho = args.grid, args.plating, RHO_20C
@@ -699,11 +682,7 @@ def solve(args):
                 if feats[fi][0] == "P":
                     pads.append(feature_geom(syms, feats[fi], units, job)[0])
         for pname, px, py, _ in pins:
-            th = [
-                hi
-                for hi, hh in enumerate(holes)
-                if math.hypot(hh[0] - px, hh[1] - py) < 0.1
-            ]
+            th = [hi for hi, hh in enumerate(holes) if math.hypot(hh[0] - px, hh[1] - py) < 0.1]
             if th:  # through-hole pin: the soldered pin ties the whole barrel
                 for li in range(len(layers)):
                     if (th[0], li) in barrel:
@@ -712,9 +691,7 @@ def solve(args):
                 continue
             if side_li is None:
                 continue
-            pad = next(
-                (p for p in pads if p is not None and p.contains(Point(px, py))), None
-            )
+            pad = next((p for p in pads if p is not None and p.contains(Point(px, py))), None)
             shape = pad if pad is not None else Point(px, py).buffer(0.25)
             m = shapely.contains_xy(shape, XX, YY) & masks[side_li]
             c = idx[side_li][m]
@@ -727,9 +704,7 @@ def solve(args):
     src = terminal(terms[0][1], terms[0][2])
     dst = [terminal(ref, pins) for _, ref, pins in terms[1:]]
     NT = nxt[0]
-    G = sp.csr_matrix(
-        (np.concatenate(V), (np.concatenate(R), np.concatenate(C))), shape=(NT, NT)
-    )
+    G = sp.csr_matrix((np.concatenate(V), (np.concatenate(R), np.concatenate(C))), shape=(NT, NT))
     G = G + sp.identity(NT) * 1e-9  # keeps floating islands from making G singular
     keep = np.ones(NT, bool)
     keep[src] = False
@@ -770,9 +745,7 @@ def solve(args):
         f"\n{args.net}: R from {terms[0][1]} (pins {','.join(out['source']['pins'])}), 20 C, grid {h * 1000:.0f} um"
     )
     for rr in results:
-        t = ", ".join(
-            f"{T} C {rr['r_mohm'] * (1 + ALPHA_CU * (T - 20)):.2f}" for T in args.temps
-        )
+        t = ", ".join(f"{T} C {rr['r_mohm'] * (1 + ALPHA_CU * (T - 20)):.2f}" for T in args.temps)
         print(
             f"  -> {rr['to']:<8} pins {','.join(rr['pins']):<10} {rr['r_mohm']:8.2f} mOhm   ({t})"
         )
@@ -804,9 +777,7 @@ def solve(args):
                     "ipc2221_A_20C": round(ipc2221(area, 20, True), 2),
                 }
             )
-    print(
-        f"\nbarrel segments carrying >1% of current ({terms[0][1]} -> {terms[1][1]}):"
-    )
+    print(f"\nbarrel segments carrying >1% of current ({terms[0][1]} -> {terms[1][1]}):")
     vrep.sort(key=lambda v: -v["current_per_A"])
     for v in vrep[:12]:
         print(
@@ -858,9 +829,7 @@ def solve(args):
     kmax = max((d["A_per_mm"] for d in hot), default=0)
     hot = [d for d in hot if d["A_per_mm"] >= args.hotspot_frac * kmax]
     hot.sort(key=lambda d: d["ipc2221_A_10C"])
-    print(
-        "\ncurrent-density hotspots (holes excluded), weakest first; eff width = 1/(A per mm):"
-    )
+    print("\ncurrent-density hotspots (holes excluded), weakest first; eff width = 1/(A per mm):")
     for d in hot:
         print(
             f"  {d['layer']:<14} ({d['x']:7.2f},{d['y']:7.2f})  {d['A_per_mm']:5.2f} A/mm  w_eff {d['eff_width_mm']:.3f} mm  "
@@ -903,9 +872,7 @@ def plot(od, fields, xs, ys, holes, terms, comps):
         axs[1].set_title(f"{name}: linear current density")
         for a in axs:
             for x, y, d, *_ in holes:
-                a.add_patch(
-                    plt.Circle((x, y), max(d / 2, 0.15), fill=False, ec="c", lw=0.6)
-                )
+                a.add_patch(plt.Circle((x, y), max(d / 2, 0.15), fill=False, ec="c", lw=0.6))
             for role, ref, pins in terms:
                 a.plot(
                     [p[1] for p in pins],
@@ -988,9 +955,7 @@ def main():
                 required=True,
                 help="REFDES[:pin,pin]; repeatable",
             )
-            p.add_argument(
-                "--grid", type=float, default=0.05, help="cell size mm (default 0.05)"
-            )
+            p.add_argument("--grid", type=float, default=0.05, help="cell size mm (default 0.05)")
             p.add_argument(
                 "--plating",
                 type=float,

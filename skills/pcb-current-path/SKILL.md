@@ -5,7 +5,7 @@ description: Compute DC resistance, IR drop, current density hotspots and curren
 
 # PCB current path: resistance and capacity
 
-The solver is `~/src/ee_stuff/tools/odb_current/odb_current.py`. It's a PEP 723 script, so run it directly and uv supplies numpy, scipy, shapely and matplotlib. It reads **ODB++**, because ODB++ carries net names, component pins and per-layer net attribution. Gerbers alone don't.
+The solver is `~/src/ee_tooling/tools/odb_current/odb_current.py`. It's a PEP 723 script, so run it directly and uv supplies numpy, scipy, shapely and matplotlib. It reads **ODB++**, because ODB++ carries net names, component pins and per-layer net attribution. Gerbers alone don't.
 
 ## 1. Find the data
 
@@ -16,7 +16,7 @@ The solver is `~/src/ee_stuff/tools/odb_current/odb_current.py`. It's a PEP 723 
 ## 2. Identify the net and the terminals
 
 ```bash
-T=~/src/ee_stuff/tools/odb_current/odb_current.py
+T=~/src/ee_tooling/tools/odb_current/odb_current.py
 $T info  ODB.tgz --grep '12V|VIN'     # stackup, polarity, matching nets
 $T pins  ODB.tgz J1 J7                 # pin -> net, coordinates, side
 ```
