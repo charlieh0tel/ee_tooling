@@ -23,7 +23,8 @@ It reads the board with KiCad's `pcbnew`, so the venv is the one
 | `cross A B n` | how many times nets A and B cross |
 
 It exits non-zero on an overlap or a problem; crossings and length are
-a score, not a rule.  `--render PNG` draws the outline, courtyards,
+a score, not a rule, and secondary to the placement rules in
+`docs/kicad-style.md`.  `--render PNG` draws the outline, courtyards,
 pads (poured nets' in green), references and each net's ratsnest in
 its own color, at `--scale` px per mm (16).
 

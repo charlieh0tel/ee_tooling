@@ -41,9 +41,20 @@ choices are not checked.
   widths, needless jogs, stubs.  Differential pairs run together.
 - Plane nets get a short N/S/E/W stub to a via (more than one for a big
   pad), never a trace from pad to pad.
-- Decoupling capacitors placed and turned for the shortest connections
-  to their part's VDD (or VCC) and GND pins.  With several on one pin,
-  the smallest value goes closest to the package.
+- Decoupling capacitors tight against their part's package, placed and
+  turned for the shortest connections to its VDD (or VCC) and GND pins,
+  the supply pad in line with the supply pin (same x or same y).  With
+  several on one pin, the smallest value goes closest to the package.
+- A pad lines up with the pin it connects to: a filter capacitor on a
+  module's pin sits inboard, its signal pad level with that pin.
+- Related parts in rows or columns, at one rotation.  A pull-up or
+  pull-down in line with the part it serves; matching groups laid out
+  identically.
+- Parts spread out where the board has room; only decoupling
+  capacitors go tight.
+- Placement is tidied by these rules before it is shown.  The ratsnest
+  crossing count (`placement-score`, `docs/placement.md`) is a
+  secondary guide, not the goal.
 - Mounting holes in the board's corners; corners rounded.  Keep the
   board clear of the drawing sheet's title block.
 - The area under a module is not a keepout unless something physical
@@ -51,6 +62,9 @@ choices are not checked.
 
 ## Silkscreen
 
+- On a board that is not dense, every reference designator horizontal,
+  on the same side of its part within a group, and clear of pads and
+  other silk.
 - No silk across a via.  Silk beside a via, or touching its ring's
   outer edge, is fine.
 - Clear silk by moving vias or reference labels, never by editing a
