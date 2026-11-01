@@ -15,6 +15,9 @@ uv run kicad-style-check NAME/NAME.kicad_sch NAME/NAME.kicad_pcb NAME/NAME.kicad
 
 The thresholds below are named constants in each module.
 
+KiCad's own DRC and ERC check some of these with ee_tooling's rule
+files; `docs/kicad-rules.md` lists the overlap.
+
 ## Schematic (.kicad_sch): kicad_style_check.py
 
 - Connection points (wire ends, junctions, no-connects, labels, pins) on
