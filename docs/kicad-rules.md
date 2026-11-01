@@ -122,11 +122,9 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 A pair's class names its interface, `<ohms>Z_DIFF_<INTERFACE>`
 (`90Z_DIFF_USBHS`), and the interface sets the skew within the pair
 (KiCad's `skew` with `within_diff_pairs`: the difference of the two
-nets' routed lengths).  This naming is a proposal, not yet the house
-style: kicad-style-check's net class check (`kicad_style_netclass.py`,
-`IMPEDANCE_CLASS` and `DIFF_CLASS`) accepts only `<ohms>Z_DIFF`, and
-reports a suffixed class until both take `(?:_[A-Z0-9]+)?` after
-`Z_DIFF`.
+nets' routed lengths).  kicad-style-check reports a suffix not in this
+table (`kicad_style_netclass.py`, `INTERFACES`).  DVI's TMDS pairs take
+`HDMI`.
 
 | Suffix | Interface | Skew within the pair, mm | Source |
 |---|---|---|---|

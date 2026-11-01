@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.kicad_style_check import GRID
+from ee_tooling.kicad_style_netclass import INTERFACES
 from ee_tooling.sexpr import Expression, child, children, parse
 
 RULES = importlib.resources.files("ee_tooling").joinpath("rules")
@@ -289,6 +290,11 @@ def skews() -> dict[str, str]:
             assert limit is not None and child(c, "within_diff_pairs") is not None
             found[suffix] = str(limit[1]).removesuffix("mm")
     return found
+
+
+def test_differential_pairs_checked() -> None:
+    """Each interface with a skew rule is one kicad-style-check accepts."""
+    assert sorted(skews()) == sorted(INTERFACES)
 
 
 def test_differential_pairs_documented() -> None:

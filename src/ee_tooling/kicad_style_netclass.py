@@ -1,10 +1,10 @@
 """A KiCad project's net classes against the house style (docs/kicad-style.md,
 Board layout, Net classes): every power net has a net class; both nets of
-every differential pair share a class named <ohms>Z_DIFF, but for a Kelvin
-sense pair (KELVIN), which is not impedance-controlled and which KiCad
-pairs by name alone; a class named
-for an impedance is named <ohms>Z_DIFF or <ohms>Z_SE; every class a
-pattern or an assignment names is defined.
+every differential pair share a class named <ohms>Z_DIFF, or
+<ohms>Z_DIFF_<INTERFACE> for one of INTERFACES, but for a Kelvin sense
+pair (KELVIN), which is not impedance-controlled and which KiCad pairs by
+name alone; a class named for an impedance is named so or <ohms>Z_SE;
+every class a pattern or an assignment names is defined.
 
 KiCad keeps net classes in the project file (.kicad_pro, net_settings):
 the classes, explicit assignments of a net to classes (the schematic's
@@ -60,10 +60,15 @@ KELVIN = re.compile(r"SENSE|SNS|KELVIN", re.I)
 IMPEDANCE = re.compile(
     r"(?<![A-Z0-9.])\d+(?:\.\d+)?\s*(?:Z|R|OHMS?)(?![A-Z])|DIFF|_SE(?![A-Z])", re.I
 )
-# The house names for an impedance class, and for a differential one.
-IMPEDANCE_CLASS = re.compile(r"^\d+(?:\.\d+)?Z_(?:DIFF|SE)$")
-DIFF_CLASS = re.compile(r"^\d+(?:\.\d+)?Z_DIFF$")
-DIFF_CLASS_FORM = "<ohms>Z_DIFF"
+# The interfaces a differential class may name, each with its skew rule
+# in rules/jlcpcb.kicad_dru (docs/kicad-rules.md, Differential pairs).
+# DVI shares HDMI's.
+INTERFACES = ("USBFS", "USBHS", "USB3", "PCIE", "HDMI", "ETH1G", "ETH100")
+# The house names for an impedance class, and for a differential one; a
+# differential name's interface, if any, is group 1.
+IMPEDANCE_CLASS = re.compile(r"^\d+(?:\.\d+)?Z_(?:DIFF(?:_[A-Z0-9]+)?|SE)$")
+DIFF_CLASS = re.compile(r"^\d+(?:\.\d+)?Z_DIFF(?:_([A-Z0-9]+))?$")
+DIFF_CLASS_FORM = "<ohms>Z_DIFF[_<INTERFACE>]"
 SE_CLASS_FORM = "<ohms>Z_SE"
 
 
@@ -258,6 +263,11 @@ def check_netclasses(
         f"net class {name}: named for an impedance, not {DIFF_CLASS_FORM} or {SE_CLASS_FORM}"
         for name in sorted(settings.classes)
         if IMPEDANCE.search(name) and not IMPEDANCE_CLASS.match(name)
+    ]
+    problems += [
+        f"net class {name}: interface {m[1]} not one of {', '.join(INTERFACES)}"
+        for name in sorted(settings.classes)
+        if (m := DIFF_CLASS.match(name)) and m[1] and m[1] not in INTERFACES
     ]
     used = {c for names in settings.assignments.values() for c in names}
     used |= {c for _, _, c in settings.patterns}

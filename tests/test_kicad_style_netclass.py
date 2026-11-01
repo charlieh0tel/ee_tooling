@@ -132,6 +132,10 @@ def test_not_a_board() -> None:
         ("90Z_DIFF", False),
         ("50Z_SE", False),
         ("100.5Z_DIFF", False),
+        ("90Z_DIFF_USBHS", False),
+        ("100Z_DIFF_ETH1G", False),
+        ("90Z_DIFF_usbhs", True),
+        ("50Z_SE_USBHS", True),
         ("Power", False),
         ("Sense", False),
         ("DDR4_CMD", False),
@@ -148,8 +152,23 @@ def test_not_a_board() -> None:
 def test_impedance_class_names(name: str, bad: bool) -> None:
     problems = check_netclasses(project((name,)), None, [])
     assert problems == (
-        [f"net class {name}: named for an impedance, not <ohms>Z_DIFF or <ohms>Z_SE"] if bad else []
+        [f"net class {name}: named for an impedance, not <ohms>Z_DIFF[_<INTERFACE>] or <ohms>Z_SE"]
+        if bad
+        else []
     )
+
+
+def test_unknown_interface() -> None:
+    assert check_netclasses(project(("90Z_DIFF_LVDS", "90Z_DIFF_USB3")), None, []) == [
+        "net class 90Z_DIFF_LVDS: interface LVDS not one of"
+        " USBFS, USBHS, USB3, PCIE, HDMI, ETH1G, ETH100"
+    ]
+
+
+def test_interface_pair() -> None:
+    nets = ("/D+", "/D-")
+    settings = project(("90Z_DIFF_USBHS",), (("/D*", "90Z_DIFF_USBHS"),))
+    assert check_netclasses(settings, pair_board(*nets), []) == []
 
 
 def test_undefined_class() -> None:
@@ -286,8 +305,8 @@ def test_pair_in_no_diff_class() -> None:
     b = pair_board("/D+", "/D-", "USB_DP", "USB_DM")
     problems = check_netclasses(project(("50Z_SE",), (("/D*", "50Z_SE"),)), b, [])
     assert problems == [
-        "differential pair /D+ and /D-: in no <ohms>Z_DIFF net class",
-        "differential pair USB_DP and USB_DM: in no <ohms>Z_DIFF net class",
+        "differential pair /D+ and /D-: in no <ohms>Z_DIFF[_<INTERFACE>] net class",
+        "differential pair USB_DP and USB_DM: in no <ohms>Z_DIFF[_<INTERFACE>] net class",
     ]
 
 
@@ -365,7 +384,7 @@ def test_check_project(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
         ' (sheet (property "Sheetfile" "s.kicad_sch")))',  # itself again, beside it
     )
     assert check_project(pro) == [
-        "net class USB_90Z: named for an impedance, not <ohms>Z_DIFF or <ohms>Z_SE",
+        "net class USB_90Z: named for an impedance, not <ohms>Z_DIFF[_<INTERFACE>] or <ohms>Z_SE",
         "power net Net-(U1-VCC): no net class",
     ]
     assert "gone.kicad_sch not found" in capsys.readouterr().err
@@ -374,7 +393,7 @@ def test_check_project(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
 def test_check_project_alone(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     pro = write(tmp_path / "b.kicad_pro", json.dumps(project(("90ohm",))))
     assert check_project(pro) == [
-        "net class 90ohm: named for an impedance, not <ohms>Z_DIFF or <ohms>Z_SE"
+        "net class 90ohm: named for an impedance, not <ohms>Z_DIFF[_<INTERFACE>] or <ohms>Z_SE"
     ]
     err = capsys.readouterr().err
     assert "no b.kicad_pcb, nets not checked" in err
