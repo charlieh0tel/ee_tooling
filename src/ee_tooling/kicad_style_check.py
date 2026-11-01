@@ -3,9 +3,14 @@
 kicad-style-check FILE...: each problem on a line, `FILE: problem`.
 Exits 1 if there are problems (a line starting `note: ` is for the owner
 to judge, and does not count), 2 if a file cannot be read; an unreadable
-file is never clean.  A .kicad_pcb is checked by kicad_style_board.py's
-zone rules; a .kicad_sch by the drawing rules (docs/kicad-style.md,
-Schematic drawing):
+file is never clean.  Notes on what a check cannot decide go to stderr.
+By the file's suffix:
+- .kicad_pro: its net classes (kicad_style_netclass.py), with the board
+  and schematic of its name beside it;
+- .kicad_pcb: its zones (kicad_style_board.py), finishing
+  (kicad_style_finishing.py) and routing (kicad_style_routing.py), the
+  last with placement.toml beside it if there is one (placement.py);
+- .kicad_sch: the drawing rules (docs/kicad-style.md, Schematic drawing):
 connection points on the grid; no pin touching another part's pin, no
 power symbol on a pin, no pin on a wire's run; a wire off every pin, at
 least one grid unit long and the pin's only one; a junction on every
@@ -25,6 +30,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ee_tooling.kicad_style_board import CAPACITOR, NOTE, check_board
+from ee_tooling.kicad_style_finishing import check_finishing
+from ee_tooling.kicad_style_netclass import check_project
+from ee_tooling.kicad_style_routing import check_routing
+from ee_tooling.placement import Rules
+from ee_tooling.placement_kicad import RULES
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
 GRID = 2.54  # mm (docs/kicad-style.md)
@@ -292,9 +302,14 @@ def check_file(path: Path, grid: float) -> list[str]:
         case ".kicad_sch":
             return check(read(parse(path.read_text())), grid)
         case ".kicad_pcb":
-            return check_board(parse(path.read_text()))
+            board = parse(path.read_text())
+            rules_file = path.parent / RULES
+            rules = Rules.load(rules_file.read_text()) if rules_file.exists() else None
+            return [*check_board(board), *check_finishing(board), *check_routing(board, rules)]
+        case ".kicad_pro":
+            return check_project(path)
         case _:
-            raise ValueError("not a .kicad_sch or .kicad_pcb")
+            raise ValueError("not a .kicad_sch, .kicad_pcb or .kicad_pro")
 
 
 def main() -> None:
@@ -307,7 +322,7 @@ def main() -> None:
     for path in a.files:
         try:
             problems = check_file(path, a.grid)
-        except (OSError, UnicodeDecodeError, ValueError, IndexError) as e:
+        except (OSError, UnicodeDecodeError, ValueError, IndexError, KeyError) as e:
             print(f"{path}: cannot check: {e}", file=sys.stderr)
             unreadable = True
             continue

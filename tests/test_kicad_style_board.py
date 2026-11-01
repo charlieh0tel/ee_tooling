@@ -173,11 +173,16 @@ def test_arc(start: Point, middle: Point, end: Point) -> None:
     assert nearest_middle < 0.25
 
 
+# A board too small round its edge to need stitching (kicad_style_finishing),
+# with no tracks to route, so only the zone rules apply.
+SMALL = rectangle(0, 0, 2, 2)
+
+
 def test_command(tmp_path: Path) -> None:
     good = tmp_path / "good.kicad_pcb"
-    good.write_text(board(EDGE, zone(-2, -2, 52, 32)))
+    good.write_text(board(SMALL, zone(-1, -1, 3, 3)))
     bad = tmp_path / "bad.kicad_pcb"
-    bad.write_text(board(EDGE, zone(-2, -2, 52, 32, locked="")))
+    bad.write_text(board(SMALL, zone(-1, -1, 3, 3, locked="")))
     other = tmp_path / "board.txt"
     other.write_text(board(EDGE))
 
@@ -198,9 +203,9 @@ def test_command(tmp_path: Path) -> None:
     r = run(bad)
     assert (r.returncode, r.stdout) == (1, f"{bad}: zone GND on F.Cu: not locked\n")
     noted = tmp_path / "noted.kicad_pcb"
-    noted.write_text(board(EDGE, zone(5, -2, 52, 32)))
+    noted.write_text(board(SMALL, zone(1, -1, 3, 3)))
     r = run(noted)
     assert (r.returncode, r.stdout.startswith(f"{noted}: note: zone GND")) == (0, True)
     r = run(other)
     assert r.returncode == 2
-    assert "not a .kicad_sch or .kicad_pcb" in r.stderr
+    assert "not a .kicad_sch, .kicad_pcb or .kicad_pro" in r.stderr

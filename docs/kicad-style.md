@@ -25,17 +25,7 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   dielectric or type and its working voltage ("50V X7R", "25V
   tantalum").
 
-`kicad-style-check SCH...` checks a schematic file against these rules,
-one problem a line, exiting non-zero on any: connection points on the
-grid (`--grid`, 2.54 mm); pins touching, power symbols on pins, pins on
-a wire's run, pins with no wire; a pin's wire at least one grid unit
-long and its only one; a junction on every join of three or more and
-nowhere else; no-connects on pins (hidden ones count); zero-length and
-overlapping wires; Manufacturer, MPN and LCSC on every part in the BOM
-and not DNP; a dielectric (C0G, NP0, X5R, X7R ...) or a type (Al,
-electrolytic, Ta, tantalum, polymer, film, mica) and a voltage in every
-capacitor's value.  Labels, text placement and wire-versus-label
-choices are not checked.
+`kicad-style-check` checks these rules (`docs/kicad-style-check.md`).
 
 ## Board layout
 
@@ -91,13 +81,8 @@ choices are not checked.
   hard rule (a panel's breakaway tabs, a split plane).
 - Zones are locked.
 
-`kicad-style-check BOARD.kicad_pcb` checks a board's zones: no filled
-graphic shape on a copper layer; every zone locked.  A copper zone whose
-outline lies on the board anywhere (not past the edge, nor in a slot or
-cutout; along the edge counts as on it) is reported as a `note:`, which
-does not fail the check.  Keepouts are checked only for
-the lock.  Edge.Cuts, connectors and modules are not: when their places
-are decided is the owner's call.
+`kicad-style-check` checks the zone, routing, net class and finishing
+rules it can (`docs/kicad-style-check.md`).
 
 ### Board finishing
 

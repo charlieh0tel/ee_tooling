@@ -298,3 +298,16 @@ def test_command_exit_status(tmp_path: Path) -> None:
     assert r.returncode == 2
     assert f"{broken}: cannot check:" in r.stderr
     assert run(tmp_path / "missing.kicad_sch").returncode == 2
+
+
+def test_command_project(tmp_path: Path) -> None:
+    pro = tmp_path / "b.kicad_pro"
+    pro.write_text(
+        '{"net_settings": {"meta": {"version": 5}, "classes": [{"name": "Default"},'
+        ' {"name": "USB_90Z"}], "netclass_assignments": {}, "netclass_patterns": []}}'
+    )
+    r = run(pro)
+    assert r.returncode == 1
+    assert f"{pro}: net class USB_90Z: named for an impedance" in r.stdout
+    pro.write_text("[]")
+    assert run(pro).returncode == 2
