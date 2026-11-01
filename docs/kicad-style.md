@@ -72,7 +72,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 ### Routing
 
 - Before routing, agree the stackup and the overall strategy with the
-  board's owner.
+  board's owner, including whether to pour ground on the top layer too
+  (often worthwhile).
 - Planes first, always: every plane net's zone (GND and any other) is
   drawn and filled at the start of routing, so every review shows the
   planes.  The vias tying pads to the planes usually come next, but it
@@ -97,7 +98,9 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   trace from pad to pad.  Mounting hardware tied to ground (a mounting
   hole's pad, a standoff) needs no via.
 - A supply runs from its trace or plane to the decoupling capacitor,
-  then from the capacitor to the package's pin.
+  then from the capacitor to the package's pin.  A regulator's input and
+  output pins each go to their capacitor first, before anything else,
+  the capacitors as near the pins as possible.
 
 ### Zones
 
