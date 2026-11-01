@@ -2,6 +2,7 @@ import pytest
 
 from ee_tooling.kicad_style_board import Point, place, unplace
 from ee_tooling.kicad_style_routing import (
+    check_bends,
     check_routing,
     inferred_decoupling,
     planes,
@@ -295,15 +296,19 @@ def test_via_off_the_stub() -> None:
 
 
 @pytest.mark.parametrize(
-    "tracks",
+    ("tracks", "bend"),
     [
-        [segment((10, 10), (10.7, 10.7), "GND")],  # diagonal
-        [segment((10, 10), (10.7, 10), "GND"), segment((10.7, 10), (10.7, 10.7), "GND")],  # bent
+        ([segment((10, 10), (10.7, 10.7), "GND")], []),  # diagonal
+        (
+            [segment((10, 10), (10.7, 10), "GND"), segment((10.7, 10), (10.7, 10.7), "GND")],
+            ["GND: right-angle bend at (10.7, 10) on F.Cu"],
+        ),
     ],
 )
-def test_stub_not_on_an_axis(tracks: list[str]) -> None:
+def test_stub_not_on_an_axis(tracks: list[str], bend: list[str]) -> None:
     assert check(GND_PLANE, GND_PAD, *tracks, via(10.7, 10.7, "GND")) == [
-        "note: R1 pad 1 (GND): stub to the via at (10.7, 10.7) not N/S/E/W"
+        "note: R1 pad 1 (GND): stub to the via at (10.7, 10.7) not N/S/E/W",
+        *bend,
     ]
 
 
@@ -454,7 +459,11 @@ GROUNDS = [
     via(22, 16.2, "GND"),
 ]
 FEED = [segment((19.25, 12), (19.25, 11), "+3V3"), via(19.25, 11, "+3V3")]
-TO_PIN = [segment((19.25, 12), (18, 12), "+3V3"), segment((18, 12), (18, 15), "+3V3")]
+TO_PIN = [
+    segment((19.25, 12), (18.5, 12), "+3V3"),
+    segment((18.5, 12), (18, 12.5), "+3V3"),
+    segment((18, 12.5), (18, 15), "+3V3"),
+]
 SUPPLY = [GND_PLANE, SUPPLY_PLANE, U1, C1, *GROUNDS]
 EN = [segment((20, 17), (20, 18.2), "+3V3"), via(20, 18.2, "+3V3")]  # U1 pad 3's own
 
@@ -486,7 +495,11 @@ def test_supply_junction_in_the_capacitor_pad() -> None:
     """The feed's and the pin's tracks meeting off center inside the
     capacitor's pad run through it, not straight from one to the other."""
     feed = [segment((19.4, 12.2), (19.4, 11), "+3V3"), via(19.4, 11, "+3V3")]
-    to_pin = [segment((19.4, 12.2), (18, 12.2), "+3V3"), segment((18, 12.2), (18, 15), "+3V3")]
+    to_pin = [
+        segment((19.4, 12.2), (18.5, 12.2), "+3V3"),
+        segment((18.5, 12.2), (18, 12.7), "+3V3"),
+        segment((18, 12.7), (18, 15), "+3V3"),
+    ]
     assert check(*SUPPLY, *feed, *to_pin, *EN) == []
 
 
@@ -495,7 +508,10 @@ def test_supply_over_the_capacitor_pad() -> None:
     through the pad."""
     over = [segment((18, 15), (18, 12), "+3V3"), segment((18, 12), (20, 12), "+3V3")]
     feed = [segment((20, 12), (20, 11), "+3V3"), via(20, 11, "+3V3")]
-    assert check(*SUPPLY, *over, *feed, *EN) == []
+    assert check(*SUPPLY, *over, *feed, *EN) == [
+        "+3V3: right-angle bend at (18, 12) on F.Cu",
+        "+3V3: right-angle bend at (20, 12) on F.Cu",
+    ]
 
 
 def test_supply_via_beside_the_capacitor_pad() -> None:
@@ -513,8 +529,9 @@ def test_supply_via_on_the_pins_track() -> None:
     """A via the pin's track meets off the capacitor's pad, though the
     track ends on it, bypasses the pad."""
     to_pin = [
-        segment((18, 15), (18, 12.2), "+3V3", width=0.4),
-        segment((18, 12.2), (19, 12.2), "+3V3", width=0.4),
+        segment((18, 15), (18, 12.7), "+3V3", width=0.4),
+        segment((18, 12.7), (18.5, 12.2), "+3V3", width=0.4),
+        segment((18.5, 12.2), (19, 12.2), "+3V3", width=0.4),
     ]
     feed = [segment((19.25, 12), (18.55, 12), "+3V3", width=0.4), via(18.55, 12, "+3V3")]
     assert check(*SUPPLY, *to_pin, *feed, *EN) == [
@@ -574,7 +591,11 @@ def test_capacitor_fed_by_nothing() -> None:
     assert check(*SUPPLY, *TO_PIN, *EN) == ["U1 pad 1 (+3V3): C1 reaches no zone or other part"]
 
 
-TO_PIN_V3 = [segment((19.25, 12), (18, 12), "V3"), segment((18, 12), (18, 15), "V3")]
+TO_PIN_V3 = [
+    segment((19.25, 12), (18.5, 12), "V3"),
+    segment((18.5, 12), (18, 12.5), "V3"),
+    segment((18, 12.5), (18, 15), "V3"),
+]
 
 
 def test_capacitor_on_the_parts_own_output() -> None:
@@ -607,3 +628,61 @@ def test_rules_capacitor_off_the_net() -> None:
     rules = Rules(frozenset(), (Decoupling("C1", "U1", "3", "2"),))
     c1 = footprint("C1", 20, 12, pad("1", -0.75, 0, "+5V"), pad("2", 0.75, 0, "GND"))
     assert check(U1, c1, rules=rules) == ["C1: no pad on U1 pad 3's net +3V3"]
+
+
+def bends(*items: str) -> list[str]:
+    return [str(f) for f in check_bends(read(parse(board(*items))))]
+
+
+@pytest.mark.parametrize(
+    ("end", "expected"),
+    [
+        ((15, 10), ["SIG: right-angle bend at (15, 5) on F.Cu"]),  # 90
+        ((15.08, 10), ["SIG: right-angle bend at (15, 5) on F.Cu"]),  # 90.9: within tolerance
+        ((10, 10), ["SIG: 45-degree bend at (15, 5) on F.Cu"]),  # sharper
+        ((10, 5.001), ["SIG: 0-degree bend at (15, 5) on F.Cu"]),  # doubling back
+        ((20, 10), []),  # a 45-degree bend: 135 between the tracks
+        ((15.2, 10), []),  # 92.3 degrees
+        ((25, 5), []),  # straight on
+    ],
+)
+def test_bend(end: Point, expected: list[str]) -> None:
+    assert bends(segment((5, 5), (15, 5), "SIG"), segment((15, 5), end, "SIG")) == expected
+
+
+def test_bend_reversed_track() -> None:
+    """A track written end to start bends the same."""
+    assert bends(segment((5, 5), (15, 5), "SIG"), segment((15, 10), (15, 5), "SIG")) == [
+        "SIG: right-angle bend at (15, 5) on F.Cu"
+    ]
+
+
+def test_branches_are_not_bends() -> None:
+    """A T: a track ending on another's run, or three ends at a point."""
+    run = segment((5, 5), (25, 5), "SIG")
+    assert bends(run, segment((15, 5), (15, 10), "SIG")) == []
+    split = [segment((5, 5), (15, 5), "SIG"), segment((15, 5), (25, 5), "SIG")]
+    assert bends(*split, segment((15, 5), (15, 10), "SIG")) == []
+    # Two ends at a point on a third track's run.
+    assert bends(run, segment((15, 10), (15, 5), "SIG"), segment((15, 5), (20, 0), "SIG")) == []
+
+
+def test_bends_apart() -> None:
+    """Another layer's or net's track at the point makes no branch and no bend."""
+    corner = [segment((5, 5), (15, 5), "SIG"), segment((15, 5), (15, 10), "SIG")]
+    other = segment((15, 5), (15, 0), "SIG", layer="B.Cu")
+    assert bends(*corner, other) == ["SIG: right-angle bend at (15, 5) on F.Cu"]
+    assert bends(segment((5, 5), (15, 5), "SIG"), segment((15, 5), (15, 10), "OTHER")) == []
+
+
+def test_bend_on_pad_or_via() -> None:
+    corner = [segment((5, 5), (15, 5), "SIG"), segment((15, 5), (15, 10), "SIG")]
+    assert bends(*corner, via(15, 5, "SIG")) == []
+    assert bends(*corner, footprint("R1", 15, 5, pad("1", 0, 0, "SIG"))) == []
+    assert bends(*corner, via(15, 5, "SIG", top="In1.Cu", bottom="B.Cu")) == [
+        "SIG: right-angle bend at (15, 5) on F.Cu"
+    ]
+
+
+def test_zero_length_track_is_no_bend() -> None:
+    assert bends(segment((5, 5), (15, 5), "SIG"), segment((15, 5), (15, 5), "SIG")) == []

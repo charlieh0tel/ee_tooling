@@ -103,6 +103,10 @@ the board or more.
   capacitor across a supply and a ground (`GND`, `AGND`, `VSS`, `0V`
   ...) decouples the nearest `U` or `IC` supply pin within 5 mm on that
   supply and ground (a power pin, where the board gives pin types).
+- No right-angle bend: two tracks' ends meeting on one layer and net,
+  where no other track ends or runs and off any pad or via, at 90
+  degrees between them (within 1 degree) or sharper.  A track ending on
+  another's run (a T) is a branch, not a bend.
 - A board with no tracks or vias is not checked.
 
 ## Project (.kicad_pro): kicad_style_netclass.py
@@ -212,6 +216,7 @@ item.  Ids and subject fields are part of the semver API.
 | Routing | `supply-no-copper` | `pin`, `capacitor` | no copper from the pin to its capacitor |
 | Routing | `supply-bypass` | `pin` | the pin reaching a source past its capacitors |
 | Routing | `supply-unfed` | `pin`, `capacitor` | the capacitor reaching no zone or other part |
+| Routing | `bend` | `net`, `layer`, `at` | a right-angle or sharper bend, at its corner |
 | Project | `class-impedance-name` | `netclass` | a class named for an impedance, misnamed |
 | Project | `class-undefined` | `netclass` | a class assigned or in a pattern, not defined |
 | Project | `power-net-class` | `net` | a power net with no class |

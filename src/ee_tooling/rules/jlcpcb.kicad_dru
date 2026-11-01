@@ -10,9 +10,6 @@
 # that shape zone fills (copper clearance, copper to edge, a via's hole
 # clearance) are not rules here but Board Setup minimums
 # (jlcpcb_board_setup.json).
-#
-# Angles are written without a unit: KiCad 10.0.8 ignores a track_angle
-# limit written with "deg".
 
 # --- JLCPCB limits ---------------------------------------------------------
 #
@@ -151,12 +148,6 @@
 (rule "Silkscreen text height"
 	(layer "?.Silkscreen")
 	(constraint text_height (min 0.8mm)))
-
-# Routing: no right-angle bends.  The angle is the one between two joined
-# segments: 180 straight on, 135 a 45-degree bend, 90 a right angle.  A
-# joint on a pad is not checked.
-(rule "No right-angle bends"
-	(constraint track_angle (min 91)))
 
 # Net classes and routing: a differential pair is in an <ohms>Z_DIFF
 # class and runs together.  At most 5 mm of a pair uncoupled (fan-out

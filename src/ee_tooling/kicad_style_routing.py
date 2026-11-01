@@ -23,6 +23,13 @@ no zone and no other part's pad (the part's own output, such as a
 regulator's).  The decoupling map is
 placement.toml's (placement.py's Rules), or else `inferred_decoupling`.
 
+Bends (`check_bends`): no right-angle bend.  A bend is two track ends
+meeting, on one layer and net, where no other track ends or runs and
+off any pad or via; the angle between the two tracks there is 180
+straight on, 135 at a 45-degree bend.  At RIGHT_ANGLE, within
+AXIS_TOLERANCE, or sharper is a problem.  A track ending on another's
+run (a T) is a branch, not a bend.
+
 Copper connects so: a track's end on another track of its layer and net
 (within half that track's width); a track's copper over a pad or a via,
 but a via that meets a track on a pad joins that pad instead;
@@ -94,6 +101,9 @@ STUB_LENGTH = 1.0
 # 0.1 um, so a true N/S/E/W track is within 0.01 degree; anything routed
 # at 45 degrees is far outside.
 AXIS_TOLERANCE = 1.0
+# The angle between two tracks at a right-angle bend, degrees; a bend at
+# this, within AXIS_TOLERANCE, or sharper is a problem.
+RIGHT_ANGLE = 90.0
 # An exposed or thermal pad needs BIG_PAD_VIAS; any other pad this large,
 # mm squared, should have them, a note: above any chip pad up to 1206
 # (KiCad's 1206 pad is 1.15 x 1.8 mm, 2.1 mm squared), below a 3 x 3 mm
@@ -1024,6 +1034,56 @@ def check_supply(c: Copper, fed: list[Feed]) -> list[Finding]:
     return problems
 
 
+def bend_angle(joint: Point, a: Point, b: Point) -> float:
+    """The angle at joint between the tracks running to a and to b,
+    degrees: 180 straight on, 90 a right angle."""
+    u = (a[0] - joint[0], a[1] - joint[1])
+    v = (b[0] - joint[0], b[1] - joint[1])
+    cosine = (u[0] * v[0] + u[1] * v[1]) / (math.hypot(*u) * math.hypot(*v))
+    return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+
+
+def check_bends(c: Copper) -> list[Finding]:
+    """Right-angle and sharper bends between two tracks."""
+    # Each track end, by layer, net and point: the point next along it.
+    ends: dict[tuple[str, str, Point], list[Point]] = defaultdict(list)
+    for t in c.tracks:
+        if t.points[0] == t.points[-1]:
+            continue  # a zero-length track has no direction
+        ends[t.layer, t.net, t.points[0]].append(t.points[1])
+        ends[t.layer, t.net, t.points[-1]].append(t.points[-2])
+    problems = []
+    for (layer, name, p), nexts in ends.items():
+        if len(nexts) != 2:
+            continue
+        if any(
+            t.layer == layer and t.net == name and p not in t.ends and t.touches(p)
+            for t in c.tracks
+        ):
+            continue  # on another track's run: a branch
+        if any(layer in v.layers and v.touches(p) for v in c.vias) or any(
+            layer in pad.layers and pad.contains(p) for pad in c.pads
+        ):
+            continue
+        angle = bend_angle(p, *nexts)
+        if angle <= RIGHT_ANGLE + AXIS_TOLERANCE:
+            kind = (
+                "right-angle bend"
+                if angle >= RIGHT_ANGLE - AXIS_TOLERANCE
+                else f"{angle:.0f}-degree bend"
+            )
+            problems.append(
+                found(
+                    "bend",
+                    f"{name or 'no net'}: {kind} at {where(p)} on {layer}",
+                    net=name,
+                    layer=layer,
+                    at=p,
+                )
+            )
+    return problems
+
+
 def check_routing(board: Expression, rules: Rules | None = None) -> Checked:
     """The board's routing findings.  rules give the plane
     nets (poured) and the decoupling map; without them both are inferred."""
@@ -1047,4 +1107,5 @@ def check_routing(board: Expression, rules: Rules | None = None) -> Checked:
     problems += check_vias(c, plane, set(groups) | hardware, {f.capacitor_pad for f in fed})
     problems += check_pad_to_pad(c, plane, list(groups.values()))
     problems += check_supply(c, fed)
+    problems += check_bends(c)
     return Checked(list(dict.fromkeys(problems)), frozenset(ROUTING_RULES))

@@ -79,6 +79,7 @@ ROUTING_RULES = {
     "supply-no-copper": ("pin", "capacitor"),
     "supply-bypass": ("pin",),
     "supply-unfed": ("pin", "capacitor"),
+    "bend": ("net", "layer", "at"),
 }
 
 # The net class rules: each id and its subject's fields.

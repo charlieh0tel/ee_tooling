@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.kicad_style_check import GRID
-from ee_tooling.sexpr import Expression, child, children, number, parse
+from ee_tooling.sexpr import Expression, children, parse
 
 RULES = importlib.resources.files("ee_tooling").joinpath("rules")
 DRU = RULES.joinpath("jlcpcb.kicad_dru").read_text()
@@ -111,16 +111,6 @@ def test_house_rules_follow_jlcpcb() -> None:
     assert not any(n.startswith(FAB_PREFIX) for n in names(house))
 
 
-def test_track_angle_unitless() -> None:
-    """KiCad 10.0.8 ignores a track_angle limit with a unit ("91deg")."""
-    angles = [c for r in rules(DRU) for c in children(r, "constraint") if c[1] == "track_angle"]
-    assert angles
-    for c in angles:
-        for limit in ("min", "max"):
-            if (value := child(c, limit)) is not None:
-                number(value[1])
-
-
 def test_board_setup() -> None:
     values = BOARD_SETUP["board"]["design_settings"]["rules"]
     assert set(values) == BOARD_SETUP_KEYS
@@ -177,11 +167,10 @@ def drc(tmp_path: Path, *items: str) -> list[str]:
 @pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
 def test_kicad_drc(tmp_path: Path) -> None:
     right_angle = [segment("5 5", "15 5", "A"), segment("15 5", "15 10", "A")]
-    forty_five = [segment("5 15", "10 15", "B"), segment("10 15", "13 18", "B")]
     thin = [segment("20 5", "30 5", "C", width=0.09)]
-    found = drc(tmp_path, *right_angle, *forty_five, *thin)
-    angles = [v for v in found if v.startswith("track_angle: ")]
-    assert angles and all("'No right-angle bends'" in v and "actual 90" in v for v in angles)
+    found = drc(tmp_path, *right_angle, *thin)
+    # Right-angle bends are kicad-style-check's: track_angle cannot tell a T.
+    assert not any(v.startswith("track_angle: ") for v in found)
     assert any(v.startswith("track_width: ") and "'JLCPCB track width'" in v for v in found)
 
 
