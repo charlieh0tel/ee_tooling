@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ee_tooling.kicad_style_board import POWER_PIN_TYPES, UNCONNECTED, net_name
+from ee_tooling.kicad_style_board import NOTE, POWER_PIN_TYPES, UNCONNECTED, net_name
 from ee_tooling.sexpr import Expression, child, children, parse
 
 # The class every net is in; it does not count as one.
@@ -49,6 +49,10 @@ USB_COMPLEMENT = {"P": "M", "M": "P"}
 # Each pair form: its pattern, its swaps, and the characters that mark
 # the positive net.
 PAIR_FORMS = ((PAIR, COMPLEMENT, "+P"), (USB_PAIR, USB_COMPLEMENT, "P"))
+# Half a pair, by its name, and the other half's: +/-, _P (but not a lone
+# _N, often active low), and USB's DP/DM.
+HALF_PAIR = re.compile(r"^(.*?)(\+|-|_P|DP|DM)([0-9_]*)$")
+HALF_COMPLEMENT = {"+": "-", "-": "+", "_P": "_N", "DP": "DM", "DM": "DP"}
 # A Kelvin sense pair, by its name: not impedance-controlled, it needs no
 # class (KiCad pairs it by name; its class only sets width and gap).
 KELVIN = re.compile(r"SENSE|SNS|KELVIN", re.I)
@@ -229,6 +233,20 @@ def pairs(nets: set[str]) -> list[tuple[str, str]]:
     return sorted(found)
 
 
+def half_pairs(nets: set[str]) -> list[tuple[str, str]]:
+    """Nets named like half a differential pair whose other half is not
+    among nets, each with the name it lacks.  A lone _N is left out: it
+    names an active-low signal as often as half a pair (HALF_PAIR)."""
+    found = []
+    for net in sorted(nets):
+        m = HALF_PAIR.match(net)
+        if m:
+            other = f"{m[1]}{HALF_COMPLEMENT[m[2]]}{m[3]}"
+            if other not in nets:
+                found.append((net, other))
+    return found
+
+
 def check_netclasses(
     project: dict[str, Any], board: Expression | None, sheets: list[Expression]
 ) -> list[str]:
@@ -257,6 +275,10 @@ def check_netclasses(
         return settings.classes_of(net) & settings.classes
 
     problems += [f"power net {net}: no net class" for net in sorted(power) if not defined(net)]
+    problems += [
+        f"{NOTE}net {net}: named like half a differential pair, with no {other}"
+        for net, other in half_pairs(nets - power)
+    ]
     for positive, negative in pairs(nets - power):
         if KELVIN.search(positive):
             continue

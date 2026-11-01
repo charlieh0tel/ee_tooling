@@ -166,7 +166,7 @@ def test_power_by_name() -> None:
     nets = ["GND", "AGND", "GNDA", "+3V3", "+5V", "-12V", "/sub/VDD_USB", "VBUS", "VCC_RF"]
     signals = ["/SDA", "/D+", "VREF", "/V_SENSE", "/SENSE+"]
     b = board(footprint("J1", *(pad(str(n), x) for n, x in enumerate(nets + signals))))
-    problems = check_netclasses(project(), b, [])
+    problems = [p for p in check_netclasses(project(), b, []) if not p.startswith("note: ")]
     assert problems == [f"power net {n}: no net class" for n in sorted(nets)]
 
 
@@ -295,6 +295,30 @@ def test_pair_in_no_diff_class() -> None:
 def test_kelvin_pair_needs_no_class(name: str) -> None:
     b = pair_board(f"{name}+", f"{name}-")
     assert check_netclasses(project(), b, []) == []
+
+
+@pytest.mark.parametrize(
+    ("net", "other"),
+    [
+        ("/SENSE+", "/SENSE-"),
+        ("TX-", "TX+"),
+        ("/CLK_P", "/CLK_N"),
+        ("USB_DP", "USB_DM"),
+        ("D+_2", "D-_2"),
+    ],
+)
+def test_half_a_pair(net: str, other: str) -> None:
+    b = pair_board(net, "/OTHER")
+    assert check_netclasses(project(), b, []) == [
+        f"note: net {net}: named like half a differential pair, with no {other}"
+    ]
+
+
+@pytest.mark.parametrize("net", ["/RESET_N", "/EN", "/PWDN", "/D+"])
+def test_not_half_a_pair(net: str) -> None:
+    nets = (net, "/D-") if net == "/D+" else (net,)
+    found = check_netclasses(project(("90Z_DIFF",), (("/D*", "90Z_DIFF"),)), pair_board(*nets), [])
+    assert not [p for p in found if "half" in p]
 
 
 def test_pair_in_different_diff_classes() -> None:

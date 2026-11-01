@@ -94,4 +94,6 @@ patterns and assignments.
   `DP`/`DM`) in one `<ohms>Z_DIFF` class, but a Kelvin sense pair (its
   name says `SENSE`, `SNS` or `KELVIN`).
 - A class named for an impedance named `<ohms>Z_DIFF` or `<ohms>Z_SE`.
+- A net named like half a pair (ending `+`, `-`, `_P`, `DP` or `DM`) with
+  no other half is a `note:`; a lone `_N`, often active low, is not.
 - A class assigned or in a pattern but not defined.
