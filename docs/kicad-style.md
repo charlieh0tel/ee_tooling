@@ -22,7 +22,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   wire; never hung off a wire's end to the left or right.
 - Reference and value text level and clear of wires.  Every bought part
   carries Manufacturer, MPN and LCSC fields; every capacitor shows its
-  dielectric type and working voltage ("50V X7R").
+  dielectric or type and its working voltage ("50V X7R", "25V
+  tantalum").
 
 `kicad-style-check SCH...` checks a schematic file against these rules,
 one problem a line, exiting non-zero on any: connection points on the
@@ -31,8 +32,9 @@ a wire's run, pins with no wire; a pin's wire at least one grid unit
 long and its only one; a junction on every join of three or more and
 nowhere else; no-connects on pins (hidden ones count); zero-length and
 overlapping wires; Manufacturer, MPN and LCSC on every part in the BOM
-and not DNP; a dielectric (C0G, NP0, X5R, X7R ...) and a voltage in
-every capacitor's value.  Labels, text placement and wire-versus-label
+and not DNP; a dielectric (C0G, NP0, X5R, X7R ...) or a type (Al,
+electrolytic, Ta, tantalum, polymer, film, mica) and a voltage in every
+capacitor's value.  Labels, text placement and wire-versus-label
 choices are not checked.
 
 ## Board layout

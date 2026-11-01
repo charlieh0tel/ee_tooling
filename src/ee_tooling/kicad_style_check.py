@@ -8,7 +8,8 @@ power symbol on a pin, no pin on a wire's run; a wire off every pin, at
 least one grid unit long and the pin's only one; a junction on every
 join of three or more and nowhere else; no-connects on pins; no
 zero-length or overlapping wires; Manufacturer, MPN and LCSC on every
-part in the BOM; every capacitor's value showing dielectric and voltage.
+part in the BOM; every capacitor's value showing its dielectric or type,
+and its voltage.
 """
 
 import argparse
@@ -29,7 +30,12 @@ PLACES = 3
 GRID_TOLERANCE = 1e-3
 BOM_FIELDS = ("Manufacturer", "MPN", "LCSC")
 CAPACITOR = re.compile(r"^C\d+$")
-DIELECTRIC = re.compile(r"\b(?:C0G|NP0|X[5-8][PRSTV]|Y5V|Z5U)\b")
+# A ceramic dielectric (EIA class code), or a capacitor type.
+DIELECTRIC = re.compile(
+    r"\b(?:C0G|NP0|X[5-8][PRSTV]|Y5V|Z5U)\b"
+    r"|\b(?:Al|aluminum|electrolytic|Ta|tantalum|polymer|film|mica)\b",
+    re.I,
+)
 VOLTAGE = re.compile(r"\b\d+(?:\.\d+)?\s*[kK]?V\b")
 LABELS = ("label", "global_label", "hierarchical_label")
 
@@ -272,7 +278,8 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
             DIELECTRIC.search(part.value) and VOLTAGE.search(part.value)
         ):
             problems.append(
-                f"{part.reference}: value {part.value!r} does not show dielectric and voltage"
+                f"{part.reference}: value {part.value!r}"
+                " does not show dielectric or type, and voltage"
             )
     return problems
 

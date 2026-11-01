@@ -163,6 +163,11 @@ def test_bom_fields() -> None:
         ("100nF 50V X7R", True),
         ("10u 25V X5R", True),
         ("22p 50 V C0G", True),
+        ("100uF 25V Al", True),
+        ("10u 16V tantalum", True),
+        ("470u 6.3V Polymer", True),
+        ("100u 25V", False),
+        ("10u 16V Tag", False),
         ("100n", False),
         ("100n X7R", False),
         ("100n 50V", False),
@@ -176,7 +181,9 @@ def test_capacitor_value(value: str, ok: bool) -> None:
         for s in CLEAN
     ]
     found = [p for p in problems(*items) if p.startswith("C1:")]
-    assert found == ([] if ok else [f"C1: value {value!r} does not show dielectric and voltage"])
+    assert found == (
+        [] if ok else [f"C1: value {value!r} does not show dielectric or type, and voltage"]
+    )
 
 
 # A library pin at (2.54, 5.08), y up, on a symbol at (100, 100): where it
