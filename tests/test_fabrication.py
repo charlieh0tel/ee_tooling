@@ -7,10 +7,15 @@ import pytest
 from ee_tooling.fabrication import (
     GerberFile,
     Impedance,
+    Minimums,
+    Stackup,
     board_thickness,
     gerber_files,
     gerber_map,
     impedances,
+    minimums,
+    notes,
+    ounces,
     stackup,
     stackup_document,
     table,
@@ -34,11 +39,19 @@ def write_gerbers(directory: Path) -> None:
             attribute("b-F_Mask.gts", "SolderMask,Top", "Negative"),
             attribute("b-F_Silkscreen.gto", "Legend,Top"),
             attribute("b-Edge_Cuts.gm1", "Profile"),
-        ]
+        ],
+        "DesignRules": [
+            {"Layers": "Outer", "PadToPad": 0.2, "TrackToTrack": 0.15, "MinLineWidth": 0.127},
+            {"Layers": "Inner", "PadToPad": 0.0, "TrackToRegion": 0.1, "MinLineWidth": 0.15},
+        ],
     }
     (directory / "b-job.gbrjob").write_text(json.dumps(job))
-    (directory / "b-PTH.drl").write_text("M48\n; #@! TF.FileFunction,Plated,1,3,PTH\nMETRIC\n")
-    (directory / "b-NPTH.drl").write_text("M48\n; #@! TF.FileFunction,NonPlated,1,3,NPTH\n")
+    (directory / "b-PTH.drl").write_text(
+        "M48\n; #@! TF.FileFunction,Plated,1,3,PTH\nMETRIC\nT1C0.300\nT2C0.250\n%\nT1\nX1Y1\n"
+    )
+    (directory / "b-NPTH.drl").write_text(
+        "M48\n; #@! TF.FileFunction,NonPlated,1,3,NPTH\nT1C3.200\n"
+    )
 
 
 def test_table() -> None:
@@ -190,16 +203,89 @@ def test_stackup_document() -> None:
     assert se.split()[1:] == ["50", "single-ended", "0.36", "-", "-"]
 
 
-def test_release_stackup_warns_without_one(
+def test_release_fabrication_warns_without_stackup(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     b = Board("b", Path("hw"), ("F.Cu", "B.Cu"), Path("production"), ())
     (tmp_path / "hw").mkdir()
     (tmp_path / "hw/b.kicad_pro").write_text(json.dumps(PROJECT))
-    out = tmp_path / "b-1-stackup.txt"
+    (tmp_path / "gerbers").mkdir()
+    write_gerbers(tmp_path / "gerbers")
     pcb = parse("(kicad_pcb (general (thickness 1.6)))")
-    Release(tmp_path, b, tmp_path).stackup(out, "b 1: stackup", pcb, FILES)
+    Release(tmp_path, b, tmp_path).fabrication(tmp_path, "b-1", "b 1", pcb, FILES)
     assert "b.kicad_pcb has no stackup" in capsys.readouterr().out
-    assert out.read_text() == stackup_document(
+    assert (tmp_path / "b-1-stackup.txt").read_text() == stackup_document(
         "b 1: stackup", None, 1.6, FILES, impedances(PROJECT)
     )
+    assert (tmp_path / "b-1-fab-notes.txt").read_text() == notes(
+        "b 1: fabrication notes",
+        None,
+        1.6,
+        FILES,
+        impedances(PROJECT),
+        Minimums(0.127, 0.1, 0.25),
+        "b-1-stackup.txt",
+        "b-1-gerber-map.txt",
+    )
+
+
+def test_minimums(tmp_path: Path) -> None:
+    write_gerbers(tmp_path)
+    assert minimums(tmp_path) == Minimums(0.127, 0.1, 0.25)
+    assert minimums(tmp_path / "missing") == Minimums(None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("thickness", "text"),
+    [(0.035, "35 um (1 oz)"), (0.0152, "15.2 um (0.5 oz)"), (0.07, "70 um (2 oz)")],
+)
+def test_ounces(thickness: float, text: str) -> None:
+    assert ounces(thickness) == text
+
+
+def notes_lines(found: Stackup | None, impedance: list[Impedance]) -> dict[str, str]:
+    """The notes' items, by their heading."""
+    text = notes("b 1: notes", found, 1.6, FILES, impedance, Minimums(0.2, 0.15, None), "s", "m")
+    assert text.startswith("b 1: notes\nUnless otherwise specified.\n\n1.  STANDARD:")
+    items = [line.split(None, 1)[1] for line in text.splitlines()[3:]]
+    return dict(item.split(": ", 1) for item in items)
+
+
+def test_notes_from_stackup() -> None:
+    n = notes_lines(stackup(parse(PCB)), impedances(PROJECT))
+    assert n["STANDARD"].startswith("build and inspect to IPC-6012 and IPC-A-600, class 2")
+    assert n["BASE MATERIAL"] == "2116, 1080, FR4; Tg [TBD: Tg, deg C]."
+    assert n["LAYERS"] == "3 copper, L1 (top) to L3 (bottom), per m."
+    assert n["THICKNESS"] == "finished board 1.4452 mm, per s."
+    assert n["COPPER"] == (
+        "finished weights L1 35 um (1 oz), L2 15.2 um (0.5 oz), L3 35 um (1 oz)."
+    )
+    assert n["FINISH"] == "ENIG."
+    assert n["SOLDER MASK"].endswith("over bare copper; top, green.")
+    assert n["SILKSCREEN"].startswith("top, white;")
+    assert n["IMPEDANCE CONTROL"].startswith("yes, per s;")
+    assert n["MINIMUM FEATURES"] == ("track 0.2 mm, space 0.15 mm, finished drill [TBD: drill].")
+    assert n["ELECTRICAL TEST"].startswith("[TBD: electrical test")
+
+
+def test_notes_without_stackup() -> None:
+    n = notes_lines(None, [])
+    assert n["BASE MATERIAL"].startswith("[TBD: base material")
+    assert n["THICKNESS"] == "finished board 1.6 mm (KiCad's board thickness setting; no stackup)."
+    assert n["COPPER"].startswith("finished weights [TBD: copper weights")
+    assert n["FINISH"] == "[TBD: surface finish]."
+    assert n["SOLDER MASK"].endswith("; top, [TBD: color].")
+    assert n["IMPEDANCE CONTROL"] == "no."
+
+
+def test_notes_colors_by_side() -> None:
+    found = stackup(
+        parse(
+            '(kicad_pcb (setup (stackup (layer "F.Mask" (type "Top Solder Mask") (color "Green"))'
+            ' (layer "F.Cu" (type "copper") (thickness 0.035))'
+            ' (layer "B.Mask" (type "Bottom Solder Mask") (color "Black")))))'
+        )
+    )
+    files = [*FILES, GerberFile("b-B_Mask.gbs", ("SolderMask", "Bot"), "Negative", "B.Mask")]
+    text = notes("t", found, None, files, [], Minimums(None, None, None), "s", "m")
+    assert "over bare copper; top green; bottom black." in text

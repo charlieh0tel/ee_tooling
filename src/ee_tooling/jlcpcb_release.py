@@ -7,6 +7,8 @@ the board's production directory, YYYYMMDD-REV/, with:
   NAME-REV-gerber-map.txt  what each file in the Gerber zip is
   NAME-REV-stackup.txt  the board's stackup, each layer's Gerber, and its
                         impedance requirements
+  NAME-REV-fab-notes.txt  fabrication notes, filled from the board where it
+                        says, [TBD: ...] where it cannot
   NAME-REV-odb.tgz      ODB++ job, for the record and ODB++ tools
   NAME-REV-bom.csv      BOM in JLCPCB's columns, for assembly
   NAME-REV-cpl.csv      placement in JLCPCB's columns, for assembly
@@ -42,6 +44,8 @@ from ee_tooling.fabrication import (
     gerber_files,
     gerber_map,
     impedances,
+    minimums,
+    notes,
     stackup,
     stackup_document,
 )
@@ -50,6 +54,12 @@ from ee_tooling.sexpr import Expression, ParseError, parse
 CONFIG = "jlcpcb.toml"
 # The Gerber map's name in the Gerber zip.
 GERBER_README = "README.txt"
+# The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
+GERBERS = "gerbers"
+# The fabrication documents' names after NAME-REV-.
+GERBER_MAP = "gerber-map.txt"
+STACKUP = "stackup.txt"
+NOTES = "fab-notes.txt"
 
 # Every board's non-copper Gerber layers.
 OTHER_LAYERS = (
@@ -258,7 +268,7 @@ class Release:
     def gerbers(self, out: Path, title: str) -> list[GerberFile]:
         """The Gerber zip, with the Gerber map titled title; return its files."""
         b = self.board
-        g = self.work / "gerbers"
+        g = self.work / GERBERS
         g.mkdir()
         self.kicad(
             "pcb",
@@ -303,18 +313,37 @@ class Release:
             z.writestr(GERBER_README, text)
         return files
 
-    def stackup(self, out: Path, title: str, pcb: Expression, files: list[GerberFile]) -> None:
-        """The stackup document, from the board and its project's net classes."""
+    def fabrication(
+        self, dest: Path, base: str, label: str, pcb: Expression, files: list[GerberFile]
+    ) -> None:
+        """The stackup and the fabrication notes, NAME-REV being base and
+        "NAME REV" label, from the board, its project's net classes and the
+        Gerber directory."""
         project = self.root / self.board.project
         try:
             settings = json.loads(project.read_text())
         except (OSError, ValueError) as e:
             sys.exit(f"{project}: {e}")
         found = stackup(pcb)
+        thickness = board_thickness(pcb)
+        impedance = impedances(settings)
+        stackup_name = f"{base}-{STACKUP}"
         if found is None:
-            print(f"warning: {self.board.pcb.name} has no stackup; see {out.name}")
-        out.write_text(
-            stackup_document(title, found, board_thickness(pcb), files, impedances(settings))
+            print(f"warning: {self.board.pcb.name} has no stackup; see {stackup_name}")
+        (dest / stackup_name).write_text(
+            stackup_document(f"{label}: stackup", found, thickness, files, impedance)
+        )
+        (dest / f"{base}-{NOTES}").write_text(
+            notes(
+                f"{label}: fabrication notes",
+                found,
+                thickness,
+                files,
+                impedance,
+                minimums(self.work / GERBERS),
+                stackup_name,
+                f"{base}-{GERBER_MAP}",
+            )
         )
 
     def odb(self, out: Path) -> None:
@@ -466,11 +495,12 @@ def main() -> None:
         commit = r.check(a.allow_dirty)
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
+        label = f"{b.name} {rev}"
         gerbers = f"{base}-jlcpcb.zip"
-        title = f"{b.name} {rev}: the files in {gerbers}"
+        title = f"{label}: the files in {gerbers}"
         files = r.gerbers(dest / gerbers, title)
-        (dest / f"{base}-gerber-map.txt").write_text(gerber_map(title, files))
-        r.stackup(dest / f"{base}-stackup.txt", f"{b.name} {rev}: stackup", pcb, files)
+        (dest / f"{base}-{GERBER_MAP}").write_text(gerber_map(title, files))
+        r.fabrication(dest, base, label, pcb, files)
         r.odb(dest / f"{base}-odb.tgz")
         refs = r.bom(dest / f"{base}-bom.csv")
         r.cpl(dest / f"{base}-cpl.csv", refs, parts)
