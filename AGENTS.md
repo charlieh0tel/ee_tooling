@@ -60,6 +60,59 @@
   Truncation (cutting from the end) is OK: `register` can shorten to
   `reg` but not to `rgstr`.  Domain acronyms are fine (`odb`, `lcsc`,
   `bom`, `cpl`).
+- The Python API follows the Rust API's naming: each class, method,
+  property, argument, enum and exception takes the name and vocabulary
+  of the Rust item it wraps (snake_case methods, CamelCase classes,
+  UPPER_CASE enum members, as Python requires).  A Rust rename renames
+  the Python name in the same commit; a deliberate difference is
+  documented in `docs/python.md`.
+
+## Rust
+
+- Use the latest stable Rust edition.
+- Always run `cargo fmt` after changes and before commits.
+- Always run `cargo clippy` after major changes and always before
+  commits.
+- Run tests with `cargo test`.
+- Always use the narrowest visibility possible; avoid public by
+  default.
+- What one published crate needs of another but a host does not is
+  `#[doc(hidden)]` with a "Not part of the semver API" note, and a
+  trait only the workspace may implement is sealed (a hidden
+  `sealed::Sealed` supertrait).  What a host needs stays public and
+  documented.
+- Prefer `#[expect(lint, reason = "...")]` over `#[allow(lint)]`.  If
+  you must use `allow`, add `// [TODO] @<developer>: fix allow lint`.
+- Use item-level imports, not nested crate/module imports.
+- Prefer `use` statements at module top over inline imports.
+- Avoid mutable variables when possible.  Prefer new bindings or
+  shadows.
+- Never re-export.  Use individual use statements where needed instead
+  of `pub use` or `pub(crate) use`.
+- Never employ a wildcard `use` statement on an enum when trying to
+  shorten match arms.
+- Use the newtype idiom as appropriate (units, identifiers), with
+  `From` conversions to and from the value it wraps where every value
+  is valid.
+- Method names: `with_*` is a constructor; a mutator is `set_*`; an
+  accessor is the noun, `_mut` for the mutable one; a state reads as
+  the state (`halted`).
+- A type with a name or a printed form implements `Display`, and
+  `FromStr` if it can be named, not `name()` and `from_name()`; the
+  parse error is `Parse<Type>Error`.
+- Do not use `anyhow` at all, in libraries or binaries.  Use typed
+  errors via `thiserror`.
+- An error prints its cause in its message or exposes it as
+  `source()`, never both: a wrapper that adds context keeps the cause
+  in a field named `error`; one that adds none is
+  `#[error(transparent)]`.  Messages use `Display`, never `{:?}` of a
+  type (a quoted string's `{:?}` is fine).
+- Public error enums, and public enums likely to grow, are
+  `#[non_exhaustive]`.
+- Do not use `unsafe` without asking.  A hot-path case needs a
+  benchmark showing the gain and a `// SAFETY:` comment.
+- When adding dependencies, use `cargo add` to ensure we install the
+  latest version of dependencies.
 
 ## GitHub
 
