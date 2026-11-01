@@ -194,6 +194,31 @@ def test_kicad_drc(tmp_path: Path) -> None:
     )
 
 
+def silk_text(text: str, x: float, height: float, thickness: float) -> str:
+    return (
+        f'(gr_text "{text}" (at {x} 25) (layer "F.SilkS")'
+        f" (effects (font (size {height} {height}) (thickness {thickness}))))"
+    )
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_silkscreen_text(tmp_path: Path) -> None:
+    """The house's 0.8 mm height wins over JLCPCB's 1.0; JLCPCB's 0.15 mm
+    thickness stands."""
+    found = drc(
+        tmp_path,
+        silk_text("LOW", 5, 0.7, 0.15),
+        silk_text("THIN", 15, 0.8, 0.144),
+        silk_text("OK", 25, 0.8, 0.15),
+    )
+    heights = [v for v in found if v.startswith("text_height: ")]
+    thicknesses = [v for v in found if v.startswith("text_thickness: ")]
+    assert len(heights) == 1 and "'Silkscreen text height'" in heights[0]
+    assert "actual 0.7" in heights[0]
+    assert len(thicknesses) == 1 and "'JLCPCB silkscreen text'" in thicknesses[0]
+    assert "actual 0.144" in thicknesses[0]
+
+
 def test_erc_severities() -> None:
     severities = ERC["erc"]["rule_severities"]
     assert severities and set(severities.values()) <= SEVERITIES

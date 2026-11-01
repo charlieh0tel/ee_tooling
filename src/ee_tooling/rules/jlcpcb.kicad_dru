@@ -139,6 +139,13 @@
 	(condition "A.Type == 'Pad' && A.memberOfFootprint('*:MountingHole*') && A.Hole_Size_X >= 1mm")
 	(constraint assertion "A.isPlated()"))
 
+# Silkscreen: text at least 0.8 mm high, overriding JLCPCB's stated
+# 1.0 mm.  The thickness stays JLCPCB's 0.15 mm (JLCPCB silkscreen text):
+# this rule sets only the height.
+(rule "Silkscreen text height"
+	(layer "?.Silkscreen")
+	(constraint text_height (min 0.8mm)))
+
 # Routing: no right-angle bends.  The angle is the one between two joined
 # segments: 180 straight on, 135 a 45-degree bend, 90 a right angle.  A
 # joint on a pad is not checked.
