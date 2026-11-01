@@ -9,6 +9,7 @@ Tools, agent skills and house style for KiCad boards made at JLCPCB.
 | `tools/odb_current/` | DC resistance and current capacity of a net, from ODB++ |
 | `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path` |
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
+| `docs/releasing.md` | versions, tags and cutting a release |
 
 ## Use from a board's repository
 

@@ -10,3 +10,6 @@ wheels/
 .venv
 .mypy_cache/
 .ruff_cache/
+
+# Local release notes (AGENTS.md)
+CHANGELOG.md

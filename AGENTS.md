@@ -43,6 +43,12 @@
   commit before moving onto something unrelated.
 - All checks must pass before committing.
 - Never use -a to commit; always enumerate the files.
+- Releases are `vX.Y.Z` tags (semver, `docs/releasing.md`); a board
+  repository pins a release or a commit.  Batch breaking changes and
+  list each one precisely when it lands.  Tag a release only after
+  every check passes (`docs/releasing.md`).  A release's notes, its
+  breaking changes first, go in its GitHub release; `CHANGELOG.md` is
+  a local working file, not tracked.
 
 ## Python
 
