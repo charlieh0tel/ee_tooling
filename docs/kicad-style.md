@@ -20,6 +20,10 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 - Wires, not labels.  A label only where a wire can't reasonably go,
   and then it lies on the net, on a wire's run with its text along the
   wire; never hung off a wire's end to the left or right.
+- A differential pair is one in the schematic: its two nets named so
+  KiCad pairs them, `NAME_P`/`NAME_N` or `NAME+`/`NAME-` (USB's `D+`/`D-`).
+- A sense resistor gets a Kelvin connection: its sense nets leave its
+  pads separately from the current path, as a differential pair.
 - Reference and value text level and clear of wires.  Every bought part
   carries Manufacturer, MPN and LCSC fields; every capacitor shows its
   dielectric or type and its working voltage ("50V X7R", "25V
@@ -65,7 +69,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 - Before routing, agree the stackup and the overall strategy with the
   board's owner.  Often the ground vias go in first, but it depends.
 - Routed by hand, net by net.  No autorouter artifacts: meanders, mixed
-  widths, needless jogs, stubs.  Differential pairs run together.
+  widths, needless jogs, stubs.  Differential pairs, Kelvin sense pairs
+  included, run together.
 - With a ground plane, every GND pad gets a short N/S/E/W stub to a via
   into the plane (more than one for a big pad), the via inside the
   part's courtyard where it fits.  Other plane nets the same.  Never a
