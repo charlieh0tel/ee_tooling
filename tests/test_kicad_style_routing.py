@@ -1,13 +1,11 @@
 import pytest
 
-from ee_tooling.kicad_style_board import Point
+from ee_tooling.kicad_style_board import Point, place, unplace
 from ee_tooling.kicad_style_routing import (
     check_routing,
     inferred_decoupling,
-    place,
     planes,
     read,
-    unplace,
 )
 from ee_tooling.placement import Decoupling, Rules
 from ee_tooling.sexpr import parse

@@ -19,15 +19,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ee_tooling.kicad_style_board import POWER_PIN_TYPES, UNCONNECTED, net_name
 from ee_tooling.sexpr import Expression, child, children, parse
 
 # The class every net is in; it does not count as one.
 DEFAULT = "Default"
 # KiCad's name for a net on one pad that is not to be connected.
-UNCONNECTED = "unconnected-"
 # Pin electrical types that mark a net as power, in the schematic and on
 # a pad's (pintype); a stacked pin's type is joined with "+".
-POWER_PIN_TYPES = frozenset(("power_in", "power_out"))
 PIN_TYPE_JOIN = "+"
 # A power net's name, its last hierarchical part: a leading sign (+3V3,
 # +5V, -12V), or a ground or supply stem with any suffix (GND, AGND,
@@ -132,14 +131,6 @@ def net_settings(project: dict[str, Any]) -> NetSettings:
         for p in settings.get("netclass_patterns") or []
     ]
     return NetSettings(classes, assignments, patterns)
-
-
-def net_name(item: Expression) -> str | None:
-    """An item's (net "NAME"), or (net N "NAME") before KiCad 10."""
-    net = child(item, "net")
-    if net is None or len(net) < 2 or not isinstance(net[-1], str):
-        return None
-    return str(net[-1])
 
 
 def property_value(expression: Expression, name: str) -> str | None:

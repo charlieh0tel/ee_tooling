@@ -7,6 +7,7 @@ whole-board fill is the usual rule, not a hard one.
 
 import itertools
 import math
+import re
 
 from ee_tooling.sexpr import Atom, Expression, child, children, number
 
@@ -26,6 +27,13 @@ STEP = 0.25
 # along the edge is not past it.
 ON_EDGE = 0.001
 
+
+# KiCad names a pad's net so when nothing else is on it.
+UNCONNECTED = "unconnected-"
+# A schematic pin's types that carry power.
+POWER_PIN_TYPES = frozenset(("power_in", "power_out"))
+# A capacitor's reference.
+CAPACITOR = re.compile(r"^C\d+$")
 
 # A finding for the owner to judge, not a broken rule: printed, but not
 # counted in kicad-style-check's exit status.
@@ -102,6 +110,40 @@ def segments(shape: Expression) -> list[Segment]:
         case _:
             pts = children(child(shape, "pts") or [], "xy")
             return polyline([(number(p[1]), number(p[2])) for p in pts], closed=True)
+
+
+def net_name(item: Expression) -> str | None:
+    """An item's net: (net "NAME") in KiCad 10, (net N "NAME") before it;
+    None if it has none, or only a number."""
+    n = child(item, "net")
+    if not n or len(n) < 2 or isinstance(n[-1], Atom) or not isinstance(n[-1], str):
+        return None
+    return n[-1]
+
+
+def at(item: Expression) -> tuple[Point, float]:
+    """An item's (at X Y [ANGLE]): its position, and its angle in degrees."""
+    a = child(item, "at")
+    if a is None:
+        raise BoardError(f"a {item[0]} without at")
+    return (number(a[1]), number(a[2])), number(a[3]) if len(a) > 3 else 0.0
+
+
+def place(origin: Point, angle: float, p: Point) -> Point:
+    """p, in a footprint's frame at origin turned angle degrees
+    (counterclockwise on screen, y down), on the board.  A bottom-side
+    footprint's file already mirrors its frame."""
+    t = math.radians(angle)
+    c, s = math.cos(t), math.sin(t)
+    return origin[0] + p[0] * c + p[1] * s, origin[1] - p[0] * s + p[1] * c
+
+
+def unplace(origin: Point, angle: float, p: Point) -> Point:
+    """place's inverse: a board point in a footprint's frame."""
+    t = math.radians(angle)
+    c, s = math.cos(t), math.sin(t)
+    dx, dy = p[0] - origin[0], p[1] - origin[1]
+    return dx * c - dy * s, dx * s + dy * c
 
 
 def layers(item: Expression) -> list[str]:

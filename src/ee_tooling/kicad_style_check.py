@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ee_tooling.kicad_style_board import NOTE, check_board
+from ee_tooling.kicad_style_board import CAPACITOR, NOTE, check_board
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
 GRID = 2.54  # mm (docs/kicad-style.md)
@@ -33,7 +33,6 @@ PLACES = 3
 # A coordinate this close to a grid line is on it, mm.
 GRID_TOLERANCE = 1e-3
 BOM_FIELDS = ("Manufacturer", "MPN", "LCSC")
-CAPACITOR = re.compile(r"^C\d+$")
 # A ceramic dielectric (EIA class code), or a capacitor type.
 DIELECTRIC = re.compile(
     r"\b(?:C0G|NP0|X[5-8][PRSTV]|Y5V|Z5U)\b"

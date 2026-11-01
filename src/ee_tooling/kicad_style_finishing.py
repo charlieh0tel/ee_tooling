@@ -28,13 +28,17 @@ from dataclasses import dataclass
 from ee_tooling.kicad_style_board import (
     COPPER,
     EDGE,
+    UNCONNECTED,
     BoardError,
     Point,
     Segment,
+    at,
     distance,
     edge,
     layers,
+    net_name,
     on_board,
+    place,
     polyline,
     where,
 )
@@ -57,7 +61,6 @@ PARTIAL_VIAS = ("blind", "buried", "micro")
 MOUNTING_HOLE = "MountingHole"
 PLATED = "thru_hole"
 # KiCad names a pad's net so when nothing else is on it: no net.
-UNCONNECTED = "unconnected-"
 # The narrowest annular ring a mounting hole may have, mm: copper the
 # fastener bears on, above any fab's 0.1-0.25 mm minimum for a plated
 # hole's ring.
@@ -81,12 +84,10 @@ class Gap:
 
 
 def net(item: Expression) -> str | None:
-    """An item's net, KiCad 10's (net "GND"); None if it has none, or is
-    alone on KiCad's unconnected-(...) net."""
-    n = child(item, "net")
-    if not n or len(n) < 2 or isinstance(n[-1], Atom) or str(n[-1]).startswith(UNCONNECTED):
-        return None
-    return str(n[-1])
+    """An item's net, None if it has none or is alone on KiCad's
+    unconnected-(...) net."""
+    name = net_name(item)
+    return None if name is None or name.startswith(UNCONNECTED) else name
 
 
 def area(points: list[Point]) -> float:
@@ -156,24 +157,12 @@ def through(via: Expression) -> bool:
 
 
 def position(item: Expression) -> Point:
-    a = child(item, "at")
-    if a is None:
-        raise BoardError(f"a {item[0]} without at")
-    return number(a[1]), number(a[2])
+    return at(item)[0]
 
 
 def placed(footprint: Expression, local: Point) -> Point:
-    """A footprint's point on the board: rotated by its angle (counter-
-    clockwise on screen, y down) and moved to its position."""
-    a = child(footprint, "at")
-    if a is None:
-        raise BoardError("a footprint without at")
-    angle = math.radians(number(a[3])) if len(a) > 3 else 0.0
-    x, y = local
-    return (
-        number(a[1]) + x * math.cos(angle) + y * math.sin(angle),
-        number(a[2]) - x * math.sin(angle) + y * math.cos(angle),
-    )
+    """A footprint's point on the board."""
+    return place(*at(footprint), local)
 
 
 def barrels(board: Expression) -> list[tuple[Point, str | None]]:

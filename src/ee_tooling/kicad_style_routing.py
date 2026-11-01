@@ -44,18 +44,25 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 from ee_tooling.kicad_style_board import (
+    CAPACITOR,
     COPPER,
+    POWER_PIN_TYPES,
     STEP,
+    UNCONNECTED,
     BoardError,
     Point,
     Segment,
     arc,
+    at,
     distance,
     edge,
     layers,
+    net_name,
     on_board,
+    place,
     polyline,
     segments,
+    unplace,
     where,
 )
 from ee_tooling.placement import Decoupling, Rules
@@ -105,14 +112,11 @@ ON_COPPER = 1e-3
 DECOUPLING_REACH = 5.0
 # References inferred decoupling looks at: capacitors, and the packages
 # (ICs) they decouple.
-CAPACITOR = re.compile(r"^C\d+$")
 PACKAGE = re.compile(r"^(?:U|IC)\d+$")
 # A ground net's name, after any sheet path.
 GROUND = re.compile(r"^(?:.*/)?(?:[ADP]?GND|VSS|0V)\w*$", re.I)
 # The pin types (from the schematic) of a pin decoupling serves; a pin
 # with no type may be one too.
-POWER = ("power_in", "power_out")
-UNCONNECTED = "unconnected-"
 ALL_COPPER = "*.Cu"
 # What a keepout says of what it keeps out.
 NOT_ALLOWED = "not_allowed"
@@ -120,20 +124,9 @@ NOT_ALLOWED = "not_allowed"
 AXES = ((0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0))
 
 
-def place(origin: Point, angle: float, p: Point) -> Point:
-    """p in a frame at origin turned angle degrees (counterclockwise on
-    screen, y down), on the board."""
-    t = math.radians(angle)
-    c, s = math.cos(t), math.sin(t)
-    return origin[0] + p[0] * c + p[1] * s, origin[1] - p[0] * s + p[1] * c
-
-
-def unplace(origin: Point, angle: float, p: Point) -> Point:
-    """place's inverse."""
-    t = math.radians(angle)
-    c, s = math.cos(t), math.sin(t)
-    dx, dy = p[0] - origin[0], p[1] - origin[1]
-    return dx * c - dy * s, dx * s + dy * c
+def net(item: Expression) -> str:
+    """An item's net, "" if it has none."""
+    return net_name(item) or ""
 
 
 def meets_box(a: Point, b: Point, half: tuple[float, float]) -> bool:
@@ -318,18 +311,6 @@ class Copper:
     courtyards: dict[str, list[Segment]] = field(default_factory=dict)  # by reference
     no_vias: list[list[Segment]] = field(default_factory=list)  # keepouts' outlines
     outline: list[Segment] = field(default_factory=list)  # Edge.Cuts
-
-
-def net(item: Expression) -> str:
-    n = child(item, "net")
-    return str(n[-1]) if n and len(n) > 1 else ""
-
-
-def at(item: Expression) -> tuple[Point, float]:
-    a = child(item, "at")
-    if a is None:
-        raise BoardError(f"a {item[0]} without at")
-    return (number(a[1]), number(a[2])), number(a[3]) if len(a) > 3 else 0.0
 
 
 def copper_of(item: Expression, stack: list[str]) -> list[str]:
@@ -700,7 +681,7 @@ def inferred_decoupling(c: Copper) -> list[Decoupling]:
     """Each capacitor (CAPACITOR) across a supply and a ground net
     (GROUND), as the decoupling of the nearest supply pin, within
     DECOUPLING_REACH of its pad, of a package (PACKAGE) with a pin on that
-    ground too.  A pin whose type is given must be one of POWER."""
+    ground too.  A pin whose type is given must be one of POWER_PIN_TYPES."""
     by_reference = pads_by_reference(c)
     out = []
     for reference, pads in sorted(by_reference.items()):
@@ -717,7 +698,7 @@ def inferred_decoupling(c: Copper) -> list[Decoupling]:
             for part, parts in by_reference.items()
             if PACKAGE.match(part) and any(q.net == ground.net for q in parts)
             for p in parts
-            if p.net == supply.net and (p.pintype in POWER or not p.pintype)
+            if p.net == supply.net and (p.pintype in POWER_PIN_TYPES or not p.pintype)
         ]
         if not pins:
             continue
