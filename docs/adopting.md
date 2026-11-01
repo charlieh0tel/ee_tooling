@@ -62,6 +62,11 @@ Import the house style, so an agent reads it:
 State there that `hardware/ee_tooling` is the submodule, changed in
 ee_tooling and then pinned here, and how the `hardware/` venv is made.
 
+State there too: before writing new tooling in the board repository (a
+script, a checker, a skill, a style rule), consider whether it could be
+made generic and generally useful.  If so, ask whether it should be
+made in ee_tooling instead, then pinned here.
+
 ## Project skill
 
 `.claude/skills/jlcpcb-release/SKILL.md` holds only the boards'
