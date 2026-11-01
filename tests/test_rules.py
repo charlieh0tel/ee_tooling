@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.kicad_style_check import GRID
-from ee_tooling.sexpr import Expression, children, parse
+from ee_tooling.sexpr import Expression, child, children, parse
 
 RULES = importlib.resources.files("ee_tooling").joinpath("rules")
 DRU = RULES.joinpath("jlcpcb.kicad_dru").read_text()
@@ -21,6 +21,10 @@ DOC = Path(__file__).parent.parent / "docs" / "kicad-rules.md"
 # A row of that table: | `check` | KiCad's default | here | why |
 ERC_ROW = re.compile(r"^\| `(\w+)` \| (error|warning|ignore) \| (error|warning|ignore) \|", re.M)
 SEVERITIES = {"error", "warning", "ignore"}
+# A row of its differential pair table: | `suffix` | interface | mm | source |
+SKEW_ROW = re.compile(r"^\| `(\w+)` \| [^|]+ \| ([\d.]+) \|", re.M)
+# The interface a skew rule keys on, in its condition.
+DIFF_SUFFIX = re.compile(r"hasNetclass\('\*Z_DIFF_(\w+)'\)")
 MM_PER_MIL = 0.0254
 
 # KiCad 10's custom rule constraint types (pcbnew manual, Custom design
@@ -140,11 +144,28 @@ def board(*items: str) -> str:
     )
 
 
-def drc(tmp_path: Path, *items: str) -> list[str]:
-    """kicad-cli's DRC of a board of items with the rules: each violation's
-    type and description."""
+def project(classes: dict[str, str]) -> dict[str, object]:
+    """A .kicad_pro with a net class for each net pattern in classes."""
+    widths = {"clearance": 0.2, "track_width": 0.25, "via_diameter": 0.6, "via_drill": 0.3}
+    return {
+        "net_settings": {
+            "meta": {"version": 4},
+            "classes": [
+                {"name": "Default", "priority": 2147483647, **widths},
+                *({"name": c, "priority": 0, **widths} for c in sorted(set(classes.values()))),
+            ],
+            "netclass_patterns": [{"netclass": c, "pattern": p} for p, c in classes.items()],
+        }
+    }
+
+
+def drc(tmp_path: Path, *items: str, classes: dict[str, str] | None = None) -> list[str]:
+    """kicad-cli's DRC of a board of items with the rules, and net classes
+    by net pattern: each violation's type and description."""
     (tmp_path / "t.kicad_pcb").write_text(board(*items))
     (tmp_path / "t.kicad_dru").write_text(DRU)
+    if classes:
+        (tmp_path / "t.kicad_pro").write_text(json.dumps(project(classes)))
     report = tmp_path / "drc.json"
     subprocess.run(
         [
@@ -252,3 +273,56 @@ def test_erc_severities_documented() -> None:
     """Each check's severity is the one docs/kicad-rules.md gives it."""
     documented = {m[1]: m[3] for m in ERC_ROW.finditer(DOC.read_text())}
     assert documented == ERC["erc"]["rule_severities"]
+
+
+def skews() -> dict[str, str]:
+    """The .kicad_dru's skew within a pair, by the class suffix it keys on."""
+    found = {}
+    for r in rules(DRU):
+        for c in children(r, "constraint"):
+            if c[1] != "skew":
+                continue
+            condition = child(r, "condition")
+            assert condition is not None
+            (suffix,) = DIFF_SUFFIX.findall(str(condition[1]))
+            limit = child(c, "max")
+            assert limit is not None and child(c, "within_diff_pairs") is not None
+            found[suffix] = str(limit[1]).removesuffix("mm")
+    return found
+
+
+def test_differential_pairs_documented() -> None:
+    """Each interface's skew is the one docs/kicad-rules.md gives it."""
+    documented = {m[1]: m[2] for m in SKEW_ROW.finditer(DOC.read_text())}
+    assert documented and skews() == documented
+
+
+def pair(net: str, y: float, extra: float) -> list[str]:
+    """A pair of tracks, net_P and net_N, the N extra mm longer."""
+    p, n = f"/{net}_P", f"/{net}_N"
+    return [
+        segment(f"5 {y}", f"25 {y}", p),
+        segment(f"5 {y + 0.5}", f"15 {y + 0.5}", n),
+        segment(f"15 {y + 0.5}", f"15 {y + 0.5 + extra / 2}", n),
+        segment(f"15 {y + 0.5 + extra / 2}", f"25 {y + 0.5 + extra / 2}", n),
+        segment(f"25 {y + 0.5 + extra / 2}", f"25 {y + 0.5}", n),
+    ]
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_differential_pair(tmp_path: Path) -> None:
+    classes = {
+        "/LONG_*": "90Z_DIFF_USBHS",
+        "/SHORT_*": "90Z_DIFF_USBHS",
+        "/PLAIN_*": "90Z_DIFF",
+    }
+    found = drc(
+        tmp_path,
+        *pair("LONG", 5, 2.0),
+        *pair("SHORT", 12, 1.0),
+        *pair("PLAIN", 19, 5.0),
+        classes=classes,
+    )
+    skew = [v for v in found if v.startswith("skew_out_of_range: ")]
+    assert len(skew) == 1
+    assert "'Differential pair skew, USB 2.0 high speed'" in skew[0] and "actual -2.0" in skew[0]

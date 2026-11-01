@@ -149,12 +149,38 @@
 	(layer "?.Silkscreen")
 	(constraint text_height (min 0.8mm)))
 
-# Net classes and routing: a differential pair is in an <ohms>Z_DIFF
-# class and runs together.  At most 5 mm of a pair uncoupled (fan-out
-# included) and 0.5 mm of skew within it are house choices.  The gap is
+# Net classes and routing: a differential pair's skew within the pair, by
+# the interface its class names, <ohms>Z_DIFF_<INTERFACE> (docs/kicad-rules.md;
+# the naming is a proposal).  A class naming no interface (90Z_DIFF) gets
+# no rule.  Uncoupled length has no cited figure and no rule.  The gap is
 # the class's own (Board Setup, Net Classes): a diff_pair_gap rule here
 # would replace it, the router's gap included.
-(rule "Differential pair coupled"
-	(condition "A.hasNetclass('*Z_DIFF')")
-	(constraint diff_pair_uncoupled (max 5mm))
-	(constraint skew (max 0.5mm) (within_diff_pairs)))
+#
+# TI, High-Speed Interface Layout Guidelines, SPRAAR7J (February 2023),
+# Appendix A, Table A-2: "Skew within any USB2.0 differential pair" 50
+# mil; "Skew within any USB3/SATA/PCIe/HDMI differential pair" 5 mil.
+(rule "Differential pair skew, USB 2.0 full speed"
+	(condition "A.hasNetclass('*Z_DIFF_USBFS')")
+	(constraint skew (max 1.27mm) (within_diff_pairs)))
+(rule "Differential pair skew, USB 2.0 high speed"
+	(condition "A.hasNetclass('*Z_DIFF_USBHS')")
+	(constraint skew (max 1.27mm) (within_diff_pairs)))
+(rule "Differential pair skew, USB 3"
+	(condition "A.hasNetclass('*Z_DIFF_USB3')")
+	(constraint skew (max 0.127mm) (within_diff_pairs)))
+(rule "Differential pair skew, PCIe"
+	(condition "A.hasNetclass('*Z_DIFF_PCIE')")
+	(constraint skew (max 0.127mm) (within_diff_pairs)))
+(rule "Differential pair skew, HDMI TMDS"
+	(condition "A.hasNetclass('*Z_DIFF_HDMI')")
+	(constraint skew (max 0.127mm) (within_diff_pairs)))
+
+# TI, Ethernet PHY PCB Design Layout Checklist, SNLA387 (June 2021),
+# section 2, MDI Traces: "length-matched within 20 mils for 1G
+# transmissions and within 50 mils for 100M or 10M transmissions".
+(rule "Differential pair skew, Ethernet 1000BASE-T"
+	(condition "A.hasNetclass('*Z_DIFF_ETH1G')")
+	(constraint skew (max 0.508mm) (within_diff_pairs)))
+(rule "Differential pair skew, Ethernet 100BASE-TX"
+	(condition "A.hasNetclass('*Z_DIFF_ETH100')")
+	(constraint skew (max 1.27mm) (within_diff_pairs)))
