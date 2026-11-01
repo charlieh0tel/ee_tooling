@@ -1,0 +1,156 @@
+(version 1)
+
+# ee_tooling's custom DRC rules for a board made at JLCPCB, KiCad 10
+# (docs/kicad-rules.md).  A board's own rules go after these: KiCad takes
+# the last rule that matches, so a board's own rule wins over these.
+#
+# A rule here replaces, for what it matches, the Board Setup constraint of
+# its kind, and a clearance rule would replace the net classes'
+# clearances.  So the limits that are lower than a board would choose and
+# that shape zone fills (copper clearance, copper to edge, a via's hole
+# clearance) are not rules here but Board Setup minimums
+# (jlcpcb_board_setup.json).
+#
+# Angles are written without a unit: KiCad 10.0.8 ignores a track_angle
+# limit written with "deg".
+
+# --- JLCPCB limits ---------------------------------------------------------
+#
+# JLCPCB's Rigid PCB Capabilities,
+# https://jlcpcb.com/capabilities/pcb-capabilities, read 2026-11-01: FR-4,
+# 1 oz outer copper, through vias.  Where the page gives a 1- and 2-layer
+# and a multilayer figure, the stricter holds, so one file serves both.
+
+# Traces, min. track width (1 oz): 1- and 2-layer 0.10 mm, multilayer
+# 0.09 mm.
+(rule "JLCPCB track width"
+	(constraint track_width (min 0.1mm)))
+
+# Drilling, min. via hole size/diameter: 0.15/0.25 mm.
+(rule "JLCPCB via diameter"
+	(constraint via_diameter (min 0.25mm)))
+
+# Drilling, drill diameter: 2-layer and multilayer 0.15 - 6.3 mm (6.3 mm
+# and up is routed, not drilled, so there is no maximum).
+(rule "JLCPCB hole size"
+	(constraint hole_size (min 0.15mm)))
+
+# Drilling, min. non-plated holes: 0.50 mm.
+(rule "JLCPCB non-plated hole size"
+	(condition "A.Type == 'Pad' && !A.isPlated()")
+	(constraint hole_size (min 0.5mm)))
+
+# Drilling, min. plated slots width: 2-layer 0.5 mm, multilayer 0.35 mm.
+(rule "JLCPCB plated slot width"
+	(condition "A.Type == 'Pad' && A.isPlated() && A.Hole_Size_X != A.Hole_Size_Y")
+	(constraint hole_size (min 0.5mm)))
+
+# Drilling, min. non-plated slots: 1.0 mm.
+(rule "JLCPCB non-plated slot width"
+	(condition "A.Type == 'Pad' && !A.isPlated() && A.Hole_Size_X != A.Hole_Size_Y")
+	(constraint hole_size (min 1.0mm)))
+
+# Traces, PTH annular ring (1 oz): 2-layer absolute minimum 0.18 mm,
+# multilayer 0.15 mm.
+(rule "JLCPCB annular ring"
+	(constraint annular_width (min 0.18mm)))
+
+# Drilling, min. via hole size/diameter: "Via diameter should be 0.1mm
+# (0.15mm preferred) larger than Via hole size", a 0.05 mm ring.
+(rule "JLCPCB via annular ring"
+	(condition "A.Type == 'Via'")
+	(constraint annular_width (min 0.05mm)))
+
+# Drilling, via hole-to-hole spacing: 0.2 mm.  Outline, mouse bites
+# panel: "Recommended distance between the two mouse-bites is 0.2-0.3mm",
+# so non-plated holes take the via figure.
+(rule "JLCPCB hole to hole"
+	(constraint hole_to_hole (min 0.2mm)))
+
+# Drilling, pad hole-to-hole spacing: 0.45 mm, between plated pads.
+(rule "JLCPCB pad hole to pad hole"
+	(condition "A.Type == 'Pad' && B.Type == 'Pad' && A.isPlated() && B.isPlated()")
+	(constraint hole_to_hole (min 0.45mm)))
+
+# Traces, PTH to track: 0.28 mm; inner layer PTH pad hole to copper
+# clearance: 0.3 mm.  Measured from the hole, to another net's copper.
+# Vias and non-plated holes take Board Setup's hole clearance (0.2 mm).
+(rule "JLCPCB plated hole clearance"
+	(layer outer)
+	(condition "A.Type == 'Pad' && A.isPlated()")
+	(constraint hole_clearance (min 0.28mm)))
+(rule "JLCPCB inner plated hole clearance"
+	(layer inner)
+	(condition "A.Type == 'Pad' && A.isPlated()")
+	(constraint hole_clearance (min 0.3mm)))
+
+# Traces, SMD pad to pad clearance: "Minimum SMD pad: 0.25mm x 0.25mm".
+# Traces, BGA: 0.2 mm pads (with ENIG).  A pad with no copper (a paste
+# or mask aperture) is not a pad to JLCPCB.
+(rule "JLCPCB SMD pad size"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'SMD' && (A.existsOnLayer('F.Cu') || A.existsOnLayer('B.Cu')) && A.Fabrication_Property != 'BGA pad'")
+	(constraint assertion "A.Size_X >= 0.25mm && A.Size_Y >= 0.25mm"))
+(rule "JLCPCB BGA pad size"
+	(condition "A.Type == 'Pad' && A.Fabrication_Property == 'BGA pad'")
+	(constraint assertion "A.Size_X >= 0.2mm && A.Size_Y >= 0.2mm"))
+
+# Legend, minimum line width: 0.15 mm; minimum text height: 1.0 mm
+# ("Characters height less than 40 mil(1.0mm) will be unidentifiable").
+(rule "JLCPCB silkscreen text"
+	(layer "?.Silkscreen")
+	(constraint text_height (min 1.0mm))
+	(constraint text_thickness (min 0.15mm)))
+
+# Legend, pad to silkscreen: 0.15 mm, to a pad with copper (not a paste
+# aperture).  A footprint's own silkscreen graphics are its library's and
+# are not edited (docs/kicad-style.md, Silkscreen), so they are held only
+# off their own pads (Board Setup's silk clearance); its reference text is
+# held off by 0.15 mm like anything else.  KiCad measures this on the mask
+# layer, so a silkscreen layer clause would never match.
+(rule "JLCPCB silkscreen to pad"
+	(condition "B.Type == 'Pad' && (B.existsOnLayer('F.Cu') || B.existsOnLayer('B.Cu')) && !(A.Type == 'Graphic' && A.Parent == B.Parent)")
+	(constraint silk_clearance (min 0.15mm)))
+
+# --- JLCPCB price ----------------------------------------------------------
+#
+# The same page, Drilling, min. via hole size/diameter: "0.1mm or 0.15mm
+# hole size with any size via diameter, and 0.2mm or 0.25mm hole size with
+# via diameter less than 0.45mm, will cost more."  A via costs nothing
+# extra with a hole of 0.3 mm or more, or of 0.2 mm or more in a diameter
+# of 0.45 mm or more.
+
+(rule "JLCPCB via hole at no extra cost"
+	(condition "A.Type == 'Via'")
+	(constraint hole_size (min 0.2mm)))
+(rule "JLCPCB small via hole at no extra cost"
+	(condition "A.Type == 'Via' && A.Diameter < 0.45mm")
+	(constraint hole_size (min 0.3mm)))
+
+# --- House rules (docs/kicad-style.md) -------------------------------------
+
+# Board finishing: mounting holes (footprints named MountingHole*) plated,
+# with an annular ring of at least 0.5 mm.  The hole is the pad with a
+# drill of 1 mm or more: KiCad's MountingHole_*_Pad_Via footprints ring it
+# with via pads of 0.8 mm drill or less.
+(rule "Mounting hole ring"
+	(condition "A.Type == 'Pad' && A.memberOfFootprint('*:MountingHole*') && A.Hole_Size_X >= 1mm")
+	(constraint annular_width (min 0.5mm)))
+(rule "Mounting hole plated"
+	(condition "A.Type == 'Pad' && A.memberOfFootprint('*:MountingHole*') && A.Hole_Size_X >= 1mm")
+	(constraint assertion "A.isPlated()"))
+
+# Routing: no right-angle bends.  The angle is the one between two joined
+# segments: 180 straight on, 135 a 45-degree bend, 90 a right angle.  A
+# joint on a pad is not checked.
+(rule "No right-angle bends"
+	(constraint track_angle (min 91)))
+
+# Net classes and routing: a differential pair is in an <ohms>Z_DIFF
+# class and runs together.  At most 5 mm of a pair uncoupled (fan-out
+# included) and 0.5 mm of skew within it are house choices.  The gap is
+# the class's own (Board Setup, Net Classes): a diff_pair_gap rule here
+# would replace it, the router's gap included.
+(rule "Differential pair coupled"
+	(condition "A.hasNetclass('*Z_DIFF')")
+	(constraint diff_pair_uncoupled (max 5mm))
+	(constraint skew (max 0.5mm) (within_diff_pairs)))
