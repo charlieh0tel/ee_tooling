@@ -12,10 +12,13 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path` |
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
+| `docs/adopting.md` | taking ee_tooling into a board repository as a submodule |
+| `scripts/consumer-commit-msg` | a board repository's commit-msg hook, running this one from the submodule |
 
 ## Use from a board's repository
 
-As a git submodule, installed into the repository's uv project:
+As a git submodule, installed into the repository's uv project
+(`docs/adopting.md` gives the whole set-up):
 
 ```
 git submodule add https://github.com/charlieh0tel/ee_tooling.git hardware/ee_tooling

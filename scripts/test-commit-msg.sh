@@ -60,6 +60,41 @@ expect refuse messages 'Fix it
 
 Claude-Session: https://claude.ai/code/session_x'
 
+# The hook as a board repository runs it: scripts/consumer-commit-msg
+# as its .githooks/commit-msg, the hook in its ee_tooling submodule.
+CONSUMER=$(mktemp -d)
+trap 'rm -f "$SAMPLE"; rm -rf "$CONSUMER"' EXIT
+git init -q "$CONSUMER"
+mkdir -p "$CONSUMER/.githooks" "$CONSUMER/hardware/ee_tooling/.githooks" "$CONSUMER/subdirectory"
+cp "$(dirname "$0")/consumer-commit-msg" "$CONSUMER/.githooks/commit-msg"
+git -C "$CONSUMER" config core.hooksPath .githooks
+
+# expect_commit pass|refuse NAME MESSAGE: a commit by NAME with MESSAGE,
+# made from a subdirectory, passes or is refused.
+expect_commit() {
+    if (cd "$CONSUMER/subdirectory" &&
+        GIT_AUTHOR_NAME="$2" GIT_AUTHOR_EMAIL=a@example.com \
+            GIT_COMMITTER_NAME="$2" GIT_COMMITTER_EMAIL=a@example.com \
+            git commit -q --allow-empty -m "$3") 2>/dev/null; then
+        result=pass
+    else
+        result=refuse
+    fi
+    if [ "$result" != "$1" ]; then
+        echo "FAIL: expected $1, got $result: a consumer's commit by '$2': '$3'" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+# Before `git submodule update --init` the hook is missing.
+expect_commit refuse 'Ann Smith' 'Fix the BOM rotation'
+cp "$HOOK" "$CONSUMER/hardware/ee_tooling/.githooks/commit-msg"
+expect_commit pass 'Ann Smith' 'Fix the BOM rotation'
+expect_commit refuse 'Claude Code' 'Fix the BOM rotation'
+expect_commit refuse 'Ann Smith' 'Fix it
+
+Co-Authored-By: Claude <noreply@anthropic.com>'
+
 if [ "$failures" -ne 0 ]; then
     echo "commit-msg tests: $failures failed" >&2
     exit 1
