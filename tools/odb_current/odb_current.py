@@ -475,9 +475,8 @@ def feature_geom(syms, f, units, job):
             xs, ys, xe, ye, xc, yc = (float(v) * c for v in tok[1:7])
             sh, w, _ = sym_shape(syms[int(tok[7])], units, job)
             cw = len(tok) > 10 and tok[10] == "Y"
-            return LineString([(xs, ys)] + _arc(xs, ys, xe, ye, xc, yc, cw)).buffer(w / 2, 16), tok[
-                8
-            ]
+            arc = LineString([(xs, ys), *_arc(xs, ys, xe, ye, xc, yc, cw)])
+            return arc.buffer(w / 2, 16), tok[8]
     except ValueError as e:
         print(f"  warning: {e}; feature skipped", file=sys.stderr)
     return None, "P"
@@ -548,7 +547,10 @@ def net_geometry(job, net):
             ]
             msg = f"  plane {name}: {len(keep)} region(s), {g.area:.0f} mm2 connected to {net}"
             if bad:
-                msg += f"  ** WARNING: {len(bad)} other-net holes also connect; check plane assignment **"
+                msg += (
+                    f"  ** WARNING: {len(bad)} other-net holes also connect;"
+                    " check plane assignment **"
+                )
             print(msg, file=sys.stderr)
             geom[name] = g
         else:
@@ -595,11 +597,12 @@ def solve(args):
     terms = [("from", *parse_term(args.src, comps, args.net))] + [
         ("to", *parse_term(t, comps, args.net)) for t in args.to
     ]
-    for role, ref, pins in terms:
+    for _, ref, pins in terms:
         bad = [p for p in pins if p[3] != args.net]
         if bad:
             print(
-                f"  warning: {ref} pins {[p[0] for p in bad]} are not on {args.net}: {[p[3] for p in bad]}",
+                f"  warning: {ref} pins {[p[0] for p in bad]} are not on {args.net}:"
+                f" {[p[3] for p in bad]}",
                 file=sys.stderr,
             )
     allg = shapely.union_all([g for g in geom.values() if g is not None])
@@ -637,7 +640,7 @@ def solve(args):
         C.append(np.r_[a, b, b, a])
         V.append(np.r_[g, g, -g, -g])
 
-    for cu, ids in zip(layers, idx):
+    for cu, ids in zip(layers, idx, strict=True):
         for a, b in ((ids[:, :-1], ids[:, 1:]), (ids[:-1, :], ids[1:, :])):
             k = (a >= 0) & (b >= 0)
             add(a[k], b[k], cu["t"] / rho)
@@ -681,7 +684,7 @@ def solve(args):
             for fi in job.fids(args.net).get(outer, ()):
                 if feats[fi][0] == "P":
                     pads.append(feature_geom(syms, feats[fi], units, job)[0])
-        for pname, px, py, _ in pins:
+        for _, px, py, _ in pins:
             th = [hi for hi, hh in enumerate(holes) if math.hypot(hh[0] - px, hh[1] - py) < 0.1]
             if th:  # through-hole pin: the soldered pin ties the whole barrel
                 for li in range(len(layers)):
@@ -714,7 +717,7 @@ def solve(args):
     lu = spl.splu(G[keep][:, keep].tocsc())
     results = []
     Vref = None
-    for (_, ref, pins), n in zip(terms[1:], dst):
+    for (_, ref, pins), n in zip(terms[1:], dst, strict=True):
         rhs = np.zeros(keep.sum())
         rhs[mp[n]] = 1.0
         v = lu.solve(rhs)
@@ -742,7 +745,8 @@ def solve(args):
         "results": results,
     }
     print(
-        f"\n{args.net}: R from {terms[0][1]} (pins {','.join(out['source']['pins'])}), 20 C, grid {h * 1000:.0f} um"
+        f"\n{args.net}: R from {terms[0][1]} (pins {','.join(out['source']['pins'])}),"
+        f" 20 C, grid {h * 1000:.0f} um"
     )
     for rr in results:
         t = ", ".join(f"{T} C {rr['r_mohm'] * (1 + ALPHA_CU * (T - 20)):.2f}" for T in args.temps)
@@ -781,8 +785,10 @@ def solve(args):
     vrep.sort(key=lambda v: -v["current_per_A"])
     for v in vrep[:12]:
         print(
-            f"  ({v['x']:.2f},{v['y']:.2f}) d={v['drill_mm']:.3f} {v['between'][0]}->{v['between'][1]}: "
-            f"{v['current_per_A']:.2f} A/A, {v['r_mohm']:.2f} mOhm, IPC-2221 {v['ipc2221_A_10C']} A @+10C"
+            f"  ({v['x']:.2f},{v['y']:.2f}) d={v['drill_mm']:.3f}"
+            f" {v['between'][0]}->{v['between'][1]}: "
+            f"{v['current_per_A']:.2f} A/A, {v['r_mohm']:.2f} mOhm,"
+            f" IPC-2221 {v['ipc2221_A_10C']} A @+10C"
         )
     out["barrels"] = vrep
 
@@ -832,8 +838,10 @@ def solve(args):
     print("\ncurrent-density hotspots (holes excluded), weakest first; eff width = 1/(A per mm):")
     for d in hot:
         print(
-            f"  {d['layer']:<14} ({d['x']:7.2f},{d['y']:7.2f})  {d['A_per_mm']:5.2f} A/mm  w_eff {d['eff_width_mm']:.3f} mm  "
-            f"{d['area_mil2']:6.1f} mil2  IPC-2221 {d['ipc2221_A_10C']}/{d['ipc2221_A_20C']}/{d['ipc2221_A_30C']} A @+10/20/30C"
+            f"  {d['layer']:<14} ({d['x']:7.2f},{d['y']:7.2f})  {d['A_per_mm']:5.2f} A/mm"
+            f"  w_eff {d['eff_width_mm']:.3f} mm  "
+            f"{d['area_mil2']:6.1f} mil2  IPC-2221"
+            f" {d['ipc2221_A_10C']}/{d['ipc2221_A_20C']}/{d['ipc2221_A_30C']} A @+10/20/30C"
         )
     out["hotspots"] = hot
 
@@ -903,7 +911,8 @@ def info(args):
     print(f"\ncopper stack (computed thickness {job.thickness:.3f} mm):")
     for c in job.copper:
         print(
-            f"  {c['name']:<16} {c['type']:<13} {'NEG' if c['negative'] else 'pos'}  t={c['t'] * 1000:6.2f} um  z={c['z']:.3f} mm"
+            f"  {c['name']:<16} {c['type']:<13} {'NEG' if c['negative'] else 'pos'}"
+            f"  t={c['t'] * 1000:6.2f} um  z={c['z']:.3f} mm"
         )
     print("drill layers:", [d[0] for d in job.drill_layers()])
     nets = job.nets
@@ -927,7 +936,8 @@ def pins(args):
             print(f"{ref}: not found")
             continue
         print(
-            f"{ref} ({c['side']}, {c['part']}, {c['props'].get('MFR_PN', '')}) at ({c['x']:.3f}, {c['y']:.3f})"
+            f"{ref} ({c['side']}, {c['part']}, {c['props'].get('MFR_PN', '')})"
+            f" at ({c['x']:.3f}, {c['y']:.3f})"
         )
         for p in sorted(c["pins"], key=lambda p: (len(p[0]), p[0])):
             print(f"  pin {p[0]:<4} ({p[1]:9.3f}, {p[2]:9.3f})  {p[3]}")

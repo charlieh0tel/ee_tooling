@@ -37,6 +37,4 @@ dev = [
 
 [tool.ruff.lint.per-file-ignores]
 # Standalone PEP 723 scripts with their own dependencies: not type-checked.
-# odb_current came from ee_stuff with its long lines and loose zips.
 "tools/**" = ["ANN"]
-"tools/odb_current/odb_current.py" = ["E501", "B007", "B905", "RUF005"]
