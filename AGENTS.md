@@ -70,10 +70,9 @@
 ## Rust
 
 - Use the latest stable Rust edition.
-- Always run `cargo fmt` after changes and before commits.
-- Always run `cargo clippy` after major changes and always before
-  commits.
-- Run tests with `cargo test`.
+- Always run `cargo fmt` after changes; `cargo clippy` after major
+  changes.
+- Before commits: `cargo fmt --check`, `cargo clippy`, `cargo test`.
 - Always use the narrowest visibility possible; avoid public by
   default.
 - What one published crate needs of another but a host does not is
