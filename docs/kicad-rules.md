@@ -102,16 +102,18 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 
 | Rule | Style | What |
 |---|---|---|
-| `Mounting hole ring` | Board finishing | a `MountingHole*` footprint's pad with a drill of 1 mm or more: annular ring 0.5 |
-| `Mounting hole plated` | Board finishing | that pad plated |
+| `Mounting hole plated` | Board finishing | a `MountingHole*` footprint's pad with a drill of 1 mm or more plated |
+| `Mounting hole vias` | Board finishing | between pads of one `MountingHole*` footprint (its stitching vias): JLCPCB's via hole-to-hole spacing, 0.2, not its pad spacing, 0.45 |
 | `Silkscreen text height` | Silkscreen | text at least 0.8 high: the house overrides JLCPCB's 1.0; the thickness stays JLCPCB's 0.15 |
 | `No right-angle bends` | Routing | joined segments at 91 degrees or more (180 straight, 135 a 45-degree bend) |
 | `Differential pair coupled` | Net classes, Routing | in a `*Z_DIFF` class: at most 5 mm uncoupled, 0.5 mm skew within the pair (house choices) |
 
-- KiCad measures the annular ring to the nearest hole, so stitching
-  vias within 0.5 mm of a mounting hole's drill fail
-  `Mounting hole ring`; it takes a footprint's concentric pads together
-  (KiCad's `..._Pad_TopBottom` passes).
+- The mounting hole's 0.5 mm ring is kicad-style-check's, which
+  measures the land: KiCad's annular width stops at the nearest hole, so
+  a mounting hole's stitching vias within 0.5 mm of its drill would fail
+  it.
+- `A.Reference == B.Reference` tells one footprint's pads (KiCad 10.0.8
+  compares `A.Parent` by reference too).
 - `track_angle` does not check a joint on a pad, nor one at a via.  It
   also reports a branch (a T) at 90 degrees, a segment doubling back (0)
   and a zero-length segment, and reports each joint twice.
@@ -184,7 +186,7 @@ warning is for the owner to judge; both fail `jlcpcb-release`.
 | kicad-style-check rule | KiCad's check | Redundant |
 |---|---|---|
 | Mounting holes plated | `Mounting hole plated` | yes |
-| Mounting holes with an annular ring of 0.5 | `Mounting hole ring` | no: KiCad's ring stops at the nearest hole, kicad-style-check's at the widest pad |
+| Mounting holes with an annular ring of 0.5 | none | no |
 | Mounting holes on a net | none | no |
 | Connection points on the grid | `endpoint_off_grid` | no: KiCad checks pins and wire ends, not labels, junctions or no-connects |
 | No pin without a wire or no-connect | `pin_not_connected` | no: to KiCad a pin on another pin, or on a label, is connected |
