@@ -3,6 +3,7 @@
 Reads jlcpcb.toml at the root of the git repository it is run in, and writes
 the board's production directory, YYYYMMDD-REV/, with:
   NAME-REV-jlcpcb.zip   Gerbers and drill files, for the PCB order
+  NAME-REV-odb.tgz      ODB++ job, for the record and ODB++ tools
   NAME-REV-bom.csv      BOM in JLCPCB's columns, for assembly
   NAME-REV-cpl.csv      placement in JLCPCB's columns, for assembly
   NAME-REV-source.tgz   the design files, PDFs and docs it was made from
@@ -50,6 +51,13 @@ PROJECT_FILES = ("fp-lib-table", "sym-lib-table")
 
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
+
+# ODB++ export: mm, as the Gerbers and drill; 6 decimals, as kicad-cli's
+# default 4.6 Gerbers, is KiCad's 1 nm unit, so nothing is rounded; a tgz of one
+# odb/ job directory, ODB++'s usual archive and the one tools/odb_current reads.
+ODB_UNITS = "mm"
+ODB_PRECISION = 6
+ODB_COMPRESSION = "tgz"
 
 
 @dataclass(frozen=True)
@@ -265,6 +273,23 @@ class Release:
             for f in sorted(g.iterdir()):
                 z.write(f, f.name)
 
+    def odb(self, out: Path) -> None:
+        self.kicad(
+            "pcb",
+            "export",
+            "odb",
+            "--units",
+            ODB_UNITS,
+            "--precision",
+            str(ODB_PRECISION),
+            "--compression",
+            ODB_COMPRESSION,
+            "--check-zones",
+            "-o",
+            str(out),
+            self.path(self.board.pcb),
+        )
+
     def bom(self, out: Path) -> dict[str, str]:
         """JLCPCB BOM, without not-fitted parts; return its designators' LCSC parts."""
         raw = self.work / "bom.csv"
@@ -393,6 +418,7 @@ def main() -> None:
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
         r.gerbers(dest / f"{base}-jlcpcb.zip")
+        r.odb(dest / f"{base}-odb.tgz")
         refs = r.bom(dest / f"{base}-bom.csv")
         r.cpl(dest / f"{base}-cpl.csv", refs, parts)
         r.source(dest / f"{base}-source.tgz", commit)

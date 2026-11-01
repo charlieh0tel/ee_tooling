@@ -1,6 +1,6 @@
 ---
 name: jlcpcb-release
-description: Build a KiCad board's JLCPCB release package (Gerber/drill zip, BOM, placement, source tgz) under its production directory, YYYYMMDD-REV/, and fix part rotations and offsets from JLCPCB's placement preview. Use when the user asks to release, package, or order a board from JLCPCB.
+description: Build a KiCad board's JLCPCB release package (Gerber/drill zip, ODB++, BOM, placement, source tgz) under its production directory, YYYYMMDD-REV/, and fix part rotations and offsets from JLCPCB's placement preview. Use when the user asks to release, package, or order a board from JLCPCB.
 ---
 
 # JLCPCB release
@@ -55,9 +55,15 @@ the board's directory and `sources` have no uncommitted changes
 | File | Use |
 |---|---|
 | `NAME-REV-jlcpcb.zip` | JLCPCB PCB order: Gerbers (each copper layer, mask, paste, silk, Edge.Cuts; Protel extensions, no X2, soldermask subtracted from silk) and Excellon drill in mm, PTH and NPTH separate |
+| `NAME-REV-odb.tgz` | ODB++ job (one `odb/` directory: `matrix/`, `steps/`, ...), mm, 6 decimals: for the record and for ODB++ tools such as `tools/odb_current`; not the order's upload |
 | `NAME-REV-bom.csv` | assembly BOM: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
 | `NAME-REV-cpl.csv` | assembly placement: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM |
 | `NAME-REV-source.tgz` | the design files, `sources`, schematic and board PDFs, and COMMIT |
+
+The Gerber zip is the PCB order's upload: JLCPCB's help forum says it
+takes Gerbers, not ODB++
+(https://jlc3dp.com/help/answers/detail/197-Can-ODB++-files-be-used-to-order,
+2023-12).  Check the order page before uploading the ODB++ instead.
 
 Commit the production directory after the order is placed, and do not
 change it afterwards.

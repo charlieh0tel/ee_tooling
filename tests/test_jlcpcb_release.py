@@ -2,7 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.jlcpcb_release import Board, Parts, jlcpcb_bom, jlcpcb_cpl, load_config, revision
+from ee_tooling.jlcpcb_release import (
+    Board,
+    Parts,
+    Release,
+    jlcpcb_bom,
+    jlcpcb_cpl,
+    load_config,
+    revision,
+)
 
 CONFIG = """
 [[board]]
@@ -139,3 +147,28 @@ def test_board_is_frozen() -> None:
     b = Board("x", Path("d"), ("F.Cu",), Path("p"), ())
     with pytest.raises(AttributeError):
         b.name = "y"  # type: ignore[misc]
+
+
+def test_odb_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(Release, "kicad", lambda self, *args: calls.append(args))
+    r = Release(tmp_path, load_config(CONFIG)["jig"], tmp_path / "work")
+    out = tmp_path / "jig-1-odb.tgz"
+    r.odb(out)
+    assert calls == [
+        (
+            "pcb",
+            "export",
+            "odb",
+            "--units",
+            "mm",
+            "--precision",
+            "6",
+            "--compression",
+            "tgz",
+            "--check-zones",
+            "-o",
+            str(out),
+            str(tmp_path / "hardware/jig/jig.kicad_pcb"),
+        )
+    ]
