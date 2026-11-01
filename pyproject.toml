@@ -3,7 +3,8 @@ name = "ee-tooling"
 version = "0.1.0"
 description = "Tools, agent skills and house style for KiCad boards made at JLCPCB"
 readme = "README.md"
-license = "BSD-3-Clause"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 authors = [
     { name = "Christopher Hoover", email = "ch@murgatroid.com" }
 ]

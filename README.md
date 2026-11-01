@@ -2,6 +2,8 @@
 
 Tools, agent skills and house style for KiCad boards made at JLCPCB.
 
+Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
+
 | Path | What |
 |---|---|
 | `src/ee_tooling/jlcpcb_release.py` | `jlcpcb-release`: a board's JLCPCB order package from its KiCad files |
