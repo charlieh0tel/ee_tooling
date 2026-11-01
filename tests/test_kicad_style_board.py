@@ -90,7 +90,7 @@ def test_unlocked_zone() -> None:
 )
 def test_zone_not_past_the_edge(outline: tuple[float, float, float, float]) -> None:
     (found,) = problems(EDGE, zone(*outline))
-    assert found.startswith("zone GND on F.Cu: outline on the board at ")
+    assert found.startswith("note: zone GND on F.Cu: outline on the board at ")
 
 
 def test_zone_edge_in_a_slot() -> None:
@@ -197,6 +197,10 @@ def test_command(tmp_path: Path) -> None:
     assert run(good).returncode == 0
     r = run(bad)
     assert (r.returncode, r.stdout) == (1, f"{bad}: zone GND on F.Cu: not locked\n")
+    noted = tmp_path / "noted.kicad_pcb"
+    noted.write_text(board(EDGE, zone(5, -2, 52, 32)))
+    r = run(noted)
+    assert (r.returncode, r.stdout.startswith(f"{noted}: note: zone GND")) == (0, True)
     r = run(other)
     assert r.returncode == 2
     assert "not a .kicad_sch or .kicad_pcb" in r.stderr

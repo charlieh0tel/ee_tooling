@@ -86,14 +86,16 @@ choices are not checked.
 ### Zones
 
 - Pours are copper zones, never filled shapes on a copper layer.  A
-  zone's outline runs past the board's edge on every side, so the
-  board's edge clearance, not the outline, bounds the fill.
+  zone's outline usually runs past the board's edge on every side, so
+  the board's edge clearance, not the outline, bounds the fill; not a
+  hard rule (a panel's breakaway tabs, a split plane).
 - Zones are locked.
 
 `kicad-style-check BOARD.kicad_pcb` checks a board's zones: no filled
-graphic shape on a copper layer; every zone locked; every copper zone's
-outline off the board all the way round (past the edge, or in a slot or
-cutout; along the edge counts as on it).  Keepouts are checked only for
+graphic shape on a copper layer; every zone locked.  A copper zone whose
+outline lies on the board anywhere (not past the edge, nor in a slot or
+cutout; along the edge counts as on it) is reported as a `note:`, which
+does not fail the check.  Keepouts are checked only for
 the lock.  Edge.Cuts, connectors and modules are not: when their places
 are decided is the owner's call.
 

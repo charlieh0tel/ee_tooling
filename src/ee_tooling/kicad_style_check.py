@@ -1,7 +1,8 @@
 """Check KiCad schematics and boards against the house style.
 
 kicad-style-check FILE...: each problem on a line, `FILE: problem`.
-Exits 1 if there are problems, 2 if a file cannot be read; an unreadable
+Exits 1 if there are problems (a line starting `note: ` is for the owner
+to judge, and does not count), 2 if a file cannot be read; an unreadable
 file is never clean.  A .kicad_pcb is checked by kicad_style_board.py's
 zone rules; a .kicad_sch by the drawing rules (docs/kicad-style.md,
 Schematic drawing):
@@ -23,7 +24,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ee_tooling.kicad_style_board import check_board
+from ee_tooling.kicad_style_board import NOTE, check_board
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
 GRID = 2.54  # mm (docs/kicad-style.md)
@@ -313,5 +314,5 @@ def main() -> None:
             continue
         for line in problems:
             print(f"{path}: {line}")
-        found += len(problems)
+        found += sum(not line.startswith(NOTE) for line in problems)
     sys.exit(2 if unreadable else 1 if found else 0)

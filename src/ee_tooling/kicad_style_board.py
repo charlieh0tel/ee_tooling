@@ -1,7 +1,8 @@
 """A KiCad board against the house style's zone rules (docs/kicad-style.md,
 Board layout): pours are copper zones, never filled shapes on a copper
-layer; a copper zone's outline lies off the board all the way round, past
-its edge (or in a slot or cutout); every zone is locked.
+layer; every zone is locked.  A copper zone whose outline lies on the
+board, rather than past its edge (or in a slot or cutout), is a note: the
+whole-board fill is the usual rule, not a hard one.
 """
 
 import itertools
@@ -24,6 +25,11 @@ STEP = 0.25
 # A point this close to the board's edge is on it, mm: a zone's outline
 # along the edge is not past it.
 ON_EDGE = 0.001
+
+
+# A finding for the owner to judge, not a broken rule: printed, but not
+# counted in kicad-style-check's exit status.
+NOTE = "note: "
 
 
 class BoardError(ValueError):
@@ -191,5 +197,7 @@ def check_board(board: Expression) -> list[str]:
             None,
         )
         if inside:
-            problems.append(f"{what}: outline on the board at {where(inside)}, not past its edge")
+            problems.append(
+                f"{NOTE}{what}: outline on the board at {where(inside)}, not past its edge"
+            )
     return problems
