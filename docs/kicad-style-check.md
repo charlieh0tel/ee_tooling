@@ -24,7 +24,8 @@ The thresholds below are named constants in each module.
 - A junction on every join of three or more, and nowhere else.
 - No-connects on pins (hidden pins count); no zero-length or
   overlapping wires.
-- Manufacturer, MPN and LCSC on every part in the BOM and not DNP.
+- Manufacturer, MPN and LCSC on every part in the BOM.  On a DNP part,
+  this and the capacitor rule below are notes, not problems.
 - Every capacitor's value (`C` and a number), or a field shown on the
   sheet (not hidden), showing a dielectric (C0G, NP0, X5R, X7R ...) or a
   type (Al, electrolytic, Ta, tantalum, polymer, film, mica), and a

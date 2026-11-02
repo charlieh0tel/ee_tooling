@@ -27,10 +27,11 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   KiCad pairs them, `NAME_P`/`NAME_N` or `NAME+`/`NAME-` (USB's `D+`/`D-`).
 - A sense resistor gets a Kelvin connection: its sense nets leave its
   pads separately from the current path, as a differential pair.
-- Reference and value text level and clear of wires.  Every bought part
-  carries Manufacturer, MPN and LCSC fields; every capacitor shows its
-  dielectric or type and its working voltage ("50V X7R", "25V
-  tantalum"), in its value or a field shown on the sheet.
+- Reference and value text level and clear of wires.  Every part in
+  the BOM, DNP included, carries Manufacturer, MPN and LCSC fields;
+  every capacitor shows its dielectric or type and its working voltage
+  ("50V X7R", "25V tantalum"), in its value or a field shown on the
+  sheet.
 
 `kicad-style-check` checks these rules (`docs/kicad-style-check.md`).
 
