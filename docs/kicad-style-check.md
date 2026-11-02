@@ -21,10 +21,13 @@ files; `docs/kicad-rules.md` lists the overlap.
 ## Schematic (.kicad_sch): kicad_style_check.py
 
 - Connection points (wire ends, junctions, no-connects, labels, pins) on
-  the grid: `--grid`, 2.54 mm.
+  the grid: `--grid`, 1.27 mm (`GRID`).  Each library symbol's pins a
+  multiple of 2.54 mm (`SYMBOL_GRID`) from its first pin: KiCad's own
+  two-pin symbols put theirs at 3.81 mm from their origin.  A note, since
+  a few of KiCad's own fail it.
 - No pin touching another part's pin, no power symbol on a pin, no pin
   on a wire's run, no pin without a wire or no-connect.
-- A pin's wire at least one grid unit long, and its only wire.
+- A pin's wire at least 2.54 mm long (`PIN_WIRE`), and its only wire.
 - A junction on every join of three or more, and nowhere else.
 - No-connects on pins (hidden pins count); no zero-length or
   overlapping wires.
@@ -176,6 +179,7 @@ item.  Ids and subject fields are part of the semver API.
 | Checker | Id | Subject | Finding |
 |---|---|---|---|
 | Schematic | `off-grid` | `at` | a connection point off the grid |
+| Schematic | `symbol-pin-off-grid` | `pin` | a library symbol's pin, `Lib:Name pin 2`, off the symbol grid from its first pin (note) |
 | Schematic | `power-on-pin` | `pins` | a power symbol on a pin |
 | Schematic | `pins-touching` | `pins` | pins of two parts touching |
 | Schematic | `pin-on-wire` | `pins` | a pin on a wire's run |

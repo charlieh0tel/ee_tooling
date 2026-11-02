@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.kicad_style_check import Point, SchematicError, check, read, transform
+from ee_tooling.kicad_style_check import GRID, Point, SchematicError, check, read, transform
 from ee_tooling.sexpr import parse
 
 # A two-pin part with pins 5.08 mm above (1) and below (2) its origin; a
@@ -93,7 +93,7 @@ CLEAN = (
 )
 
 
-def problems(*items: str, grid: float = 2.54) -> list[str]:
+def problems(*items: str, grid: float = GRID) -> list[str]:
     return [str(f) for f in check(read(parse(schematic(*items))), grid).findings]
 
 
@@ -106,7 +106,7 @@ def test_clean() -> None:
     [
         (
             (wire((101.6, 101.6), (101.6, 102.6)),),
-            "off the 2.54 mm grid: wire end at (101.6, 102.6)",
+            "off the 1.27 mm grid: wire end at (101.6, 102.6)",
         ),
         (
             (symbol("Device:R", "R2", 50.8, 60.96),),
@@ -140,6 +140,31 @@ def test_clean() -> None:
 )
 def test_drawing_rules(added: tuple[str, ...], expected: str) -> None:
     assert expected in problems(*CLEAN, *added)
+
+
+def test_half_grid() -> None:
+    """A connection on the 1.27 mm grid, off 2.54 mm, is on the grid."""
+    assert not [p for p in problems(*CLEAN, wire((101.6, 101.6), (101.6, 102.87))) if "grid" in p]
+
+
+def test_library_pin_off_grid() -> None:
+    library = LIBRARY.replace("(at -5.08 0 0)", "(at -3.81 0 0)", 1)
+    checked = check(read(parse(f"(kicad_sch {library})")))
+    found = [str(f) for f in checked.findings if "library" in f.message]
+    assert found == [
+        "note: library symbol 'Dual:Gate' pin 1 at (-3.81, 0)"
+        " not a multiple of 2.54 mm from its first pin at (0, 10.16)"
+    ]
+
+
+def test_library_pins_half_grid_off_origin() -> None:
+    """KiCad's Device:R puts its pins at +-3.81 mm: on the grid from each
+    other."""
+    library = LIBRARY.replace("(at 0 5.08 270)", "(at 0 3.81 270)", 1).replace(
+        "(at 0 -5.08 90)", "(at 0 -3.81 90)", 1
+    )
+    checked = check(read(parse(f"(kicad_sch {library})")))
+    assert not [f for f in checked.findings if "library" in f.message]
 
 
 def test_pin_wire_shorter_than_grid() -> None:

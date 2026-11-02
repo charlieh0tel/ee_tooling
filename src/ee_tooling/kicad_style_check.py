@@ -15,9 +15,10 @@ By the file's suffix:
   routing (kicad_style_routing.py), the last with placement.toml beside
   it if there is one (placement.py);
 - .kicad_sch: the drawing rules (docs/kicad-style.md, Schematic drawing):
-connection points on the grid; no pin touching another part's pin, no
-power symbol on a pin, no pin on a wire's run; a wire off every pin, at
-least one grid unit long and the pin's only one; a junction on every
+connection points on the grid; library symbols' pins on the symbol
+grid, from each other; no pin touching another part's pin, no power symbol on a pin, no
+pin on a wire's run; a wire off every pin, at least PIN_WIRE long and
+the pin's only one; a junction on every
 join of three or more and nowhere else; no-connects on pins; no
 zero-length or overlapping wires; Manufacturer, MPN and LCSC on every
 part in the BOM; every capacitor's value showing its dielectric or type,
@@ -44,7 +45,14 @@ from ee_tooling.placement import Rules
 from ee_tooling.placement_kicad import RULES
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
-GRID = 2.54  # mm (docs/kicad-style.md)
+# The schematic's connection grid, KiCad's 50 mils (eeschema manual,
+# Schematic Editor, Grids), and a library symbol's pin grid, 100 mils
+# (KiCad Library Convention S4.1), mm.
+GRID = 1.27
+SYMBOL_GRID = 2.54
+# A pin's wire is at least this long before it joins anything, mm
+# (docs/kicad-style.md).
+PIN_WIRE = 2.54
 # Coordinates are compared rounded to this many places (KiCad's files keep 4).
 PLACES = 3
 # A coordinate this close to a grid line is on it, mm.
@@ -96,6 +104,8 @@ class Schematic:
     no_connects: list[Point] = field(default_factory=list)
     labels: list[tuple[str, Point]] = field(default_factory=list)
     pins: list[Pin] = field(default_factory=list)
+    # Each library symbol's pins in its own axes: (lib_id, number, point).
+    library_pins: list[tuple[str, str, Point]] = field(default_factory=list)
     parts: dict[str, Part] = field(default_factory=dict)  # BOM parts, DNP too, by reference
 
 
@@ -168,6 +178,12 @@ def read(sheet: Expression) -> Schematic:
         raise SchematicError("not a kicad_sch")
     s = Schematic()
     libraries = {str(x[1]): x for x in children(child(sheet, "lib_symbols") or [], "symbol")}
+    s.library_pins = [
+        (name, str((child(p, "number") or ["", "?"])[1]), point(*at(p)[:2]))
+        for name, library in libraries.items()
+        for u in children(library, "symbol")
+        for p in children(u, "pin")
+    ]
     for w in children(sheet, "wire"):
         xy = children(child(w, "pts") or [], "xy")
         if len(xy) != 2:
@@ -266,6 +282,22 @@ def check(s: Schematic, grid: float = GRID) -> Checked:
         for what, p in dict.fromkeys(points)
         if off_grid(p, grid)
     ]
+    # KiCad's own two-pin symbols put their pins at 3.81 mm, half a grid
+    # off their origin, so the pins are compared with the symbol's first.
+    # A note: a few of KiCad's own (Jumper:SolderJumper_3_Bridged12) fail.
+    first: dict[str, Point] = {}
+    for name, pin_number, p in s.library_pins:
+        o = first.setdefault(name, p)
+        if off_grid((p[0] - o[0], p[1] - o[1]), SYMBOL_GRID):
+            problems.append(
+                found(
+                    "symbol-pin-off-grid",
+                    f"library symbol {name!r} pin {pin_number} at {where(p)}"
+                    f" not a multiple of {SYMBOL_GRID:g} mm from its first pin at {where(o)}",
+                    note=True,
+                    pin=f"{name} pin {pin_number}",
+                )
+            )
 
     for p, here in pins_at.items():
         powered = [x for x in here if x.power]
@@ -298,11 +330,11 @@ def check(s: Schematic, grid: float = GRID) -> Checked:
                 found("wires-join-at-pin", f"wires join at a pin: {named} at {where(p)}", pins=pins)
             )
         for w in s.wires:
-            if p in w and w[0] != w[1] and math.dist(*w) < grid - GRID_TOLERANCE:
+            if p in w and w[0] != w[1] and math.dist(*w) < PIN_WIRE - GRID_TOLERANCE:
                 problems.append(
                     found(
                         "pin-wire-short",
-                        f"pin wire shorter than {grid:g} mm: {named} at {where(p)}",
+                        f"pin wire shorter than {PIN_WIRE:g} mm: {named} at {where(p)}",
                         pins=pins,
                     )
                 )

@@ -21,6 +21,7 @@ Subject = str | frozenset[str] | Point
 # The schematic rules: each id and its subject's fields.
 SCHEMATIC_RULES = {
     "off-grid": ("at",),
+    "symbol-pin-off-grid": ("pin",),
     "power-on-pin": ("pins",),
     "pins-touching": ("pins",),
     "pin-on-wire": ("pins",),
