@@ -30,7 +30,7 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 - Reference and value text level and clear of wires.  Every bought part
   carries Manufacturer, MPN and LCSC fields; every capacitor shows its
   dielectric or type and its working voltage ("50V X7R", "25V
-  tantalum").
+  tantalum"), in its value or a field shown on the sheet.
 
 `kicad-style-check` checks these rules (`docs/kicad-style-check.md`).
 

@@ -25,9 +25,10 @@ The thresholds below are named constants in each module.
 - No-connects on pins (hidden pins count); no zero-length or
   overlapping wires.
 - Manufacturer, MPN and LCSC on every part in the BOM and not DNP.
-- Every capacitor's value (`C` and a number) showing a dielectric (C0G,
-  NP0, X5R, X7R ...) or a type (Al, electrolytic, Ta, tantalum, polymer,
-  film, mica), and a voltage.
+- Every capacitor's value (`C` and a number), or a field shown on the
+  sheet (not hidden), showing a dielectric (C0G, NP0, X5R, X7R ...) or a
+  type (Al, electrolytic, Ta, tantalum, polymer, film, mica), and a
+  voltage.
 
 Pins are placed as KiCad does: rotated counterclockwise, then mirrored,
 in the library's y-up axes, then y flipped.  Labels, text placement and

@@ -78,6 +78,7 @@ class Part:
     reference: str
     value: str
     fields: dict[str, str]  # the instance's properties
+    shown: str  # the Value and every field shown on the sheet, joined
 
 
 @dataclass
@@ -113,6 +114,19 @@ def flag(expression: Expression, keyword: str) -> bool:
 
 def properties(expression: Expression) -> dict[str, str]:
     return {str(p[1]): str(p[2]) for p in children(expression, "property")}
+
+
+def shown(expression: Expression) -> str:
+    """The Value and every property not hidden, joined by spaces.  KiCad 9
+    and later hide a property with its own (hide yes), KiCad 8 in its
+    (effects)."""
+    texts = [
+        str(p[2])
+        for p in children(expression, "property")
+        if p[1] == "Value"
+        or not (flag(p, "hide") or flag(child(p, "effects") or ["effects"], "hide"))
+    ]
+    return " ".join(texts)
 
 
 def transform(origin: Point, rotation: float, mirror: str | None, pin: Point) -> Point:
@@ -181,7 +195,7 @@ def read(sheet: Expression) -> Schematic:
             s.pins.append(Pin(reference, number_text, sheet_point, power, hidden))
         bought = not power and flag(sym, "in_bom") and not flag(sym, "dnp")
         if bought and not reference.startswith("#"):
-            s.parts[reference] = Part(reference, fields.get("Value", ""), fields)
+            s.parts[reference] = Part(reference, fields.get("Value", ""), fields, shown(sym))
     return s
 
 
@@ -288,11 +302,11 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
         if missing:
             problems.append(f"{part.reference}: no {', '.join(missing)}")
         if CAPACITOR.match(part.reference) and not (
-            DIELECTRIC.search(part.value) and VOLTAGE.search(part.value)
+            DIELECTRIC.search(part.shown) and VOLTAGE.search(part.shown)
         ):
             problems.append(
-                f"{part.reference}: value {part.value!r}"
-                " does not show dielectric or type, and voltage"
+                f"{part.reference}: value {part.value!r} and its shown fields"
+                " do not show dielectric or type, and voltage"
             )
     return problems
 

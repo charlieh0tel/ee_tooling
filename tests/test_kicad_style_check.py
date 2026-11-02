@@ -46,9 +46,15 @@ def symbol(
     fields: dict[str, str] | None = None,
     in_bom: bool = True,
     dnp: bool = False,
+    hidden: dict[str, str] | None = None,
 ) -> str:
+    """A placed symbol; hidden maps a field to how it is hidden, KiCad 9's
+    (hide yes) or KiCad 8's (effects ... (hide yes))."""
     properties = {"Reference": reference, "Value": value, **(BOUGHT if fields is None else fields)}
-    text = "".join(f' (property "{k}" "{v}" (at 0 0 0))' for k, v in properties.items())
+    text = "".join(
+        f' (property "{k}" "{v}" (at 0 0 0){(hidden or {}).get(k, "")})'
+        for k, v in properties.items()
+    )
     flip = f" (mirror {mirror})" if mirror else ""
     return (
         f'(symbol (lib_id "{lib_id}") (at {x} {y} {rotation}){flip} (unit {unit})'
@@ -182,8 +188,42 @@ def test_capacitor_value(value: str, ok: bool) -> None:
     ]
     found = [p for p in problems(*items) if p.startswith("C1:")]
     assert found == (
-        [] if ok else [f"C1: value {value!r} does not show dielectric or type, and voltage"]
+        []
+        if ok
+        else [
+            f"C1: value {value!r} and its shown fields do not show dielectric or type, and voltage"
+        ]
     )
+
+
+HIDE_9 = " (hide yes)"
+HIDE_8 = " (effects (font (size 1.27 1.27)) (hide yes))"
+
+
+@pytest.mark.parametrize(
+    ("rating", "hide", "ok"),
+    [
+        ("50V X7R", "", True),
+        ("50V", "", False),
+        ("50V X7R", HIDE_9, False),
+        ("50V X7R", HIDE_8, False),
+    ],
+)
+def test_capacitor_shown_field(rating: str, hide: str, ok: bool) -> None:
+    """A capacitor's dielectric and voltage may be in any field shown on
+    the sheet, not one hidden."""
+    fields = {**BOUGHT, "Rating": rating}
+    c1 = symbol("Device:C", "C1", 76.2, 50.8, value="100n", fields=fields, hidden={"Rating": hide})
+    items = [c1 if s.startswith('(symbol (lib_id "Device:C"') else s for s in CLEAN]
+    found = [p for p in problems(*items) if p.startswith("C1:")]
+    assert bool(found) != ok
+
+
+def test_capacitor_hidden_value_counts() -> None:
+    """The Value counts even when hidden, as before."""
+    c1 = symbol("Device:C", "C1", 76.2, 50.8, value="100n 50V X7R", hidden={"Value": HIDE_9})
+    items = [c1 if s.startswith('(symbol (lib_id "Device:C"') else s for s in CLEAN]
+    assert not [p for p in problems(*items) if p.startswith("C1:")]
 
 
 # A library pin at (2.54, 5.08), y up, on a symbol at (100, 100): where it
