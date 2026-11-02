@@ -99,13 +99,10 @@
 	(constraint text_thickness (min 0.15mm)))
 
 # Legend, pad to silkscreen: 0.15 mm, to a pad with copper (not a paste
-# aperture).  A footprint's own silkscreen graphics are its library's and
-# are not edited (docs/kicad-style.md, Silkscreen), so they are held only
-# off their own pads (Board Setup's silk clearance); its reference text is
-# held off by 0.15 mm like anything else.  KiCad measures this on the mask
-# layer, so a silkscreen layer clause would never match.
+# aperture).  KiCad measures this on the mask layer, so a silkscreen layer
+# clause would never match.
 (rule "JLCPCB silkscreen to pad"
-	(condition "B.Type == 'Pad' && (B.existsOnLayer('F.Cu') || B.existsOnLayer('B.Cu')) && !(A.Type == 'Graphic' && A.Parent == B.Parent)")
+	(condition "B.Type == 'Pad' && (B.existsOnLayer('F.Cu') || B.existsOnLayer('B.Cu'))")
 	(constraint silk_clearance (min 0.15mm)))
 
 # --- JLCPCB price ----------------------------------------------------------
@@ -141,6 +138,14 @@
 (rule "Mounting hole vias"
 	(condition "A.Type == 'Pad' && B.Type == 'Pad' && A.Reference == B.Reference && A.memberOfFootprint('*:MountingHole*')")
 	(constraint hole_to_hole (min 0.2mm)))
+
+# Silkscreen: a footprint's own silkscreen graphics are its library's and
+# are not edited (docs/kicad-style.md, Silkscreen), so they take no
+# clearance to their own pads.  Its reference text is held off by JLCPCB's
+# 0.15 mm like anything else.
+(rule "Footprint silkscreen to its own pads"
+	(condition "A.Type == 'Graphic' && B.Type == 'Pad' && A.Parent == B.Parent")
+	(constraint silk_clearance (min 0mm)))
 
 # Silkscreen: text at least 0.8 mm high, overriding JLCPCB's stated
 # 1.0 mm.  The thickness stays JLCPCB's 0.15 mm (JLCPCB silkscreen text):
