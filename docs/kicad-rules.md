@@ -158,7 +158,7 @@ MIPI, and a pair's uncoupled length, for want of a citable figure.
 
 `erc_severities.json` sets every ERC check KiCad 10.0.8 has
 (`eeschema/erc/erc_item.cpp`; defaults, `erc_settings.cpp`), and the
-connection grid, 100 mils (2.54 mm, `docs/kicad-style.md`), which
+connection grid, 50 mils (1.27 mm, `docs/kicad-style.md`), which
 `endpoint_off_grid` measures against (eeschema manual, Electrical Rules
 Check).  `pin_to_pin` at `ignore` turns off the pin conflict map's
 warnings and errors; at anything else they stay as the map has them.
@@ -175,7 +175,7 @@ warning is for the owner to judge; both fail `jlcpcb-release`.
 | `different_unit_net` | error | error | a mistake |
 | `duplicate_reference` | error | error | a mistake |
 | `duplicate_sheet_names` | error | error | a mistake |
-| `endpoint_off_grid` | warning | error | style: every connection point on the 2.54 mm grid |
+| `endpoint_off_grid` | warning | error | style: every connection point on the 1.27 mm grid |
 | `extra_units` | error | error | a mistake |
 | `field_name_whitespace` | warning | warning | may be meant |
 | `footprint_filter` | ignore | ignore | a part's footprint is chosen for its LCSC part, often outside the symbol's filters |
