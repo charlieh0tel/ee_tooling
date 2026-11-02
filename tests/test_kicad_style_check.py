@@ -160,7 +160,17 @@ def test_bom_fields() -> None:
         symbol("Device:R", "R6", 177.8, 50.8, fields={}, in_bom=False),
     ]
     fields = [p for p in problems(*items) if ": no " in p]
-    assert fields == ["R4: no Manufacturer, LCSC"]
+    assert fields == ["R4: no Manufacturer, LCSC", "note: R5 (DNP): no Manufacturer, MPN, LCSC"]
+
+
+def test_dnp_capacitor_is_a_note() -> None:
+    c1 = symbol("Device:C", "C1", 76.2, 50.8, value="100n", dnp=True)
+    items = [c1 if s.startswith('(symbol (lib_id "Device:C"') else s for s in CLEAN]
+    found = [p for p in problems(*items) if "C1" in p]
+    assert found == [
+        "note: C1 (DNP): value '100n' and its shown fields"
+        " do not show dielectric or type, and voltage"
+    ]
 
 
 @pytest.mark.parametrize(
