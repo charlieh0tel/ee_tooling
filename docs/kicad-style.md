@@ -116,7 +116,7 @@ rules it can (`docs/kicad-style-check.md`).
 
 ### Board finishing
 
-- Stitching vias around the board's edge.
+- Stitching vias around the board's edge (`stitch`, `docs/stitch.md`).
 - Mounting holes plated, with an annular ring.  A hole tied to ground
   needs no vias of its own.
 
