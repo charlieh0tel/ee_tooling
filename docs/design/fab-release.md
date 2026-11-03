@@ -40,9 +40,6 @@ ipc_class = 2                    # IPC-A-600 / IPC-6012 class
 base_material = "FR-4"
 tg = 150                         # deg C, minimum
 electrical_test = "100% netlist test per IPC-9252"
-
-[board.jlcpcb]                   # the profile's options; optional
-no_extra_cost_vias = true        # the price rules; default true
 ```
 
 - The first board is the default, as now.
@@ -83,8 +80,7 @@ no_extra_cost_vias = true        # the price rules; default true
   LCSC Part #; DNP left out) and CPL `NAME-REV-jlcpcb-cpl.csv`, with
   `parts.toml`'s rotations and offsets.
 - IPC-2581's distributor: the `LCSC` field, distributor "LCSC".
-- Rules: `rules/jlcpcb.kicad_dru` in sections (limits, price, house),
-  the price section left out when `no_extra_cost_vias = false`, and
+- Rules: `rules/jlcpcb.kicad_dru` in sections (limits, house), and
   `rules/jlcpcb_board_setup.json`, the Board Setup minimums.
 - Its `[board.fab]` house values for `adopt`.
 
@@ -160,8 +156,8 @@ class Profile(Protocol):
 ## Rules
 
 - `fab-release` runs DRC on a scratch copy of the project whose
-  `.kicad_dru` is the profile's rules, rendered with the board's
-  options, then the board's own rules, which win.  So a release is always
+  `.kicad_dru` is the profile's rules, then the board's own rules,
+  which win.  So a release is always
   checked against the current rules, and a change to ee_tooling's rules
   never blocks a release just for being newer.  A rule a board breaks
   fails DRC as any other.
@@ -219,8 +215,8 @@ Breaking changes:
 6. A board with no stackup is refused (now a warning).
 7. A board without a stackup table on User.Drawings matching its stackup
    is refused.
-8. DRC runs with the profile's rules, the no-extra-cost via rules
-   included: a board clean today may not be.
+8. DRC runs with the profile's current rules: a board clean today may
+   not be.
 9. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
    `NAME-REV-jlcpcb-bom.csv`.
 10. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
@@ -259,12 +255,13 @@ Then one PR, breaking, merged as one:
 9. User.Drawings in the Gerbers, the map and the board PDF; the
    documents in the Gerber zip.
 10. Refuse a board without a matching stackup table.
-11. The rules in sections, the price section an option; DRC on a scratch
+11. The rules in sections; DRC on a scratch
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
 12. Release 0.2.0; tag after CI.
 
-Later, not breaking: `fab-setup`; the fab notes.
+Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
+rules.
 
 ## Adversarial review
 
@@ -291,11 +288,9 @@ Later, not breaking: `fab-setup`; the fab notes.
 
 ## Open
 
-1. `no_extra_cost_vias`: an option, or always on with a board's own rule
-   overriding it?
-2. Should `adopt` install `erc_severities.json` in the same PR?
-3. Tag `v0.1.0` on `main` before the merge, as the pin for boards not
+1. Should `adopt` install `erc_severities.json` in the same PR?
+2. Tag `v0.1.0` on `main` before the merge, as the pin for boards not
    yet migrated?
-4. A BOM part with no LCSC number: refuse the release, or warn as now?
-5. Does the house BOM include DNP parts, marked (proposed), or leave them
+3. A BOM part with no LCSC number: refuse the release, or warn as now?
+4. Does the house BOM include DNP parts, marked (proposed), or leave them
    out?
