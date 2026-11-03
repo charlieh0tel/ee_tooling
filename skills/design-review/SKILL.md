@@ -119,7 +119,23 @@ Punch list: `templates/punch-list.md`, derived from the report, Must
 (Blocker, Major), Should (Minor), Could (Note), Nits (cosmetic
 whatever the severity), Open questions.  Design actions only: no
 bring-up or firmware to-do items; a firmware consequence is a finding
-tagged FIRMWARE.  `[ ]` open, `[x]` done, `[-]` waived with the reason.
+tagged FIRMWARE.  `[ ]` open, `[x]` done; dropped and waived items are
+deleted, the Adjudication table and `decisions.md` being the record.
+
+- The header names the reviewed commit, and says whether the layout in
+  the repository is a previous generation (its items are then rules
+  for the re-layout).
+- Each item stands alone, readable without the report, written for an
+  expert: what the circuit does, what is wrong with the number that
+  matters, and the action, in two to five lines, ending with the
+  finding IDs in parentheses.
+- A tier of more than about eight items is grouped under short
+  unnumbered headings (decisions that gate the layout, schematic,
+  layout, marking and documentation).  Must leads with a "Decide ..."
+  item for each open question whose answer gates work.
+- Open questions are grouped by the tier of answering (Must, Should,
+  open), a checkbox each, with the same background: what is there,
+  why the files cannot settle it, and what the answer must contain.
 
 ## 9. Adjudication
 
