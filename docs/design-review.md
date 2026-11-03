@@ -13,6 +13,7 @@ uv run design-review erc erc.json                   # ERC summary, stdout
 uv run design-review pages NAME.pdf                 # PDF page -> sheet, stdout
 uv run design-review pairs NAME.kicad_pcb CAN_H,CAN_L  # pair routing gaps
 uv run design-review findings FILE.md               # lint; exit 1 on problems
+uv run design-review punch-list REPORT.md PUNCH.md  # check; exit 1 on problems
 ```
 
 ## evidence: review_evidence.py
@@ -89,3 +90,17 @@ Evidence naming a KiCad file, refdes, net path, coordinate pair, page,
 line, source file (`.zen`, `.py`) or evidence file; in a reviewer's
 table, a Consequence of 10 characters or more.  Problems print as
 `FILE:LINE: problem`; line 0 is the file.
+
+## punch-list: review_punch.py
+
+Checks a punch list against its report: every finding ID the punch
+list cites is in the report's findings tables (ID and Severity
+columns); every finding at Blocker or Major, after the Adjudication
+table's regrading (`Minor -> Major`), is cited on the punch list
+unless dropped, waived or struck (its Recommendation cell, the
+Adjudication table, or `~~` around its ID); every question number
+cited (`question 7`, `questions 7 and 8`) is in the report's
+Unresolved questions.  An ID is a token `PREFIX-N` whose prefix one of
+the report's IDs has, so a part such as SOT-23 is not one.  Problems
+print as `FILE:LINE: problem`, against the punch list or the report.
+
