@@ -20,6 +20,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
 | `docs/adopting.md` | taking ee_tooling into a board repository |
+| `docs/design/` | proposals under review, before code |
 | `adopt`, `src/ee_tooling/adopt.py` | `ee-tooling-adopt`: puts ee_tooling in place in a board repository, run from its submodule |
 | `src/ee_tooling/templates/` | the files `ee-tooling-adopt` writes |
 
