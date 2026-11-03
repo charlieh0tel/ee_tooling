@@ -21,6 +21,7 @@ from ee_tooling.kicad_style_board import (
     outline_points,
     xy,
 )
+from ee_tooling.kicad_style_check import flag
 from ee_tooling.kicad_style_routing import text
 from ee_tooling.review_netlist import refdes_key
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
@@ -142,6 +143,13 @@ def placed(footprint: Expression) -> Placed:
         through_hole=any(len(p) > 2 and p[2] == "thru_hole" for p in children(footprint, "pad")),
         dnp=any(isinstance(a, Atom) and a == "dnp" for a in attributes),
     )
+
+
+def on_silk(item: Expression) -> bool:
+    """A footprint's text or property printed on a silkscreen: on a silk
+    layer and not hidden, by (hide yes) or an (effects ... hide)."""
+    hidden = flag(item, "hide") or flag(child(item, "effects") or [], "hide")
+    return text(item, "layer") in SILK and not hidden
 
 
 def summary(path: Path) -> str:
@@ -319,8 +327,11 @@ def summary(path: Path) -> str:
     out.append("\n## Silkscreen text\n")
     for fp in children(board, "footprint"):
         ref = placed(fp).ref
+        for prop in children(fp, "property"):
+            if on_silk(prop) and len(prop) > 2 and not isinstance(prop[2], Atom):
+                out.append(f"- {prop[1]} {prop[2]!r} on {ref}")
         for t in children(fp, "fp_text"):
-            if text(t, "layer") in SILK and len(t) > 2 and not isinstance(t[2], Atom):
+            if on_silk(t) and len(t) > 2 and not isinstance(t[2], Atom):
                 out.append(f"- {t[2]!r} on {ref}")
     for t in children(board, "gr_text"):
         if text(t, "layer") in SILK and len(t) > 1 and not isinstance(t[1], Atom):

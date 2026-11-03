@@ -53,7 +53,9 @@ and size histogram, every zone (net, layers, priority, connection,
 fill, bounding box; keepouts with their rules), the routing of every
 power net (`POWER_NET`) and the 25 longest other nets, every
 footprint with side, position and angle, fiducials, test points,
-mounting holes and DNP parts, and all silkscreen text.
+mounting holes and DNP parts, and the silkscreen text: footprint
+properties (Reference, Value) and texts, and board texts, less the
+hidden ones.
 
 ## pairs: review_pairs.py
 
