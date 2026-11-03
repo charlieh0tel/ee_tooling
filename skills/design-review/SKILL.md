@@ -128,8 +128,16 @@ item and per open question, in punch-list order, with the finding, the
 evidence and your recommendation.  Each decision goes in
 `decisions.md` (`templates/decisions.md`) with the date, then into the
 report's Adjudication table and inline on the finding, and the punch
-list, each in its own commit.  Answered questions leave the open list;
-renumber at the end.
+list, each in its own commit.
+
+- Dropped: the item is deleted from the punch list; it stays in the
+  report and `decisions.md`.
+- "Must check, no change yet": a Must outcome; prove the point (by
+  calculation, datasheet or bench), and change parts only if it fails.
+- Answered questions are deleted from the report's list and the rest
+  renumbered from 1.  Every "question N" in `decisions.md`, the punch
+  list and the report's rows is updated in the same commit; a
+  reference to an answered question is reworded without a number.
 
 ## 10. Round 2, optional
 
