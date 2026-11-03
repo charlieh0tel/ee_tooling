@@ -73,8 +73,8 @@ the layout pass).  Each reviewer returns a rubric ledger (item: pass,
 fail, N/A, not verifiable; evidence), a spec ledger, a findings table,
 Checked and OK, Could not verify, Unresolved questions.
 
-Lint every table before reading it:
-`design-review findings REPORT.md`.
+Lint every reviewer's output before reading it:
+`design-review findings REVIEWER.md`.
 
 ## 6. Gate
 
@@ -112,7 +112,8 @@ Report: `templates/report.md`.  IDs by area: S schematic, L layout, K
 mistake-proofing, D documentation.  Findings tables by area, then
 Previously settled, Checked and OK, Could not verify, Adjudication,
 Unresolved questions, Reproduction (every command and measurement a
-reader needs to repeat a number), the ledgers as an appendix.
+reader needs to repeat a number), the ledgers as an appendix.  Lint
+it: `design-review findings REPORT.md`.
 
 Punch list: `templates/punch-list.md`, derived from the report, Must
 (Blocker, Major), Should (Minor), Could (Note), Nits (cosmetic

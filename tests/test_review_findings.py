@@ -1,4 +1,4 @@
-from ee_tooling.review_findings import CLASSES, REQUIRED, lint
+from ee_tooling.review_findings import CLASSES, REVIEWER, SEVERITIES, lint
 
 HEADER = (
     "| ID | Class | Rubric/Spec | Finding | Evidence | Consequence |\n|---|---|---|---|---|---|\n"
@@ -13,27 +13,32 @@ GOOD = HEADER + (
 
 def test_good() -> None:
     found = lint(GOOD)
-    assert found.ok and found.rows == 2
+    assert found.ok and (found.tables, found.rows) == (1, 2)
 
 
 def test_header_missing_column() -> None:
-    found = lint("| ID | Finding |\n|---|---|\n| a | b |\n")
-    lacking = ", ".join(c for c in REQUIRED if c not in ("ID", "Finding"))
-    assert [p.message for p in found.problems] == [
-        f"no findings table; first table lacks: {lacking}"
+    found = lint("| ID | Class | Finding |\n|---|---|---|\n| a | Defect | b |\n")
+    lacking = ", ".join(c for c in REVIEWER if c not in ("ID", "Class", "Finding"))
+    assert [(p.line, p.message) for p in found.problems] == [
+        (1, f"findings table lacks: {lacking}")
     ]
 
 
-def test_findings_table_after_other_tables() -> None:
+def test_other_tables_skipped() -> None:
     ledger = (
         "## Rubric ledger\n\n| Item | Result | Evidence |\n|---|---|---|\n| 2.1 | pass | x |\n\n"
+        "| Rubric item or ID | Decision | Effect |\n|---|---|---|\n| S-1 | Must | fix |\n\n"
     )
     found = lint(ledger + "## Findings\n\n" + GOOD)
-    assert found.ok and found.rows == 2
+    assert found.ok and (found.tables, found.rows) == (1, 2)
 
 
-def test_no_table() -> None:
-    assert lint("just prose").problems[0].message == "no Markdown table"
+def test_no_findings_table() -> None:
+    message = "no findings table (an ID column and Class or Severity)"
+    assert [p.message for p in lint("just prose").problems] == [message]
+    assert [p.message for p in lint("| ID | Finding |\n|---|---|\n| a | b |\n").problems] == [
+        message
+    ]
 
 
 def test_row_problems() -> None:
@@ -43,14 +48,44 @@ def test_row_problems() -> None:
         "| P-3 | Defect | sch 1 | y |\n"
     )
     found = lint(bad)
-    messages = [(p.row, p.message) for p in found.problems]
-    assert (1, f"Class 'Maybe' not in {CLASSES}") in messages
-    assert (1, "empty Rubric/Spec ('none' for a round 2 item)") in messages
-    assert (1, "Evidence names no file, refdes, net, page or point") in messages
-    assert (1, "Consequence missing or too short") in messages
-    assert (2, "duplicate ID P-1") in messages
-    assert (3, "4 cells, header has 6") in messages
+    messages = [(p.line, p.message) for p in found.problems]
+    assert (3, f"Class 'Maybe' not in {CLASSES}") in messages
+    assert (3, "empty Rubric/Spec ('none' for a round 2 item)") in messages
+    assert (3, "Evidence names no file, refdes, net, page or point") in messages
+    assert (3, "Consequence missing or too short") in messages
+    assert (4, "duplicate ID P-1") in messages
+    assert (5, "4 cells, header has 6") in messages
     assert found.rows == 2
+
+
+REPORT_HEADER = (
+    "| ID | Severity | Rubric/Spec | Finding | Evidence | Recommendation | Source |\n"
+    "|---|---|---|---|---|---|---|\n"
+)
+
+
+def test_report_tables() -> None:
+    """The report's tables, one per section, with an adjudication table
+    first; Severity may carry tags; IDs are unique across the tables."""
+    report = (
+        "## Adjudication\n\n| Rubric item or ID | Decision | Effect |\n|---|---|---|\n"
+        "| S-1 | Must | fix |\n\n## Findings: schematic\n\n"
+        + REPORT_HEADER
+        + "| S-1 | Major | sch 3.1 | Q1 hot | page 14 | two 27k | M |\n"
+        "| S-2 | Minor FIRMWARE | sch 5.2 | trip | /CH1_ISENSE | gain | H |\n"
+        "\n## Findings: layout\n\n"
+        + REPORT_HEADER
+        + "| L-1 | Note (suspected) | pcb 2 | gap | (12.5, 40) | widen | L |\n"
+        "| S-2 | Severe | | dup | nothing | x | L |\n"
+    )
+    found = lint(report)
+    assert (found.tables, found.rows) == (2, 4)
+    assert [(p.line, p.message) for p in found.problems] == [
+        (19, "duplicate ID S-2"),
+        (19, f"Severity 'Severe' does not open with one of {SEVERITIES}"),
+        (19, "empty Rubric/Spec ('none' for a round 2 item)"),
+        (19, "Evidence names no file, refdes, net, page or point"),
+    ]
 
 
 def test_suspected_class() -> None:
