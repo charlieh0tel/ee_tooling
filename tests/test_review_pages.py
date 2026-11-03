@@ -1,6 +1,6 @@
 from ee_tooling.review_pages import labels
 
-PAGE = """   ControlHubBoard
+PAGE = """   Widget
 Sheet: /PWR/
 File: PWR.kicad_sch   Sheet 36/51
 """
