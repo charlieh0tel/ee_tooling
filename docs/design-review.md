@@ -12,7 +12,7 @@ uv run design-review board NAME.kicad_pcb           # board summary, stdout
 uv run design-review erc erc.json                   # ERC summary, stdout
 uv run design-review pages NAME.pdf                 # PDF page -> sheet, stdout
 uv run design-review pairs NAME.kicad_pcb CAN_H,CAN_L  # pair routing gaps
-uv run design-review findings TABLE.md              # lint; exit 1 on problems
+uv run design-review findings FILE.md               # lint; exit 1 on problems
 ```
 
 ## evidence: review_evidence.py
@@ -75,13 +75,17 @@ block, for pointing a reviewer at a page.
 
 ## findings: review_findings.py
 
-A Markdown table with the columns `ID`, `Class`, `Rubric/Spec`,
-`Finding`, `Evidence`, `Consequence` (any order, more allowed).  Each
-row: a unique ID; a Class of Defect, Spec mismatch, Rubric miss or
-Observation; a Rubric/Spec reference (`none` for a round 2 item);
+Lints every findings table in a Markdown file: a table whose header has
+`ID` and either `Class` (a reviewer's) or `Severity` (the report's);
+other tables (ledgers, adjudication) are skipped.  A reviewer's table
+has the columns `ID`, `Class`, `Rubric/Spec`, `Finding`, `Evidence`,
+`Consequence`; the report's `ID`, `Severity`, `Rubric/Spec`,
+`Finding`, `Evidence` (any order, more allowed).  Each row: an ID
+unique in the file; a Class of Defect, Spec mismatch, Rubric miss or
+Observation, which may carry `(suspected)`, or a Severity opening with
+Blocker, Major, Minor or Note, which may carry tags (`FIRMWARE`,
+`(suspected)`); a Rubric/Spec reference (`none` for a round 2 item);
 Evidence naming a KiCad file, refdes, net path, coordinate pair, page,
-line, source file (`.zen`, `.py`) or evidence file; a Consequence of
-10 characters or more.  A Class may carry `(suspected)`.
-The findings table is the one whose header has those columns; other
-tables (ledgers) are ignored.  Problems print as `FILE: row N: problem`;
-row 0 is the header.
+line, source file (`.zen`, `.py`) or evidence file; in a reviewer's
+table, a Consequence of 10 characters or more.  Problems print as
+`FILE:LINE: problem`; line 0 is the file.

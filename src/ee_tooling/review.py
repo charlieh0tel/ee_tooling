@@ -7,7 +7,7 @@ design-review board PCB               board summary, stdout
 design-review erc ERC_JSON            ERC summary, stdout
 design-review pages PDF               schematic PDF page to sheet map, stdout
 design-review pairs PCB NET_P,NET_N...  pair routing gaps, stdout
-design-review findings TABLE.md       lint a findings table; exit 1 on problems
+design-review findings FILE.md        lint its findings tables; exit 1 on problems
 """
 
 import argparse
@@ -52,8 +52,8 @@ def main() -> None:
     s = sub.add_parser("pairs", help="pair routing gaps")
     s.add_argument("pcb", type=Path)
     s.add_argument("pairs", type=pair, nargs="+", metavar="NET_P,NET_N")
-    s = sub.add_parser("findings", help="lint a findings table")
-    s.add_argument("table", type=Path)
+    s = sub.add_parser("findings", help="lint the findings tables")
+    s.add_argument("file", type=Path)
     a = ap.parse_args()
     match a.command:
         case "evidence":
@@ -72,8 +72,8 @@ def main() -> None:
         case "pairs":
             sys.stdout.write(review_pairs.report(a.pcb, a.pairs))
         case "findings":
-            found = review_findings.lint(a.table.read_text(encoding="utf-8"))
+            found = review_findings.lint(a.file.read_text(encoding="utf-8"))
             for p in found.problems:
-                print(f"{a.table}: row {p.row}: {p.message}", file=sys.stderr)
-            print(f"{found.rows} rows, {len(found.problems)} problems")
+                print(f"{a.file}:{p.line}: {p.message}", file=sys.stderr)
+            print(f"{found.tables} tables, {found.rows} rows, {len(found.problems)} problems")
             sys.exit(0 if found.ok else 1)

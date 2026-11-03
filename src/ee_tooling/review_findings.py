@@ -1,17 +1,25 @@
-"""A reviewer's findings table, linted before the gate.
+"""Findings tables, linted before the gate and in the report.
 
-The table is Markdown with at least the `REQUIRED` columns, in any
-order.  Each row needs a unique ID, a Class from `CLASSES`, a
+A findings table is a Markdown table whose header has an ID column and
+a Class column (a reviewer's table, `REVIEWER`) or a Severity column
+(the report's, `REPORT`); every other table is skipped.  Each needs its
+format's columns, in any order.  Each row needs an ID unique in the
+file, a Class from `CLASSES` or a Severity from `SEVERITIES`, a
 Rubric/Spec reference, Evidence naming a file, refdes, net, page or
-coordinate, and a Consequence.  The lint says what is missing; it does
-not judge the content.
+coordinate, and, in a reviewer's table, a Consequence.  The lint says
+what is missing; it does not judge the content.
 """
 
 import re
 from dataclasses import dataclass, field
 
-REQUIRED = ("ID", "Class", "Rubric/Spec", "Finding", "Evidence", "Consequence")
+# A reviewer's findings table: its columns, and the Class values.
+REVIEWER = ("ID", "Class", "Rubric/Spec", "Finding", "Evidence", "Consequence")
 CLASSES = ("Defect", "Spec mismatch", "Rubric miss", "Observation")
+# The report's findings table: its columns, and the Severity values, which
+# open the cell and may be followed by tags (FIRMWARE, `SUSPECTED`).
+REPORT = ("ID", "Severity", "Rubric/Spec", "Finding", "Evidence")
+SEVERITIES = ("Blocker", "Major", "Minor", "Note")
 # A Class may carry this suffix: the brief asks for it in the Finding, but
 # reviewers put it on the Class too.
 SUSPECTED = "(suspected)"
@@ -31,16 +39,17 @@ TABLE_HEAD = 2
 
 @dataclass(frozen=True)
 class Problem:
-    """Row 0 is the header."""
+    """A problem at a line of the file, counted from 1; 0 is the file."""
 
-    row: int
+    line: int
     message: str
 
 
 @dataclass
 class Lint:
-    """What the lint found: data rows read, and the problems."""
+    """What the lint found: findings tables and data rows read, and the problems."""
 
+    tables: int = 0
     rows: int = 0
     problems: list[Problem] = field(default_factory=list)
 
@@ -53,65 +62,78 @@ def cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
-def tables(markdown: str) -> list[list[str]]:
-    """The Markdown tables in the text: each a list of its `|` lines."""
-    found: list[list[str]] = []
+def tables(markdown: str) -> list[tuple[int, list[str]]]:
+    """The Markdown tables in the text: each its first line's number,
+    from 1, and its `|` lines."""
+    found: list[tuple[int, list[str]]] = []
     current: list[str] = []
-    for line in markdown.splitlines():
+    for n, line in enumerate(markdown.splitlines(), start=1):
         if line.strip().startswith("|"):
+            if not current:
+                first = n
             current.append(line)
         elif current:
-            found.append(current)
+            found.append((first, current))
             current = []
     if current:
-        found.append(current)
+        found.append((first, current))
     return found
 
 
-def findings_table(markdown: str) -> list[str] | None:
-    """The table whose header has every REQUIRED column, or None."""
-    for table in tables(markdown):
-        if all(c in cells(table[0]) for c in REQUIRED):
-            return table
-    return None
-
-
 def lint(markdown: str) -> Lint:
-    """Lints the findings table: the one with the REQUIRED columns.
-    Without one, the problem names the columns the first table lacks."""
+    """Lints every findings table; IDs are unique across them."""
     found = Lint()
-    all_tables = tables(markdown)
-    if not all_tables:
-        found.problems.append(Problem(0, "no Markdown table"))
-        return found
-    lines = findings_table(markdown)
-    if lines is None:
-        missing = [c for c in REQUIRED if c not in cells(all_tables[0][0])]
-        found.problems.append(
-            Problem(0, f"no findings table; first table lacks: {', '.join(missing)}")
-        )
-        return found
-    header = cells(lines[0])
-    column = {name: header.index(name) for name in REQUIRED}
     seen: set[str] = set()
-    for n, line in enumerate(lines[TABLE_HEAD:], start=1):
-        row = cells(line)
-        if len(row) != len(header):
-            found.problems.append(Problem(n, f"{len(row)} cells, header has {len(header)}"))
+    for first, lines in tables(markdown):
+        header = cells(lines[0])
+        if "ID" not in header:
             continue
-        found.rows += 1
-        ident = row[column["ID"]]
-        if not ident:
-            found.problems.append(Problem(n, "empty ID"))
-        elif ident in seen:
-            found.problems.append(Problem(n, f"duplicate ID {ident}"))
-        seen.add(ident)
-        if row[column["Class"]].removesuffix(SUSPECTED).strip() not in CLASSES:
-            found.problems.append(Problem(n, f"Class {row[column['Class']]!r} not in {CLASSES}"))
-        if not row[column["Rubric/Spec"]]:
-            found.problems.append(Problem(n, "empty Rubric/Spec ('none' for a round 2 item)"))
-        if not EVIDENCE.search(row[column["Evidence"]]):
-            found.problems.append(Problem(n, "Evidence names no file, refdes, net, page or point"))
-        if len(row[column["Consequence"]]) < CONSEQUENCE_MIN:
-            found.problems.append(Problem(n, "Consequence missing or too short"))
+        required: tuple[str, ...]
+        if "Class" in header:
+            required = REVIEWER
+        elif "Severity" in header:
+            required = REPORT
+        else:
+            continue
+        found.tables += 1
+        missing = [c for c in required if c not in header]
+        if missing:
+            found.problems.append(Problem(first, f"findings table lacks: {', '.join(missing)}"))
+            continue
+        column = {name: header.index(name) for name in required}
+        for n, line in enumerate(lines[TABLE_HEAD:], start=first + TABLE_HEAD):
+            row = cells(line)
+            if len(row) != len(header):
+                found.problems.append(Problem(n, f"{len(row)} cells, header has {len(header)}"))
+                continue
+            found.rows += 1
+            found.problems += [Problem(n, m) for m in row_problems(row, column, seen)]
+    if not found.tables:
+        found.problems.append(Problem(0, "no findings table (an ID column and Class or Severity)"))
+    return found
+
+
+def row_problems(row: list[str], column: dict[str, int], seen: set[str]) -> list[str]:
+    """A data row's problems; its ID joins seen."""
+    found = []
+    ident = row[column["ID"]]
+    if not ident:
+        found.append("empty ID")
+    elif ident in seen:
+        found.append(f"duplicate ID {ident}")
+    seen.add(ident)
+    if "Class" in column:
+        kind = row[column["Class"]]
+        if kind.removesuffix(SUSPECTED).strip() not in CLASSES:
+            found.append(f"Class {kind!r} not in {CLASSES}")
+    else:
+        severity = row[column["Severity"]]
+        if not severity.split()[:1] or severity.split()[0] not in SEVERITIES:
+            found.append(f"Severity {severity!r} does not open with one of {SEVERITIES}")
+    if not row[column["Rubric/Spec"]]:
+        found.append("empty Rubric/Spec ('none' for a round 2 item)")
+    if not EVIDENCE.search(row[column["Evidence"]]):
+        found.append("Evidence names no file, refdes, net, page or point")
+    if "Consequence" in column and len(row[column["Consequence"]]) < CONSEQUENCE_MIN:
+        found.append("Consequence missing or too short")
     return found
