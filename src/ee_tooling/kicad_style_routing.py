@@ -22,7 +22,8 @@ pad, and the capacitor reaches one.  The decoupling map is
 placement.toml's (placement.py's Rules), or else `inferred_decoupling`.
 
 Copper connects so: a track's end on another track of its layer and net
-(within half that track's width); a track's copper over a pad or a via;
+(within half that track's width); a track's copper over a pad or a via,
+but a via that meets a track on a pad joins that pad instead;
 a via's center on a pad; an item on a zone's fill, tested against the
 fill's polygons when the file has them.  An unfilled zone is taken to
 reach all its net's copper on its layer inside its outline; the check
@@ -61,6 +62,7 @@ from ee_tooling.kicad_style_board import (
     distance,
     edge,
     layers,
+    nearest,
     net_name,
     on_board,
     place,
@@ -243,6 +245,15 @@ class Track:
     def touches(self, p: Point, reach: float = 0.0) -> bool:
         """Whether p is on its copper, or within reach of it."""
         return any(distance(p, s) <= self.width / 2 + reach + ON_COPPER for s in self.pieces())
+
+    def contact(self, p: Point) -> Point:
+        """Where its copper comes nearest p: p itself if on it."""
+        q = min((nearest(p, s) for s in self.pieces()), key=lambda q: math.dist(p, q))
+        d = math.dist(p, q)
+        if d <= self.width / 2:
+            return p
+        scale = self.width / 2 / d
+        return q[0] + (p[0] - q[0]) * scale, q[1] + (p[1] - q[1]) * scale
 
     def over(self, pad: Pad) -> bool:
         return any(pad.segment_gap(s) <= self.width / 2 + ON_COPPER for s in self.pieces())
@@ -528,7 +539,18 @@ class Net:
             for j in self.vias:
                 v = c.vias[j]
                 if t.layer in v.layers and t.touches(v.position, v.size / 2):
-                    self.link(("track", i), ("via", j))
+                    # A via meeting the track on a pad joins through the
+                    # pad, as a track's end on a pad joins other tracks.
+                    meeting = t.contact(v.position)
+                    on = [
+                        k
+                        for k in self.pads
+                        if t.layer in c.pads[k].layers and c.pads[k].contains(meeting)
+                    ]
+                    for k in on:
+                        self.link(("via", j), ("pad", k))
+                    if not on:
+                        self.link(("track", i), ("via", j))
         for i in self.vias:
             v = c.vias[i]
             for j in self.pads:
