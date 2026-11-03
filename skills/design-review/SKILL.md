@@ -137,6 +137,9 @@ deleted, the Adjudication table and `decisions.md` being the record.
   open), a checkbox each, with the same background: what is there,
   why the files cannot settle it, and what the answer must contain.
 
+Check it against the report after every change to either:
+`design-review punch-list REPORT.md PUNCH.md`.
+
 ## 9. Adjudication
 
 Interview the owner: one question per failed-but-contestable rubric

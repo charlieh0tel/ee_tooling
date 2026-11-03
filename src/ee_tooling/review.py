@@ -1,4 +1,4 @@
-"""design-review: the evidence and the lint of an adversarial design
+"""design-review: the evidence and the lints of an adversarial design
 review (skills/design-review/SKILL.md, docs/design-review.md).
 
 design-review evidence DIR NAME OUT   kicad-cli exports and summaries into OUT
@@ -8,6 +8,7 @@ design-review erc ERC_JSON            ERC summary, stdout
 design-review pages PDF               schematic PDF page to sheet map, stdout
 design-review pairs PCB NET_P,NET_N...  pair routing gaps, stdout
 design-review findings FILE.md        lint its findings tables; exit 1 on problems
+design-review punch-list REPORT PUNCH check a punch list against its report; exit 1 on problems
 """
 
 import argparse
@@ -21,6 +22,7 @@ from ee_tooling import (
     review_netlist,
     review_pages,
     review_pairs,
+    review_punch,
 )
 from ee_tooling.review_evidence import Project, export
 
@@ -54,6 +56,9 @@ def main() -> None:
     s.add_argument("pairs", type=pair, nargs="+", metavar="NET_P,NET_N")
     s = sub.add_parser("findings", help="lint the findings tables")
     s.add_argument("file", type=Path)
+    s = sub.add_parser("punch-list", help="check a punch list against its report")
+    s.add_argument("report", type=Path)
+    s.add_argument("punch", type=Path)
     a = ap.parse_args()
     match a.command:
         case "evidence":
@@ -77,3 +82,12 @@ def main() -> None:
                 print(f"{a.file}:{p.line}: {p.message}", file=sys.stderr)
             print(f"{found.tables} tables, {found.rows} rows, {len(found.problems)} problems")
             sys.exit(0 if found.ok else 1)
+        case "punch-list":
+            in_punch, in_report = review_punch.check(
+                a.report.read_text(encoding="utf-8"), a.punch.read_text(encoding="utf-8")
+            )
+            for path, problems in ((a.punch, in_punch), (a.report, in_report)):
+                for p in problems:
+                    print(f"{path}:{p.line}: {p.message}", file=sys.stderr)
+            print(f"{len(in_punch) + len(in_report)} problems")
+            sys.exit(1 if in_punch or in_report else 0)
