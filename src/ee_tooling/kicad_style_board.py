@@ -108,8 +108,26 @@ def segments(shape: Expression) -> list[Segment]:
             center, end = required(shape, "center", "end")
             return polyline(circle(center, math.dist(center, end), 0, math.tau), closed=True)
         case _:
-            pts = children(child(shape, "pts") or [], "xy")
-            return polyline([(number(p[1]), number(p[2])) for p in pts], closed=True)
+            points = outline_points(child(shape, "pts") or [])
+            if not points:
+                raise BoardError(f"a {shape[0]} without points")
+            return polyline(points, closed=True)
+
+
+def outline_points(pts: Expression) -> list[Point]:
+    """A (pts ...) list's points in order: each (xy X Y), and each
+    (arc (start) (mid) (end)) as points along it."""
+    points: list[Point] = []
+    for item in pts:
+        if not isinstance(item, list) or not item:
+            continue
+        match item[0]:
+            case "xy":
+                points.append((number(item[1]), number(item[2])))
+            case "arc":
+                a, m, b = required(item, "start", "mid", "end")
+                points.extend(arc(a, m, b))
+    return points
 
 
 def net_name(item: Expression) -> str | None:
