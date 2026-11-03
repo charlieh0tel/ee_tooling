@@ -32,3 +32,22 @@ def test_dry_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     board = str(tmp_path / "W.kicad_pcb")
     assert any(line.endswith(f"/out/pcb/In1.Cu.svg {board}") for line in lines)
     assert (tmp_path / "out" / "png").is_dir()
+
+
+def test_tools_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No kicad-cli or pdftoppm: every command fails, the summaries without
+    a source are skipped, and the board summary is still written."""
+    (tmp_path / "W.kicad_pcb").write_text(
+        '(kicad_pcb (layers (0 "F.Cu" signal) (31 "B.Cu" signal)))', encoding="utf-8"
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    out = tmp_path / "out"
+    failed = export(Project(tmp_path, "W"), out)
+    assert len(failed) == len(commands(Project(tmp_path, "W"), out, ["F.Cu", "B.Cu"]))
+    err = capsys.readouterr().err
+    assert "failed: kicad-cli not on the path: kicad-cli sch erc" in err
+    assert "skipped: nets.txt and components.txt, without" in err
+    assert "skipped: erc.md, without" in err
+    assert (out / "board.md").is_file() and not (out / "erc.md").exists()

@@ -32,9 +32,10 @@ From `DIR/NAME.kicad_sch` and `DIR/NAME.kicad_pcb` into `OUT`:
 | `png/LAYERS.png` | `pcb export pdf` of each copper layer, then silk with fab, F.Cu with silk, mask with paste; rasterized at 220 dpi |
 | `board.md` | the board summary (below) |
 
-A failed export is printed on stderr and the rest run; the exit status
-is 1 if any failed.  `--dry-run`
-prints the commands.
+A failed export, or a tool not on the path, is printed on stderr and
+the rest run; a summary whose source was not exported (`nets.txt` and
+`components.txt`, `erc.md`) is skipped, on stderr.  The exit status is
+1 if any export failed.  `--dry-run` prints the commands.
 
 ## netlist: review_netlist.py
 
