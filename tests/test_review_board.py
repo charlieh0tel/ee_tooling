@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.review_board import (
+    LONGEST_NETS,
     copper_layers,
     item_net,
     net_table,
@@ -111,3 +112,18 @@ def test_summary(tmp_path: Path) -> None:
     assert "| R1 (DNP) | 10k | Lib:R_0402 | F.Cu | 10.00 | 10.00 | 90 |" in text
     assert "- 'pin 1' on R1" in text
     assert "- F.SilkS: 'REV A' at (5.0,28.0)" in text
+
+
+def test_longest_nets_besides_power(tmp_path: Path) -> None:
+    """Power nets, however long, do not use up the longest-nets count."""
+    names = [f"V{i}V" for i in range(LONGEST_NETS)] + [f"SIG{i}" for i in range(LONGEST_NETS + 1)]
+    nets = " ".join(f'(net {i + 1} "{n}")' for i, n in enumerate(names))
+    tracks = " ".join(
+        f'(segment (start 0 {i}) (end {100 - i} {i}) (width 0.2) (layer "F.Cu") (net {i + 1}))'
+        for i in range(len(names))
+    )
+    path = tmp_path / "b.kicad_pcb"
+    path.write_text(f"(kicad_pcb {nets} {tracks})", encoding="utf-8")
+    text = summary(path)
+    shown = [n for n in names if f"| {n} |" in text]
+    assert shown == names[:-1]

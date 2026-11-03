@@ -31,7 +31,7 @@ POWER_NET = re.compile(
     r"V\d+V|V\d+P\d|VDD|VCC|VBAT|VBUS|VIN|VOUT|GND|CHASSIS|\bSW\b|SW_|\bLX|BST|BOOT|PWR|_EN\b",
     re.I,
 )
-# Nets in the routing table by length, besides the power nets.
+# Nets other than the power nets in the routing table, longest first.
 LONGEST_NETS = 25
 # Footprints and references that are fiducials, test points and mounting holes.
 FIDUCIAL = re.compile(r"fiducial", re.I)
@@ -270,16 +270,18 @@ def summary(path: Path) -> str:
     out.append("\n## Routing of the power nets and the longest nets\n")
     out.append("| net | segments | length mm | width min/max | layers | vias | zone layers |")
     out.append("|---|---|---|---|---|---|---|")
-    shown = 0
+    longest = 0
     for net, r in sorted(routing.items(), key=lambda kv: -kv[1].length):
-        if POWER_NET.search(net) or shown < LONGEST_NETS:
-            shown += 1
-            per = " ".join(f"{k}:{v}" for k, v in sorted(r.layers.items()))
-            out.append(
-                f"| {net} | {r.segments} | {r.length:.0f} | {r.width_min:.3g}/{r.width_max:.3g} "
-                f"| {per} | {via_nets.get(net, 0)} "
-                f"| {' '.join(sorted(zone_layers.get(net, set())))} |"
-            )
+        if not POWER_NET.search(net):
+            if longest == LONGEST_NETS:
+                continue
+            longest += 1
+        per = " ".join(f"{k}:{v}" for k, v in sorted(r.layers.items()))
+        out.append(
+            f"| {net} | {r.segments} | {r.length:.0f} | {r.width_min:.3g}/{r.width_max:.3g} "
+            f"| {per} | {via_nets.get(net, 0)} "
+            f"| {' '.join(sorted(zone_layers.get(net, set())))} |"
+        )
     unrouted = sorted(n for n in zone_layers if n not in routing)
     out.append(f"\nnets with zones but no tracks: {', '.join(unrouted)}")
 
