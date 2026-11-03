@@ -3,13 +3,24 @@ tracks, vias, zones, the routing of the power and the longest nets,
 footprints, and silkscreen text.  A reviewer reads this, and greps the
 board for the rest."""
 
+import itertools
 import math
 import re
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ee_tooling.kicad_style_board import at, edge, layers, net_name, outline_points, xy
+from ee_tooling.kicad_style_board import (
+    Point,
+    arc,
+    at,
+    edge,
+    layers,
+    net_name,
+    outline_points,
+    xy,
+)
 from ee_tooling.kicad_style_routing import text
 from ee_tooling.review_netlist import refdes_key
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
@@ -87,6 +98,21 @@ def item_net(item: Expression, table: dict[str, str]) -> str:
     return table.get(str(n[1]), str(n[1])) if n and len(n) > 1 else ""
 
 
+def track_path(item: Expression) -> list[Point] | None:
+    """A (segment ...) or (arc ...) track's center line as points, an
+    arc's walked through its mid; None, said on stderr, without its
+    points."""
+    start, end, middle = xy(item, "start"), xy(item, "end"), xy(item, "mid")
+    if start is None or end is None or (item[0] == "arc" and middle is None):
+        print(f"skipped: ({item[0]} ...) without its start, end or mid", file=sys.stderr)
+        return None
+    return arc(start, middle, end) if middle is not None else [start, end]
+
+
+def path_length(points: list[Point]) -> float:
+    return sum(math.dist(a, b) for a, b in itertools.pairwise(points))
+
+
 def outline(board: Expression) -> tuple[int, tuple[float, float, float, float]] | None:
     """Edge.Cuts segment count and bounding box (xmin, xmax, ymin, ymax)."""
     segments = edge(board)
@@ -157,10 +183,10 @@ def summary(path: Path) -> str:
     layer_length: defaultdict[str, float] = defaultdict(float)
     widths: Counter[float] = Counter()
     for s in children(board, "segment") + children(board, "arc"):
-        start, end = xy(s, "start"), xy(s, "end")
-        if start is None or end is None:
+        center = track_path(s)
+        if center is None:
             continue
-        length = math.dist(start, end)
+        length = path_length(center)
         w = child(s, "width")
         width = number(w[1]) if w else 0.0
         name = text(s, "layer")
