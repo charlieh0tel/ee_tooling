@@ -5,8 +5,9 @@ import re
 import subprocess
 from pathlib import Path
 
-# The title-block strings KiCad prints on a page.
-LABEL = re.compile(r"(Sheet: */[A-Za-z0-9_/]*|File: *[A-Za-z0-9_]+\.kicad_sch)")
+# The title-block strings KiCad prints on a page: a sheet path runs to
+# the end of its line or a run of spaces (the title block's padding).
+LABEL = re.compile(r"(Sheet: */.*?(?=\s{2,}|$)|File: *\S+\.kicad_sch)", re.M)
 # Labels kept per page: the sheet path and the file.
 LABELS_KEPT = 2
 PAGE_COUNT = re.compile(r"^Pages:\s+(\d+)", re.M)
