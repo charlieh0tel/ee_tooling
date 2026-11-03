@@ -17,6 +17,9 @@ the board's production directory, YYYYMMDD-REV/, with:
 
 NAME is the KiCad project, REV its board's title-block revision.  ERC and
 DRC must be clean and the release's sources committed, unless --allow-dirty.
+The commit it was built from gets an annotated tag NAME-YYYYMMDD-REV, which
+it does not push: it prints the command.  A build from uncommitted sources
+is not tagged; a tag already on another commit stops it, unless --retag.
 """
 
 import argparse
@@ -36,6 +39,7 @@ import tomllib
 import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -233,6 +237,27 @@ def write_csv(out: Path, header: Iterable[str], rows: Iterable[list[str]]) -> No
         w.writerows(rows)
 
 
+class TagPlan(Enum):
+    """What a release does with its tag."""
+
+    DIRTY = "not tagged: uncommitted sources"
+    PRESENT = "already on this commit"
+    CREATE = "create it"
+    MOVE = "move it here (--retag)"
+    REFUSE = "on another commit, and no --retag"
+
+
+def tag_plan(dirty: bool, tagged: str | None, head: str, retag: bool) -> TagPlan:
+    """The plan for a release's tag, given the commit it is on (tagged)."""
+    if dirty:
+        return TagPlan.DIRTY
+    if tagged is None:
+        return TagPlan.CREATE
+    if tagged == head:
+        return TagPlan.PRESENT
+    return TagPlan.MOVE if retag else TagPlan.REFUSE
+
+
 class Release:
     """One board's release, built in a scratch directory."""
 
@@ -278,6 +303,20 @@ class Release:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
         commit = self.run("git", "rev-parse", "--short", "HEAD").stdout.strip()
         return commit + ("-dirty" if status else "")
+
+    def tagged(self, name: str) -> str | None:
+        """The full hash of the commit tag `name` is on, or None."""
+        r = self.run("git", "rev-parse", "-q", "--verify", f"refs/tags/{name}^{{commit}}")
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    def head(self) -> str:
+        return self.run("git", "rev-parse", "HEAD").stdout.strip()
+
+    def tag(self, name: str, message: str, move: bool) -> None:
+        """An annotated tag on HEAD; move replaces one of that name."""
+        r = self.run("git", "tag", "-a", *(["-f"] if move else []), name, "-m", message, "HEAD")
+        if r.returncode != 0:
+            sys.exit(f"git tag {name} failed:\n{r.stdout}{r.stderr}")
 
     def gerbers(self, out: Path, title: str) -> list[GerberFile]:
         """The Gerber zip, with the Gerber map titled title; return its files."""
@@ -502,6 +541,7 @@ def main() -> None:
     ap.add_argument("--date", default=datetime.date.today().strftime("%Y%m%d"))
     ap.add_argument("--force", action="store_true", help="replace an existing release")
     ap.add_argument("--allow-dirty", action="store_true", help="allow uncommitted sources")
+    ap.add_argument("--retag", action="store_true", help="move the release's tag to this commit")
     a = ap.parse_args()
 
     b = boards[a.board]
@@ -513,10 +553,8 @@ def main() -> None:
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")
     dest = root / b.production / f"{a.date}-{rev}"
-    if dest.exists():
-        if not a.force:
-            sys.exit(f"{dest} exists; use --force to replace it")
-        shutil.rmtree(dest)
+    if dest.exists() and not a.force:
+        sys.exit(f"{dest} exists; use --force to replace it")
     try:
         pcb = parse(pcb_text)
     except ParseError as e:
@@ -525,6 +563,13 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp))
         commit = r.check(a.allow_dirty)
+        tag = f"{b.name}-{dest.name}"
+        tagged = r.tagged(tag)
+        plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
+        if plan is TagPlan.REFUSE:
+            sys.exit(f"tag {tag} is on {(tagged or '')[:7]}, not {commit}; use --retag to move it")
+        if dest.exists():
+            shutil.rmtree(dest)
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
         label = f"{b.name} {rev}"
@@ -538,6 +583,13 @@ def main() -> None:
         refs = r.bom(dest / f"{base}-bom.csv")
         r.cpl(dest / f"{base}-cpl.csv", refs, parts)
         r.source(dest / f"{base}-source.tgz", commit)
+        if plan in (TagPlan.CREATE, TagPlan.MOVE):
+            message = f"{b.name} {rev}: JLCPCB release {b.production / dest.name}"
+            r.tag(tag, message, plan is TagPlan.MOVE)
+            force = " --force" if plan is TagPlan.MOVE else ""
+            print(f"tagged {tag}; push it with: git push{force} origin refs/tags/{tag}")
+        else:
+            print(f"tag {tag}: {plan.value}")
     print(f"{dest.relative_to(root)} from {commit}:")
     for f in sorted(dest.iterdir()):
         print(f"  {f.name}")
