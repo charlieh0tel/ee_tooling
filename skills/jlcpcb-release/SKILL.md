@@ -1,6 +1,6 @@
 ---
 name: jlcpcb-release
-description: Build a KiCad board's JLCPCB release package (Gerber/drill zip, ODB++, BOM, placement, source tgz) under its production directory, YYYYMMDD-REV/, and fix part rotations and offsets from JLCPCB's placement preview. Use when the user asks to release, package, or order a board from JLCPCB.
+description: Build a KiCad board's JLCPCB release package (Gerber/drill zip, ODB++, IPC-2581, BOM, placement, source tgz) under its production directory, YYYYMMDD-REV/, and fix part rotations and offsets from JLCPCB's placement preview. Use when the user asks to release, package, or order a board from JLCPCB.
 ---
 
 # JLCPCB release
@@ -61,6 +61,7 @@ the board's directory and `sources` have no uncommitted changes
 | `NAME-REV-stackup.txt` | the board's stackup (Board Setup, Physical Stackup): each layer's and dielectric sublayer's type, material, thickness, Er, loss tangent, color and Gerber; total thickness and the board's thickness setting; copper finish, impedance-controlled dielectric, edge connector, castellated pads, edge plating; then the impedance requirements, from net classes whose names say impedance (`[TBD: ...]` for a name not `<ohms>Z_DIFF` or `<ohms>Z_SE`).  A board with no stackup gets a note saying so, and a warning |
 | `NAME-REV-fab-notes.txt` | numbered fabrication notes: generic (IPC-6012 and IPC-A-600 class 2 by default, plating, LPI mask per IPC-SM-840, finished hole sizes, Gerbers not to be modified, no added tooling holes or marking), filled from the board: layer count, finished thickness, copper weights, base material, finish and mask and silk colors from the stackup; impedance control from the net classes; minimum track and space from KiCad's Gerber job file, minimum drill from the drill files.  `[TBD: ...]` marks what the board cannot say (Tg, electrical test, and anything the stackup lacks): fill it in before sending the notes |
 | `NAME-REV-odb.tgz` | ODB++ job (one `odb/` directory: `matrix/`, `steps/`, ...), mm, 6 decimals: for the record and for ODB++ tools such as `tools/odb_current`; not the order's upload |
+| `NAME-REV-ipc2581.zip` | IPC-2581 revision C, mm, 6 decimals: a zip of one XML file, `NAME-REV-ipc2581.xml`; its BOM from MPN, Manufacturer and LCSC (as distributor): for the record and for IPC-2581 tools; not the order's upload |
 | `NAME-REV-bom.csv` | assembly BOM: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
 | `NAME-REV-cpl.csv` | assembly placement: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM |
 | `NAME-REV-source.tgz` | the design files, `sources`, schematic and board PDFs, and COMMIT |
@@ -68,7 +69,8 @@ the board's directory and `sources` have no uncommitted changes
 The Gerber zip is the PCB order's upload: JLCPCB's help forum says it
 takes Gerbers, not ODB++
 (https://jlc3dp.com/help/answers/detail/197-Can-ODB++-files-be-used-to-order,
-2023-12).  Check the order page before uploading the ODB++ instead.
+2023-12).  Check the order page before uploading the ODB++ or IPC-2581
+instead.
 
 Commit the production directory after the order is placed, and do not
 change it afterwards.

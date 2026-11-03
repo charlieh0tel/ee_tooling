@@ -10,6 +10,7 @@ the board's production directory, YYYYMMDD-REV/, with:
   NAME-REV-fab-notes.txt  fabrication notes, filled from the board where it
                         says, [TBD: ...] where it cannot
   NAME-REV-odb.tgz      ODB++ job, for the record and ODB++ tools
+  NAME-REV-ipc2581.zip  IPC-2581 revision C, for the record and IPC-2581 tools
   NAME-REV-bom.csv      BOM in JLCPCB's columns, for assembly
   NAME-REV-cpl.csv      placement in JLCPCB's columns, for assembly
   NAME-REV-source.tgz   the design files, PDFs and docs it was made from
@@ -86,6 +87,19 @@ CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Lay
 ODB_UNITS = "mm"
 ODB_PRECISION = 6
 ODB_COMPRESSION = "tgz"
+
+# IPC-2581 export: revision C, kicad-cli's default; mm and 6 decimals, as
+# the ODB++; a zip of one XML file, NAME-REV-ipc2581.xml.  Its BOM takes
+# the house BOM fields (docs/kicad-style.md), LCSC as the distributor.
+IPC2581_VERSION = "C"
+IPC2581_UNITS = ODB_UNITS
+IPC2581_PRECISION = ODB_PRECISION
+IPC2581_BOM = (
+    ("--bom-col-mfg-pn", "MPN"),
+    ("--bom-col-mfg", "Manufacturer"),
+    ("--bom-col-dist-pn", "LCSC"),
+    ("--bom-col-dist", "LCSC"),
+)
 
 
 @dataclass(frozen=True)
@@ -346,6 +360,24 @@ class Release:
             )
         )
 
+    def ipc2581(self, out: Path) -> None:
+        self.kicad(
+            "pcb",
+            "export",
+            "ipc2581",
+            "--version",
+            IPC2581_VERSION,
+            "--units",
+            IPC2581_UNITS,
+            "--precision",
+            str(IPC2581_PRECISION),
+            "--compress",
+            *(x for pair in IPC2581_BOM for x in pair),
+            "-o",
+            str(out),
+            self.path(self.board.pcb),
+        )
+
     def odb(self, out: Path) -> None:
         self.kicad(
             "pcb",
@@ -502,6 +534,7 @@ def main() -> None:
         (dest / f"{base}-{GERBER_MAP}").write_text(gerber_map(title, files))
         r.fabrication(dest, base, label, pcb, files)
         r.odb(dest / f"{base}-odb.tgz")
+        r.ipc2581(dest / f"{base}-ipc2581.zip")
         refs = r.bom(dest / f"{base}-bom.csv")
         r.cpl(dest / f"{base}-cpl.csv", refs, parts)
         r.source(dest / f"{base}-source.tgz", commit)

@@ -149,6 +149,39 @@ def test_board_is_frozen() -> None:
         b.name = "y"  # type: ignore[misc]
 
 
+def test_ipc2581_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(Release, "kicad", lambda self, *args: calls.append(args))
+    r = Release(tmp_path, load_config(CONFIG)["jig"], tmp_path / "work")
+    out = tmp_path / "jig-1-ipc2581.zip"
+    r.ipc2581(out)
+    assert calls == [
+        (
+            "pcb",
+            "export",
+            "ipc2581",
+            "--version",
+            "C",
+            "--units",
+            "mm",
+            "--precision",
+            "6",
+            "--compress",
+            "--bom-col-mfg-pn",
+            "MPN",
+            "--bom-col-mfg",
+            "Manufacturer",
+            "--bom-col-dist-pn",
+            "LCSC",
+            "--bom-col-dist",
+            "LCSC",
+            "-o",
+            str(out),
+            str(tmp_path / "hardware/jig/jig.kicad_pcb"),
+        )
+    ]
+
+
 def test_odb_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(Release, "kicad", lambda self, *args: calls.append(args))
