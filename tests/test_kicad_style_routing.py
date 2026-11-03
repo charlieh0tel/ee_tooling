@@ -484,6 +484,30 @@ def test_supply_over_the_capacitor_pad() -> None:
     assert check(*SUPPLY, *over, *feed, *EN) == []
 
 
+def test_supply_via_beside_the_capacitor_pad() -> None:
+    """A via at the capacitor's pad's edge, fed from it, that the pin's
+    track meets on the pad joins through the pad."""
+    to_pin = [
+        segment((18, 15), (19.1, 14), "+3V3", width=0.4),
+        segment((19.1, 14), (19.1, 12.15), "+3V3", width=0.4),
+    ]
+    feed = [segment((19.25, 12), (18.65, 12), "+3V3", width=0.4), via(18.65, 12, "+3V3")]
+    assert check(*SUPPLY, *to_pin, *feed, *EN) == []
+
+
+def test_supply_via_on_the_pins_track() -> None:
+    """A via the pin's track meets off the capacitor's pad, though the
+    track ends on it, bypasses the pad."""
+    to_pin = [
+        segment((18, 15), (18, 12.2), "+3V3", width=0.4),
+        segment((18, 12.2), (19, 12.2), "+3V3", width=0.4),
+    ]
+    feed = [segment((19.25, 12), (18.55, 12), "+3V3", width=0.4), via(18.55, 12, "+3V3")]
+    assert check(*SUPPLY, *to_pin, *feed, *EN) == [
+        "U1 pad 1 (+3V3): reaches zone +3V3 on In2.Cu without C1"
+    ]
+
+
 def test_supply_pin_has_its_own_via() -> None:
     own = [segment((18, 15), (18, 16.2), "+3V3"), via(18, 16.2, "+3V3")]
     assert check(*SUPPLY, *FEED, *TO_PIN, *own, *EN) == [
