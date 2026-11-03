@@ -212,7 +212,8 @@ def commands(project: Project, out: Path, copper: list[str]) -> list[list[str]]:
 
 def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
     """Runs the commands; the ones that failed, on stderr and returned.
-    A failed export does not stop the rest."""
+    A failed export, or a tool not on the path, does not stop the rest;
+    a summary without its source is skipped, on stderr."""
     for sub in ("sch", "pcb", "png"):
         (out / sub).mkdir(parents=True, exist_ok=True)
     copper = [name for name, _ in copper_layers(parse(project.board.read_text(encoding="utf-8")))]
@@ -221,13 +222,25 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
         if dry_run:
             print(" ".join(cmd))
             continue
-        done = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            done = subprocess.run(cmd, capture_output=True, text=True)
+        except FileNotFoundError:
+            print(f"failed: {cmd[0]} not on the path: {' '.join(cmd)}", file=sys.stderr)
+            failed.append(" ".join(cmd))
+            continue
         if done.returncode != 0:
             print(f"failed: {' '.join(cmd)}\n{done.stderr.strip()}", file=sys.stderr)
             failed.append(" ".join(cmd))
     if dry_run:
         return []
-    condense(out / "netlist.net", out)
+    netlist, erc = out / "netlist.net", out / "erc.json"
+    if netlist.exists():
+        condense(netlist, out)
+    else:
+        print(f"skipped: nets.txt and components.txt, without {netlist}", file=sys.stderr)
     (out / "board.md").write_text(board_summary(project.board), encoding="utf-8")
-    (out / "erc.md").write_text(erc_summary(out / "erc.json"), encoding="utf-8")
+    if erc.exists():
+        (out / "erc.md").write_text(erc_summary(erc), encoding="utf-8")
+    else:
+        print(f"skipped: erc.md, without {erc}", file=sys.stderr)
     return failed
