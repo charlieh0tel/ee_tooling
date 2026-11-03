@@ -210,6 +210,20 @@ def where(p: Point) -> str:
     return f"({round(p[0], 2):g}, {round(p[1], 2):g})"
 
 
+def zone_name(zone: Expression) -> str:
+    """A zone as a finding names it: its net and layers."""
+    net = child(zone, "net")
+    return f"zone {net[1] if net and len(net) > 1 else 'with no net'} on {', '.join(layers(zone))}"
+
+
+def zone_outline(zone: Expression) -> list[Point]:
+    """A zone's outline, its (polygon)'s points."""
+    pts = children(child(child(zone, "polygon") or [], "pts") or [], "xy")
+    if not pts:
+        raise BoardError(f"{zone_name(zone)} has no polygon")
+    return [(number(q[1]), number(q[2])) for q in pts]
+
+
 def check_board(board: Expression) -> list[str]:
     """The board's zone problems, each a line."""
     if not board or board[0] != "kicad_pcb":
@@ -227,22 +241,13 @@ def check_board(board: Expression) -> list[str]:
     outline = edge(board)
     if not outline:
         problems.append(f"no {EDGE} outline")
-    for zone in children(board, "zone"):
-        net = child(zone, "net")
-        what = (
-            f"zone {net[1] if net and len(net) > 1 else 'with no net'} on {', '.join(layers(zone))}"
-        )
+    zones = [(zone, zone_name(zone), zone_outline(zone)) for zone in children(board, "zone")]
+    for zone, what, points in zones:
         if not locked(zone):
             problems.append(f"{what}: not locked")
-        pts = children(child(child(zone, "polygon") or [], "pts") or [], "xy")
-        if not pts:
-            raise BoardError(f"{what} has no polygon")
         if child(zone, "keepout") or not outline:
             continue
-        inside = next(
-            (p for p in walk([(number(q[1]), number(q[2])) for q in pts]) if on_board(p, outline)),
-            None,
-        )
+        inside = next((p for p in walk(points) if on_board(p, outline)), None)
         if inside:
             problems.append(
                 f"{NOTE}{what}: outline on the board at {where(inside)}, not past its edge"
