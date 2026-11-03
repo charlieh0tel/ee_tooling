@@ -78,7 +78,8 @@ electrical_test = "100% netlist test per IPC-9252"
   `README.txt` (the map), `stackup.txt` and `fab-notes.txt`.
 - Its BOM `NAME-REV-jlcpcb-bom.csv` (Comment, Designator, Footprint,
   LCSC Part #; DNP left out) and CPL `NAME-REV-jlcpcb-cpl.csv`, with
-  `parts.toml`'s rotations and offsets.
+  `parts.toml`'s rotations and offsets.  A fitted part with no LCSC
+  number refuses the release, naming each one.
 - IPC-2581's distributor: the `LCSC` field, distributor "LCSC".
 - Rules: `rules/jlcpcb.kicad_dru` in sections (limits, house), and
   `rules/jlcpcb_board_setup.json`, the Board Setup minimums.
@@ -191,7 +192,10 @@ become groups chosen per board, and whether a value the board and
 - `adopt`: creates `fab.toml` for a new repository (one board per
   `*.kicad_pro`, profile `jlcpcb`, the profile's fab values), migrates
   `jlcpcb.toml`, adds missing `[board.fab]` keys, installs the rules
-  section and raises Board Setup.  `adopt --check` fails on a missing
+  section and raises Board Setup.  It sets `erc.rule_severities` in the
+  `.kicad_pro` from `erc_severities.json`, keeping a board's own
+  severity where it is stricter (ignore, warning, error), and
+  `schematic.connection_grid_size`.  `adopt --check` fails on a missing
   key.
 - `fab-setup`: adds a board or sets a value (`fab-setup add NAME
   [--profile P]`, `fab-setup set BOARD KEY VALUE`, `--interactive`),
@@ -201,7 +205,8 @@ become groups chosen per board, and whether a value the board and
 ## Migration
 
 A flag day: the breaking commits land on `main` in one merge and are
-released as 0.2.0.  A board repository cannot release from the merge
+released as 0.2.0.  `v0.1.0` is tagged on `main` before the merge, the
+pin for a board repository not yet migrated.  A board repository cannot release from the merge
 until it runs `adopt --yes`, checks `[board.fab]`, draws the stackup
 table and passes DRC under the profile's rules.
 
@@ -229,6 +234,9 @@ Breaking changes:
 13. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`, `Parts` and the BOM and CPL to
     `ee_tooling.profiles.jlcpcb`.
+14. JLCPCB profile: a fitted part with no LCSC number is refused (now a
+    warning).
+15. `adopt --yes` sets the board's ERC severities and connection grid.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
 
@@ -237,6 +245,7 @@ Breaking changes:
 Refactor first, with no change in behavior; each commit passes every
 check, with its docs.
 
+0. Tag `v0.1.0` on `main`, after CI.
 1. Split `jlcpcb_release.py` into `fab_release.py` and
    `profiles/jlcpcb.py`; same command, same files.
 2. `Profile`, `GerberOptions`, `PROFILES`; the core calls the JLCPCB
@@ -258,7 +267,9 @@ Then one PR, breaking, merged as one:
 11. The rules in sections; DRC on a scratch
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
-12. Release 0.2.0; tag after CI.
+12. The JLCPCB profile refuses a fitted part with no LCSC number.
+13. `adopt` sets the ERC severities and connection grid.
+14. Release 0.2.0; tag after CI.
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
@@ -274,6 +285,8 @@ rules.
   quote upload, with no order, checks it before step 9 merges.
 - DRC in the editor and in the release differ until `adopt --yes`; the
   release warns.
+- A fitted part JLCPCB is not to place (a test point, a hand-fitted
+  connector) needs DNP or Exclude from BOM, or the release is refused.
 - Board Setup is raised, never lowered: a board moved to a looser fab
   keeps the stricter values.
 - `adopt` editing `.kicad_pro` and `.kicad_dru` while KiCad has them open
@@ -288,9 +301,5 @@ rules.
 
 ## Open
 
-1. Should `adopt` install `erc_severities.json` in the same PR?
-2. Tag `v0.1.0` on `main` before the merge, as the pin for boards not
-   yet migrated?
-3. A BOM part with no LCSC number: refuse the release, or warn as now?
-4. Does the house BOM include DNP parts, marked (proposed), or leave them
+1. Does the house BOM include DNP parts, marked (proposed), or leave them
    out?
