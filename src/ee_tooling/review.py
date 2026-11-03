@@ -1,0 +1,79 @@
+"""design-review: the evidence and the lint of an adversarial design
+review (skills/design-review/SKILL.md, docs/design-review.md).
+
+design-review evidence DIR NAME OUT   kicad-cli exports and summaries into OUT
+design-review netlist NETLIST OUT     nets.txt and components.txt into OUT
+design-review board PCB               board summary, stdout
+design-review erc ERC_JSON            ERC summary, stdout
+design-review pages PDF               schematic PDF page to sheet map, stdout
+design-review pairs PCB NET_P,NET_N...  pair routing gaps, stdout
+design-review findings TABLE.md       lint a findings table; exit 1 on problems
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+from ee_tooling import (
+    review_board,
+    review_erc,
+    review_findings,
+    review_netlist,
+    review_pages,
+    review_pairs,
+)
+from ee_tooling.review_evidence import Project, export
+
+
+def pair(arg: str) -> tuple[str, str]:
+    first, sep, second = arg.partition(",")
+    if not sep or not first or not second or "," in second:
+        raise argparse.ArgumentTypeError(f"a pair is NET_P,NET_N: {arg!r}")
+    return first, second
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
+    sub = ap.add_subparsers(dest="command", required=True)
+    s = sub.add_parser("evidence", help="export the review evidence")
+    s.add_argument("directory", type=Path, help="holds NAME.kicad_sch and NAME.kicad_pcb")
+    s.add_argument("name")
+    s.add_argument("out", type=Path)
+    s.add_argument("--dry-run", action="store_true", help="print the commands, run nothing")
+    s = sub.add_parser("netlist", help="condense a netlist")
+    s.add_argument("netlist", type=Path)
+    s.add_argument("out", type=Path)
+    s = sub.add_parser("board", help="summarize a board")
+    s.add_argument("pcb", type=Path)
+    s = sub.add_parser("erc", help="summarize an ERC report")
+    s.add_argument("erc_json", type=Path)
+    s = sub.add_parser("pages", help="map schematic PDF pages to sheets")
+    s.add_argument("pdf", type=Path)
+    s = sub.add_parser("pairs", help="pair routing gaps")
+    s.add_argument("pcb", type=Path)
+    s.add_argument("pairs", type=pair, nargs="+", metavar="NET_P,NET_N")
+    s = sub.add_parser("findings", help="lint a findings table")
+    s.add_argument("table", type=Path)
+    a = ap.parse_args()
+    match a.command:
+        case "evidence":
+            failed = export(Project(a.directory, a.name), a.out, a.dry_run)
+            sys.exit(1 if failed else 0)
+        case "netlist":
+            a.out.mkdir(parents=True, exist_ok=True)
+            parts, nets = review_netlist.condense(a.netlist, a.out)
+            print(f"{parts} components, {nets} nets -> {a.out}")
+        case "board":
+            sys.stdout.write(review_board.summary(a.pcb))
+        case "erc":
+            sys.stdout.write(review_erc.summary(a.erc_json))
+        case "pages":
+            print("\n".join(review_pages.page_map(a.pdf)))
+        case "pairs":
+            sys.stdout.write(review_pairs.report(a.pcb, a.pairs))
+        case "findings":
+            found = review_findings.lint(a.table.read_text(encoding="utf-8"))
+            for p in found.problems:
+                print(f"{a.table}: row {p.row}: {p.message}", file=sys.stderr)
+            print(f"{found.rows} rows, {len(found.problems)} problems")
+            sys.exit(0 if found.ok else 1)

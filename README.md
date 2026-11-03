@@ -15,7 +15,8 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `src/ee_tooling/step_model.py` | STEP stand-in models (boxes, faceted cylinders) for parts whose makers' models may not be redistributed |
 | `src/ee_tooling/parts.toml` | JLCPCB's rotation and offset corrections, by LCSC part |
 | `tools/odb_current/` | DC resistance and current capacity of a net, from ODB++ |
-| `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path` |
+| `src/ee_tooling/review*.py` | `design-review`: the evidence (kicad-cli exports, netlist, board and ERC summaries, pair routing gaps) and findings lint of an adversarial design review (`docs/design-review.md`) |
+| `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path`, `design-review` |
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
 | `docs/adopting.md` | taking ee_tooling into a board repository |
