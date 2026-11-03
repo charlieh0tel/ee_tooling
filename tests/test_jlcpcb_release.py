@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -6,10 +7,12 @@ from ee_tooling.jlcpcb_release import (
     Board,
     Parts,
     Release,
+    TagPlan,
     jlcpcb_bom,
     jlcpcb_cpl,
     load_config,
     revision,
+    tag_plan,
 )
 
 CONFIG = """
@@ -205,3 +208,55 @@ def test_odb_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
             str(tmp_path / "hardware/jig/jig.kicad_pcb"),
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("dirty", "tagged", "retag", "plan"),
+    [
+        (True, None, False, TagPlan.DIRTY),
+        (True, "b" * 40, False, TagPlan.DIRTY),
+        (False, None, False, TagPlan.CREATE),
+        (False, None, True, TagPlan.CREATE),
+        (False, "a" * 40, False, TagPlan.PRESENT),
+        (False, "b" * 40, False, TagPlan.REFUSE),
+        (False, "b" * 40, True, TagPlan.MOVE),
+    ],
+)
+def test_tag_plan(dirty: bool, tagged: str | None, retag: bool, plan: TagPlan) -> None:
+    assert tag_plan(dirty, tagged, "a" * 40, retag) is plan
+
+
+# A git identity for the test's commits and tags, which CI lacks.
+IDENTITY = {
+    "GIT_AUTHOR_NAME": "Test",
+    "GIT_AUTHOR_EMAIL": "test@example.com",
+    "GIT_COMMITTER_NAME": "Test",
+    "GIT_COMMITTER_EMAIL": "test@example.com",
+}
+
+
+def git(root: Path, *args: str) -> str:
+    r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+def test_tag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An annotated tag on HEAD, found by tagged, and moved only when asked."""
+    for k, v in IDENTITY.items():
+        monkeypatch.setenv(k, v)
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "commit", "-q", "--allow-empty", "-m", "one")
+    r = Release(tmp_path, load_config(CONFIG)["jig"], tmp_path / "work")
+    name = "jig-20261102-1"
+    assert r.tagged(name) is None
+    first = r.head()
+    r.tag(name, "jig 1: JLCPCB release production/20261102-1", move=False)
+    assert r.tagged(name) == first
+    assert git(tmp_path, "cat-file", "-t", f"refs/tags/{name}") == "tag"
+    git(tmp_path, "commit", "-q", "--allow-empty", "-m", "two")
+    with pytest.raises(SystemExit):
+        r.tag(name, "again", move=False)
+    assert r.tagged(name) == first
+    r.tag(name, "moved", move=True)
+    assert r.tagged(name) == r.head() != first

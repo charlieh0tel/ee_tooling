@@ -12,6 +12,7 @@ board's git repository:
 uv run --project PATH/TO/ee_tooling jlcpcb-release            # the first board
 uv run --project PATH/TO/ee_tooling jlcpcb-release BOARD      # another
 uv run --project PATH/TO/ee_tooling jlcpcb-release --date 20261027 --force   # rebuild a day's release
+uv run --project PATH/TO/ee_tooling jlcpcb-release --date 20261027 --force --retag   # and move its tag
 ```
 
 A repository with ee_tooling as a uv dependency runs plain
@@ -41,6 +42,20 @@ It stops unless ERC is clean, DRC (with schematic parity) is clean, and
 the board's directory and `sources` have no uncommitted changes
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
 `-dirty`).
+
+## The tag
+
+It tags the commit the package was built from (the tgz's COMMIT),
+annotated, `NAME-YYYYMMDD-REV`, with the message `NAME REV: JLCPCB
+release PRODUCTION/YYYYMMDD-REV`.  It does not push the tag: it prints
+the command, `git push origin refs/tags/NAME-YYYYMMDD-REV`.  Run that
+only when the owner says to.
+
+- A build from uncommitted sources (`--allow-dirty`) is not tagged.
+- A rebuild (`--force`) of the commit the tag is on leaves the tag.
+- A tag already on another commit stops it before anything is replaced;
+  `--retag` moves the tag, and the printed push then has `--force`.
+  Once the order is placed, the release is fixed: don't move its tag.
 
 ## Before running
 
