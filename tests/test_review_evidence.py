@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.review_evidence import PLOT_LAYERS, PNG_GROUPS, Project, commands, export
+from ee_tooling.review_evidence import (
+    PLOT_LAYERS,
+    PNG_GROUPS,
+    SUMMARIZED,
+    Project,
+    commands,
+    export,
+)
 
 COPPER = ["F.Cu", "In1.Cu", "B.Cu"]
 
@@ -38,16 +45,21 @@ def test_tools_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """No kicad-cli or pdftoppm: every command fails, the summaries without
-    a source are skipped, and the board summary is still written."""
+    a source are skipped, an earlier run's files are gone, and the board
+    summary is still written."""
     (tmp_path / "W.kicad_pcb").write_text(
         '(kicad_pcb (layers (0 "F.Cu" signal) (31 "B.Cu" signal)))', encoding="utf-8"
     )
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     out = tmp_path / "out"
+    out.mkdir()
+    for stale in SUMMARIZED:
+        (out / stale).write_text("from an earlier run", encoding="utf-8")
     failed = export(Project(tmp_path, "W"), out)
     assert len(failed) == len(commands(Project(tmp_path, "W"), out, ["F.Cu", "B.Cu"]))
     err = capsys.readouterr().err
     assert "failed: kicad-cli not on the path: kicad-cli sch erc" in err
     assert "skipped: nets.txt and components.txt, without" in err
     assert "skipped: erc.md, without" in err
-    assert (out / "board.md").is_file() and not (out / "erc.md").exists()
+    assert (out / "board.md").is_file()
+    assert not any((out / stale).exists() for stale in SUMMARIZED)
