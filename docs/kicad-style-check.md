@@ -55,6 +55,17 @@ wires versus labels are not checked.
   annular ring of at least 0.5 mm, and on a net (a ground tie, needing no
   vias).  A hole on no net is reported for the owner to decide.
 
+### Stackup table: kicad_style_stackup.py
+
+- A physical stackup (Board Setup), and KiCad 10's stackup table (Place
+  > Add Stackup Table: a table headed `Layer Name`, `Type`, `Material`,
+  `Thickness`, `Color`, `Epsilon R`, `Loss Tangent`) on User.Drawings.
+  The header is found in English only.  A pre-KiCad 10 table (the group
+  `group-boardStackUp`) is reported for replacing.
+- The table matching the stackup: a row per layer or dielectric
+  sublayer, and each material, thickness (any of KiCad's units), Er and
+  loss tangent the stackup gives.
+
 ### Routing: kicad_style_routing.py
 
 Plane nets are the `poured` nets of `placement.toml` beside the board

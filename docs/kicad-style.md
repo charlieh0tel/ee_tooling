@@ -119,6 +119,9 @@ rules it can (`docs/kicad-style-check.md`).
 - Stitching vias around the board's edge (`stitch`, `docs/stitch.md`).
 - Mounting holes plated, with an annular ring.  A hole tied to ground
   needs no vias of its own.
+- A physical stackup in Board Setup, and its table (Place > Add Stackup
+  Table) on User.Drawings.  KiCad does not update the table: replace it
+  after any stackup change.
 
 ## Silkscreen
 
