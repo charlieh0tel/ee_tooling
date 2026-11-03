@@ -11,11 +11,14 @@ C163712 = 180  # SN74AHCT1G126, 2026-10-26
 C840096 = 180  # SN74LVC1G34, 2026-10-26
 C7519 = -90  # USBLC6-2SC6, 2026-10-26
 C82045 = 180  # BSS138, 2026-10-26
+C5665 = -90  # BOOMELE 2.54-2*5P box header, 2026-11-02
+C7203002 = 90  # Raspberry Pi Pico, 2026-11-02; offset unsettled, 0 to 0.4 mm along the pin rows by eye
 
 # Millimeters added to the position, in the part's own frame (KiCad
 # rotation 0, y up).
 [offset]
 C165948 = [0.0, 1.5]  # HRO TYPE-C-31-M-12: back 1.5 mm from its face, 2026-10-26
+C5665 = [1.27, -5.08]  # BOOMELE 2.54-2*5P: KiCad's zero is pin 1, JLCPCB's the body's center, 2026-11-02
 
 # Parts whose correction the preview has not yet given: check them there and
 # move them to [rotation] or [offset].
