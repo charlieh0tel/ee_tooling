@@ -23,8 +23,6 @@ a board with DRC or ERC violations.
   clearance, copper to edge and a via's hole clearance, which are lower
   at JLCPCB than a board would choose and which shape zone fills, are
   Board Setup minimums, not rules.
-- A `track_angle` limit is written without a unit: KiCad 10.0.8 ignores
-  one written `91deg`.
 - `jlcpcb-release` runs `kicad-cli ... --exit-code-violations`, which
   fails on a warning as on an error.
 
@@ -105,8 +103,7 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 | `Mounting hole plated` | Board finishing | a `MountingHole*` footprint's pad with a drill of 1 mm or more plated |
 | `Mounting hole vias` | Board finishing | between pads of one `MountingHole*` footprint (its stitching vias): JLCPCB's via hole-to-hole spacing, 0.2, not its pad spacing, 0.45 |
 | `Silkscreen text height` | Silkscreen | text at least 0.8 high: the house overrides JLCPCB's 1.0; the thickness stays JLCPCB's 0.15 |
-| `No right-angle bends` | Routing | joined segments at 91 degrees or more (180 straight, 135 a 45-degree bend) |
-| `Differential pair coupled` | Net classes, Routing | in a `*Z_DIFF` class: at most 5 mm uncoupled, 0.5 mm skew within the pair (house choices) |
+| `Differential pair skew, ...` | Net classes, Routing | skew within a pair, by the interface its class names (Differential pairs, below) |
 
 - The mounting hole's 0.5 mm ring is kicad-style-check's, which
   measures the land: KiCad's annular width stops at the nearest hole, so
@@ -114,11 +111,48 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
   it.
 - `A.Reference == B.Reference` tells one footprint's pads (KiCad 10.0.8
   compares `A.Parent` by reference too).
-- `track_angle` does not check a joint on a pad, nor one at a via.  It
-  also reports a branch (a T) at 90 degrees, a segment doubling back (0)
-  and a zero-length segment, and reports each joint twice.
+- No right-angle bends is kicad-style-check's: KiCad's `track_angle`
+  reports a branch (a T) at 90 degrees as it does a bend.  (It also
+  ignores a limit written with a unit, `91deg`, in KiCad 10.0.8.)
 - A differential pair's gap is its net class's: a `diff_pair_gap` rule
   would replace it, the router's gap included.
+
+## Differential pairs
+
+A pair's class names its interface, `<ohms>Z_DIFF_<INTERFACE>`
+(`90Z_DIFF_USBHS`), and the interface sets the skew within the pair
+(KiCad's `skew` with `within_diff_pairs`: the difference of the two
+nets' routed lengths).  kicad-style-check reports a suffix not in this
+table (`kicad_style_netclass.py`, `INTERFACES`).  DVI's TMDS pairs take
+`HDMI`.
+
+| Suffix | Interface | Skew within the pair, mm | Source |
+|---|---|---|---|
+| `USBFS` | USB 2.0 full speed | 1.27 | TI SPRAAR7J, Table A-2: USB2.0, 50 mil |
+| `USBHS` | USB 2.0 high speed | 1.27 | TI SPRAAR7J, Table A-2: USB2.0, 50 mil |
+| `USB3` | USB 3.x SuperSpeed | 0.127 | TI SPRAAR7J, Table A-2: USB3, 5 mil |
+| `PCIE` | PCI Express | 0.127 | TI SPRAAR7J, Table A-2: PCIe, 5 mil |
+| `HDMI` | HDMI TMDS | 0.127 | TI SPRAAR7J, Table A-2: HDMI, 5 mil |
+| `ETH1G` | Ethernet 1000BASE-T MDI | 0.508 | TI SNLA387, MDI Traces: 20 mil for 1G |
+| `ETH100` | Ethernet 100BASE-TX MDI | 1.27 | TI SNLA387, MDI Traces: 50 mil for 100M |
+
+Sources:
+
+- TI, High-Speed Interface Layout Guidelines, SPRAAR7J (November 2018,
+  revised February 2023), Appendix A, Table A-2 (AM57xx/DRA7xx): "Skew
+  within any USB2.0 differential pair", 50 mil; "Skew within any
+  USB3/SATA/PCIe/HDMI differential pair", 5 mil.  The other tables of
+  Appendix A give the same figures.
+  <https://www.ti.com/lit/an/spraar7j/spraar7j.pdf>
+- TI, Ethernet PHY PCB Design Layout Checklist, SNLA387 (June 2021),
+  section 2, MDI Traces: "length-matched within 20 mils for 1G
+  transmissions and within 50 mils for 100M or 10M transmissions".
+  <https://www.ti.com/lit/an/snla387/snla387.pdf>
+
+No rule: a class naming no interface (`90Z_DIFF`), since the figures
+above run from 0.127 to 1.27 mm and one default would either fail most
+USB 2.0 pairs or pass a USB 3 pair ten times over its figure; LVDS and
+MIPI, and a pair's uncoupled length, for want of a citable figure.
 
 ## ERC severities
 
@@ -188,6 +222,7 @@ warning is for the owner to judge; both fail `jlcpcb-release`.
 | Mounting holes plated | `Mounting hole plated` | yes |
 | Mounting holes with an annular ring of 0.5 | none | no |
 | Mounting holes on a net | none | no |
+| No right-angle bends | none: `track_angle` also reports a T | no |
 | Connection points on the grid | `endpoint_off_grid` | no: KiCad checks pins and wire ends, not labels, junctions or no-connects |
 | No pin without a wire or no-connect | `pin_not_connected` | no: to KiCad a pin on another pin, or on a label, is connected |
 | No-connects on pins | `no_connect_dangling` | yes |

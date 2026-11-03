@@ -66,6 +66,8 @@ KiCad's ERC checks some of them with ee_tooling's severities
 - Power nets get a net class, even at the default width.
 - Every differential pair (USB, say) and every controlled-impedance net
   gets one, named for its impedance and kind: `90Z_DIFF`, `50Z_SE`.  A
+  pair's class names its interface where it has one, setting its skew
+  (`docs/kicad-rules.md`, Differential pairs): `90Z_DIFF_USBHS`.  A
   Kelvin sense pair, not impedance-controlled, needs none: KiCad pairs
   it by its names.
 - Otherwise a net class wherever a group of nets shares a width,
@@ -115,8 +117,8 @@ KiCad's ERC checks some of them with ee_tooling's severities
 
 `kicad-style-check` checks the zone, routing, net class and finishing
 rules it can (`docs/kicad-style-check.md`).
-KiCad's DRC checks mounting holes, right-angle bends and differential
-pairs' coupling with ee_tooling's rules (`docs/kicad-rules.md`).
+KiCad's DRC checks mounting holes and differential pairs' coupling
+with ee_tooling's rules (`docs/kicad-rules.md`).
 
 ### Board finishing
 

@@ -84,6 +84,10 @@ the board or more.
   capacitor across a supply and a ground (`GND`, `AGND`, `VSS`, `0V`
   ...) decouples the nearest `U` or `IC` supply pin within 5 mm on that
   supply and ground (a power pin, where the board gives pin types).
+- No right-angle bend: two tracks' ends meeting on one layer and net,
+  where no other track ends or runs and off any pad or via, at 90
+  degrees between them (within 1 degree) or sharper.  A track ending on
+  another's run (a T) is a branch, not a bend.
 - A board with no tracks or vias is not checked.
 
 ## Project (.kicad_pro): kicad_style_netclass.py
@@ -96,9 +100,11 @@ patterns and assignments.
   named for a supply (`+3V3`, `VDD...`, `VCC...`, `GND`, `VBUS`, `VIN`
   ...), named by a power symbol, or on a power pin.
 - Every differential pair (KiCad's `+`/`-` or `P`/`N`, and USB's
-  `DP`/`DM`) in one `<ohms>Z_DIFF` class, but a Kelvin sense pair (its
-  name says `SENSE`, `SNS` or `KELVIN`).
-- A class named for an impedance named `<ohms>Z_DIFF` or `<ohms>Z_SE`.
+  `DP`/`DM`) in one `<ohms>Z_DIFF` or `<ohms>Z_DIFF_<INTERFACE>` class,
+  but a Kelvin sense pair (its name says `SENSE`, `SNS` or `KELVIN`).
+- A class named for an impedance named `<ohms>Z_DIFF`,
+  `<ohms>Z_DIFF_<INTERFACE>` or `<ohms>Z_SE`; the interface one of
+  `docs/kicad-rules.md`'s (Differential pairs), `INTERFACES`.
 - A net named like half a pair (ending `+`, `-`, `_P`, `DP` or `DM`) with
   no other half is a `note:`; a lone `_N`, often active low, is not.
 - A class assigned or in a pattern but not defined.

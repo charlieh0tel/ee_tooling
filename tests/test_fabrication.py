@@ -198,7 +198,7 @@ def test_stackup_document() -> None:
     assert "Castellated pads: yes" in text
     assert "JLCPCB's impedance calculator" in text
     usb = next(line for line in lines if line.startswith("USB_90Z"))
-    assert "[TBD: name not <ohms>Z_DIFF or <ohms>Z_SE]" in usb
+    assert "[TBD: name not <ohms>Z_DIFF[_<INTERFACE>] or <ohms>Z_SE]" in usb
     se = next(line for line in lines if line.startswith("50Z_SE"))
     assert se.split()[1:] == ["50", "single-ended", "0.36", "-", "-"]
 
