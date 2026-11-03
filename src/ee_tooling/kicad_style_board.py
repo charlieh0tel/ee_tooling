@@ -2,7 +2,9 @@
 Board layout): pours are copper zones, never filled shapes on a copper
 layer; every zone is locked.  A copper zone whose outline lies on the
 board, rather than past its edge (or in a slot or cutout), is a note: the
-whole-board fill is the usual rule, not a hard one.
+whole-board fill is the usual rule, not a hard one.  An outline that faces
+another net's zone on each of its layers, as a split plane's does, is not
+on the board alone.
 """
 
 import itertools
@@ -26,6 +28,11 @@ STEP = 0.25
 # A point this close to the board's edge is on it, mm: a zone's outline
 # along the edge is not past it.
 ON_EDGE = 0.001
+# KiCad's default zone clearance (pcbnew/zones.h, ZONE_CLEARANCE_MM), mm.
+# A zone's outline inside another net's zone on its layer, or no further
+# from it than this or either zone's own clearance, faces it, as a split
+# plane's halves do.
+SPLIT_GAP = 0.5
 
 
 # KiCad names a pad's net so when nothing else is on it.
@@ -219,6 +226,38 @@ def zone_outline(zone: Expression) -> list[Point]:
     return [(number(q[1]), number(q[2])) for q in pts]
 
 
+def zone_clearance(zone: Expression) -> float:
+    """A zone's own clearance, (connect_pads ... (clearance X)), mm; 0 if
+    it has none."""
+    c = child(child(zone, "connect_pads") or [], "clearance")
+    return number(c[1]) if c else 0.0
+
+
+# A copper zone as a neighbor of another: its net, layers, outline as
+# segments, and own clearance, mm.
+Neighbor = tuple[str | None, list[str], list[Segment], float]
+
+
+def faces(p: Point, zone: Expression, neighbors: list[Neighbor]) -> bool:
+    """Whether p, on zone's outline, faces another net's zone on each of
+    zone's copper layers: is inside it, or within the split gap of its
+    outline."""
+    net, gap = net_name(zone), max(SPLIT_GAP, zone_clearance(zone))
+    copper = [x for x in layers(zone) if x.endswith(COPPER)]
+    return bool(copper) and all(
+        any(
+            other != net
+            and layer in on
+            and (
+                on_board(p, outline)
+                or min(distance(p, s) for s in outline) <= max(gap, clearance) + ON_EDGE
+            )
+            for other, on, outline, clearance in neighbors
+        )
+        for layer in copper
+    )
+
+
 def check_board(board: Expression) -> list[str]:
     """The board's zone problems, each a line."""
     if not board or board[0] != "kicad_pcb":
@@ -237,12 +276,20 @@ def check_board(board: Expression) -> list[str]:
     if not outline:
         problems.append(f"no {EDGE} outline")
     zones = [(zone, zone_name(zone), zone_outline(zone)) for zone in children(board, "zone")]
+    neighbors = [
+        (net_name(zone), layers(zone), polyline(points, closed=True), zone_clearance(zone))
+        for zone, _, points in zones
+        if not child(zone, "keepout")
+    ]
     for zone, what, points in zones:
         if not locked(zone):
             problems.append(f"{what}: not locked")
         if child(zone, "keepout") or not outline:
             continue
-        inside = next((p for p in walk(points) if on_board(p, outline)), None)
+        inside = next(
+            (p for p in walk(points) if on_board(p, outline) and not faces(p, zone, neighbors)),
+            None,
+        )
         if inside:
             problems.append(
                 f"{NOTE}{what}: outline on the board at {where(inside)}, not past its edge"
