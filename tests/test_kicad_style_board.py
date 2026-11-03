@@ -236,3 +236,11 @@ def test_polygon_with_arcs() -> None:
 def test_polygon_without_points() -> None:
     with pytest.raises(BoardError, match="a gr_poly without points"):
         segments(parse('(gr_poly (pts) (layer "Edge.Cuts"))'))
+
+
+def test_polygon_unknown_item(capsys: pytest.CaptureFixture[str]) -> None:
+    shape = parse("(pts (xy 0 0) (bezier (pts)) (xy 1 0) loose (xy 1 1))")
+    assert outline_points(shape) == [(0, 0), (1, 0), (1, 1)]
+    err = capsys.readouterr().err
+    assert "skipped: (bezier ...) in a polygon's points" in err
+    assert "skipped: 'loose' in a polygon's points" in err

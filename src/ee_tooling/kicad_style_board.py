@@ -8,6 +8,7 @@ whole-board fill is the usual rule, not a hard one.
 import itertools
 import math
 import re
+import sys
 
 from ee_tooling.sexpr import Atom, Expression, child, children, number
 
@@ -116,10 +117,12 @@ def segments(shape: Expression) -> list[Segment]:
 
 def outline_points(pts: Expression) -> list[Point]:
     """A (pts ...) list's points in order: each (xy X Y), and each
-    (arc (start) (mid) (end)) as points along it."""
+    (arc (start) (mid) (end)) as points along it; any other item is
+    skipped, on stderr."""
     points: list[Point] = []
-    for item in pts:
+    for item in pts[1:]:
         if not isinstance(item, list) or not item:
+            print(f"skipped: {item!r} in a polygon's points", file=sys.stderr)
             continue
         match item[0]:
             case "xy":
@@ -127,6 +130,8 @@ def outline_points(pts: Expression) -> list[Point]:
             case "arc":
                 a, m, b = required(item, "start", "mid", "end")
                 points.extend(arc(a, m, b))
+            case _:
+                print(f"skipped: ({item[0]} ...) in a polygon's points", file=sys.stderr)
     return points
 
 
