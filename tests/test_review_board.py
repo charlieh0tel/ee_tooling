@@ -28,8 +28,11 @@ BOARD = """(kicad_pcb (version 20241229) (generator "pcbnew")
   (gr_line (start 0 30) (end 0 0) (layer "Edge.Cuts"))
   (gr_text "REV A" (at 5 28) (layer "F.SilkS"))
   (footprint "Lib:R_0402" (layer "F.Cu") (at 10 10 90)
-    (property "Reference" "R1") (property "Value" "10k")
+    (property "Reference" "R1" (at 0 -1) (layer "F.SilkS"))
+    (property "Value" "10k" (at 0 1) (layer "F.Fab"))
+    (property "Datasheet" "" (at 0 0) (layer "F.SilkS") (hide yes))
     (attr smd dnp)
+    (fp_text user "old" (at 0 0) (layer "F.SilkS") (effects (font (size 1 1)) hide))
     (fp_text user "pin 1" (at 0 0) (layer "F.SilkS"))
     (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 2 "V12V")))
   (footprint "Lib:Fiducial_1mm" (layer "F.Cu") (at 2 2)
@@ -111,6 +114,8 @@ def test_summary(tmp_path: Path) -> None:
     assert "- DNP (1): R1" in text
     assert "| R1 (DNP) | 10k | Lib:R_0402 | F.Cu | 10.00 | 10.00 | 90 |" in text
     assert "- 'pin 1' on R1" in text
+    assert "- Reference 'R1' on R1" in text
+    assert "Value '10k'" not in text and "Datasheet" not in text and "'old'" not in text
     assert "- F.SilkS: 'REV A' at (5.0,28.0)" in text
 
 
