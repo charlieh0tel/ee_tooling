@@ -43,7 +43,11 @@ wires versus labels are not checked.
 - Every zone locked, keepouts included.
 - A copper zone whose outline lies on the board anywhere, rather than
   past its edge or in a slot or cutout, is a `note:` (along the edge
-  counts as on it).
+  counts as on it).  A point of the outline that faces another net's
+  zone on each of the zone's copper layers, as a split plane's does, is
+  not: inside that zone, or no further from its outline than 0.5 mm
+  (KiCad's default zone clearance, `ZONE_CLEARANCE_MM`) or either
+  zone's own clearance.  A keepout faces nothing.
 
 ### Finishing: kicad_style_finishing.py
 
