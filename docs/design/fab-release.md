@@ -5,8 +5,8 @@ and `jlcpcb.toml` with a fab-neutral `fab-release` and `fab.toml`, with
 JLCPCB as one profile.  Decided in review: the names below, a neutral
 core with profiles, required per-board fab values, the house BOM in the
 core, rules added by the release (not refused when stale), no `kicad`
-profile yet, no alias for the old command, and a flag day.  Open: the
-fab notes, and the questions at the end.
+profile yet, no alias for the old command, a flag day, and the fab
+notes deferred.  Open: the questions at the end.
 
 ## Names
 
@@ -173,10 +173,10 @@ class Profile(Protocol):
 
 ## Fab notes
 
-Open.  The current `fab-notes.txt` fills what the board says and marks
-the rest `[TBD: ...]`.  To decide: whether notes become groups chosen
-per board, and whether a value the board and `[board.fab]` cannot give
-is an error.
+Deferred: unchanged by this design.  `fab-notes.txt` fills what the
+board says and marks the rest `[TBD: ...]`.  Later: whether notes
+become groups chosen per board, and whether a value the board and
+`[board.fab]` cannot give is an error.
 
 ## Setup tools
 
@@ -252,7 +252,7 @@ Then one PR, breaking, merged as one:
     stale warning.
 12. Release 0.2.0; tag after CI.
 
-Later, not breaking: `fab-setup`; the fab notes, once decided.
+Later, not breaking: `fab-setup`; the fab notes.
 
 ## Adversarial review
 
@@ -279,12 +279,11 @@ Later, not breaking: `fab-setup`; the fab notes, once decided.
 
 ## Open
 
-1. Fab notes (above).
-2. `no_extra_cost_vias`: an option, or always on with a board's own rule
+1. `no_extra_cost_vias`: an option, or always on with a board's own rule
    overriding it?
-3. Should `adopt` install `erc_severities.json` in the same PR?
-4. Tag `v0.1.0` on `main` before the merge, as the pin for boards not
+2. Should `adopt` install `erc_severities.json` in the same PR?
+3. Tag `v0.1.0` on `main` before the merge, as the pin for boards not
    yet migrated?
-5. A BOM part with no LCSC number: refuse the release, or warn as now?
-6. Does the house BOM include DNP parts, marked (proposed), or leave them
+4. A BOM part with no LCSC number: refuse the release, or warn as now?
+5. Does the house BOM include DNP parts, marked (proposed), or leave them
    out?
