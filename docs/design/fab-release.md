@@ -57,6 +57,7 @@ notes = ["standards", "materials", "process", "data-integrity"]
 | `NAME-REV-gerbers.zip` | Gerbers, drill, job file, and `README.txt` (the map), `stackup.txt`, `fab-notes.txt` | core |
 | `NAME-REV-gerber-map.txt`, `-stackup.txt`, `-fab-notes.txt` | the same documents, beside the zip | core |
 | `NAME-REV-odb.tgz` | the ODB++ job | core |
+| `NAME-REV-ipc2581.zip` | the IPC-2581 revision C export | core |
 | `NAME-REV-source.tgz` | the design files and `sources` | core |
 | `NAME-REV-bom.csv`, `-cpl.csv` | JLCPCB's columns, `parts.toml`'s corrections | jlcpcb |
 | `NAME-REV-bom.csv`, `-pos.csv` | KiCad's own BOM and position files | kicad |
@@ -132,8 +133,8 @@ an error before release.
 Each step one commit or a few, all checks passing, docs with code:
 
 1. Refactor, no behavior change: split `jlcpcb_release.py` into a
-   neutral core (`release.py`: checks, Gerbers, drill, ODB++, documents,
-   source) and `profiles/jlcpcb.py` (BOM, CPL, parts).
+   neutral core (`release.py`: checks, Gerbers, drill, ODB++, IPC-2581,
+   documents, source) and `profiles/jlcpcb.py` (BOM, CPL, parts).
 2. Fab notes as groups; `[TBD]` placeholders become required values.
 3. `fab.toml`, `fab-release`, the `kicad` profile; `copper` from the
    stackup; refuse without a stackup or fab values.  Breaking.
