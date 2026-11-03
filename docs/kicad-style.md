@@ -14,9 +14,11 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 
 ## Schematic drawing
 
-- Every coordinate chosen on the 2.54 mm grid, so it reads as drawn by
-  hand: signal left to right, supplies up, ground down.
-- A wire of at least one grid unit off every pin before it joins
+- Every coordinate chosen on the 1.27 mm (50 mil) grid, KiCad's
+  connection grid, so it reads as drawn by hand: signal left to right,
+  supplies up, ground down.  A library symbol's pins 2.54 mm (100
+  mil; KiCad Library Convention S4.1) apart.
+- A wire of at least 2.54 mm off every pin before it joins
   anything.  No pin on a rail, no power or ground symbol on a pin, no
   pin touching a pin.
 - A junction dot on every join of three or more.

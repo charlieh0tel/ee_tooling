@@ -76,10 +76,6 @@ and 6 layers.  mm.
 | Legend: minimum text height | 1.0 | 1.0 | `JLCPCB silkscreen text` height, overridden by the house's 0.8 |
 | Legend: pad to silkscreen | 0.15 | 0.15 | `JLCPCB silkscreen to pad` |
 
-`JLCPCB silkscreen to pad` holds a footprint's own silkscreen graphics
-only off its own pads (Board Setup's silk clearance), since they are its
-library's (`docs/kicad-style.md`, Silkscreen); its reference text is
-held 0.15 mm off.
 
 Price, the same page, Drilling, min. via hole size/diameter: a hole of
 0.1 or 0.15, or of 0.2 or 0.25 in a diameter under 0.45, costs more.
@@ -102,6 +98,7 @@ From `docs/kicad-style.md`, after JLCPCB's, so that they win.
 |---|---|---|
 | `Mounting hole plated` | Board finishing | a `MountingHole*` footprint's pad with a drill of 1 mm or more plated |
 | `Mounting hole vias` | Board finishing | between pads of one `MountingHole*` footprint (its stitching vias): JLCPCB's via hole-to-hole spacing, 0.2, not its pad spacing, 0.45 |
+| `Footprint silkscreen to its own pads` | Silkscreen | a footprint's own silkscreen graphics take no clearance to its own pads, since they are its library's; its reference text keeps JLCPCB's 0.15 |
 | `Silkscreen text height` | Silkscreen | text at least 0.8 high: the house overrides JLCPCB's 1.0; the thickness stays JLCPCB's 0.15 |
 | `Differential pair skew, ...` | Net classes, Routing | skew within a pair, by the interface its class names (Differential pairs, below) |
 
@@ -158,7 +155,7 @@ MIPI, and a pair's uncoupled length, for want of a citable figure.
 
 `erc_severities.json` sets every ERC check KiCad 10.0.8 has
 (`eeschema/erc/erc_item.cpp`; defaults, `erc_settings.cpp`), and the
-connection grid, 100 mils (2.54 mm, `docs/kicad-style.md`), which
+connection grid, 50 mils (1.27 mm, `docs/kicad-style.md`), which
 `endpoint_off_grid` measures against (eeschema manual, Electrical Rules
 Check).  `pin_to_pin` at `ignore` turns off the pin conflict map's
 warnings and errors; at anything else they stay as the map has them.
@@ -175,7 +172,7 @@ warning is for the owner to judge; both fail `jlcpcb-release`.
 | `different_unit_net` | error | error | a mistake |
 | `duplicate_reference` | error | error | a mistake |
 | `duplicate_sheet_names` | error | error | a mistake |
-| `endpoint_off_grid` | warning | error | style: every connection point on the 2.54 mm grid |
+| `endpoint_off_grid` | warning | error | style: every connection point on the 1.27 mm grid |
 | `extra_units` | error | error | a mistake |
 | `field_name_whitespace` | warning | warning | may be meant |
 | `footprint_filter` | ignore | ignore | a part's footprint is chosen for its LCSC part, often outside the symbol's filters |

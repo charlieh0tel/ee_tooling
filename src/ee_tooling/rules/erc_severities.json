@@ -51,6 +51,6 @@
     }
   },
   "schematic": {
-    "connection_grid_size": 100.0
+    "connection_grid_size": 50.0
   }
 }

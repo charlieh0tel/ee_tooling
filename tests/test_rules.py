@@ -239,6 +239,23 @@ def test_kicad_drc_mounting_hole(tmp_path: Path) -> None:
     assert any(v.startswith("assertion_failure: ") and "'Mounting hole plated'" in v for v in found)
 
 
+def silk_line(start: str, end: str) -> str:
+    return f'(start {start}) (end {end}) (stroke (width 0.12) (type solid)) (layer "F.SilkS")'
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_silkscreen_to_pad(tmp_path: Path) -> None:
+    """A footprint's own silkscreen 0.04 mm off its own pad passes; a board
+    graphic 0.04 mm off another's pad breaks JLCPCB's 0.15 mm.  (Silk over
+    a pad is KiCad's silk_over_copper either way.)"""
+    pad = '(pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask" "F.Paste") (net "A"))'
+    own = footprint("Test:Pad", "J1", 10, 10, pad, f"(fp_line {silk_line('-0.6 -1', '-0.6 1')})")
+    other = footprint("Test:Pad", "J2", 20, 10, pad)
+    board_line = f"(gr_line {silk_line('20.4 9', '20.4 11')})"
+    found = [v for v in drc(tmp_path, own, other, board_line) if "silk" in v.split(":")[0]]
+    assert len(found) == 1 and "'JLCPCB silkscreen to pad'" in found[0], found
+
+
 def silk_text(text: str, x: float, height: float, thickness: float) -> str:
     return (
         f'(gr_text "{text}" (at {x} 25) (layer "F.SilkS")'
