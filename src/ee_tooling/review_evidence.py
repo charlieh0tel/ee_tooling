@@ -33,6 +33,9 @@ RENDER_SIZE = ("3600", "2000")  # pixels
 PNG_DPI = "220"
 BOM_FIELDS = "Reference,Value,Footprint,MPN,Manufacturer,${QUANTITY},DNP"
 BOM_GROUP = "Value,Footprint,MPN"
+# The exports the summaries read, and the summaries: removed before a
+# run, so a failed export leaves no summary of an earlier run's file.
+SUMMARIZED = ("erc.json", "netlist.net", "erc.md", "nets.txt", "components.txt")
 
 
 @dataclass(frozen=True)
@@ -213,13 +216,16 @@ def commands(project: Project, out: Path, copper: list[str]) -> list[list[str]]:
 def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
     """Runs the commands; the ones that failed, on stderr and returned.
     A failed export, or a tool not on the path, does not stop the rest;
-    a summary without its source is skipped, on stderr."""
+    a summary without its source is skipped, on stderr, with no file
+    left from an earlier run in its place."""
     copper = [name for name, _ in copper_layers(parse(project.board.read_text(encoding="utf-8")))]
     if dry_run:
         print("\n".join(" ".join(cmd) for cmd in commands(project, out, copper)))
         return []
     for sub in ("sch", "pcb", "png"):
         (out / sub).mkdir(parents=True, exist_ok=True)
+    for stale in SUMMARIZED:
+        (out / stale).unlink(missing_ok=True)
     failed = []
     for cmd in commands(project, out, copper):
         try:
