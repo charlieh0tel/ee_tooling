@@ -27,10 +27,17 @@ def rectangle(x0: float, y0: float, x1: float, y1: float) -> str:
 
 
 def zone(
-    x0: float, y0: float, x1: float, y1: float, locked: str = "(locked yes)", extra: str = ""
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    locked: str = "(locked yes)",
+    extra: str = "",
+    net: str = "GND",
+    layer: str = '(layer "F.Cu")',
 ) -> str:
     return (
-        f'(zone (net "GND") {locked} (layer "F.Cu") {extra}'
+        f'(zone (net "{net}") {locked} {layer} {extra}'
         f" (polygon (pts (xy {x0} {y0}) (xy {x1} {y0}) (xy {x1} {y1}) (xy {x0} {y1}))))"
     )
 
@@ -91,6 +98,60 @@ def test_unlocked_zone() -> None:
 def test_zone_not_past_the_edge(outline: tuple[float, float, float, float]) -> None:
     (found,) = problems(EDGE, zone(*outline))
     assert found.startswith("note: zone GND on F.Cu: outline on the board at ")
+
+
+def clearance(mm: float) -> str:
+    return f"(connect_pads yes (clearance {mm}))"
+
+
+def test_split_plane() -> None:
+    """Two nets' zones split the board at x = 25, each past the edge elsewhere."""
+    assert problems(EDGE, zone(-2, -2, 24.75, 32), zone(25.25, -2, 52, 32, net="VDD")) == []
+    assert problems(EDGE, zone(-2, -2, 26, 32), zone(24, -2, 52, 32, net="VDD")) == []  # overlap
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        (zone(-2, -2, 24.7, 32), zone(25.3, -2, 52, 32, net="VDD")),  # 0.6 mm apart
+        (zone(-2, -2, 24.75, 32), zone(25.25, -2, 52, 32)),  # one net
+        (zone(-2, -2, 24.75, 32), zone(25.25, -2, 52, 32, net="VDD", layer='(layer "B.Cu")')),
+        (
+            zone(-2, -2, 24.75, 32, extra=clearance(0.2)),
+            zone(24.95, -2, 52, 32, net="VDD", extra="(keepout (tracks not_allowed))"),
+        ),
+    ],
+)
+def test_split_plane_not_facing(left: str, right: str) -> None:
+    (found, *_) = problems(EDGE, left, right)
+    assert found.startswith("note: zone GND on F.Cu: outline on the board at (24.7")
+
+
+def test_split_plane_own_clearance() -> None:
+    """A gap wider than SPLIT_GAP but within a zone's own clearance."""
+    left = zone(-2, -2, 24.6, 32)
+    assert problems(EDGE, left, zone(25.4, -2, 52, 32, net="VDD", extra=clearance(1))) == []
+    assert problems(EDGE, left, zone(25.4, -2, 52, 32, net="VDD", extra=clearance(0.2)))
+
+
+def test_split_plane_every_layer() -> None:
+    """A zone on two layers, split from another net's zone on one."""
+    both = '(layers "F.Cu" "B.Cu")'
+    right = zone(25.25, -2, 52, 32, net="VDD")
+    (found,) = problems(EDGE, zone(-2, -2, 24.75, 32, layer=both), right)
+    assert found.startswith("note: zone GND on F.Cu, B.Cu: outline on the board at (24.75, ")
+    on_b = zone(25.25, -2, 52, 32, net="VDD", layer='(layer "B.Cu")')
+    assert problems(EDGE, zone(-2, -2, 24.75, 32, layer=both), right, on_b) == []
+
+
+def test_small_zone_beside_a_short_zone() -> None:
+    """A zone that stops short faces a small zone along part of its edge
+    only; the rest, and the small zone's other sides, are still noted."""
+    found = problems(EDGE, zone(-2, -2, 25, 32), zone(25.3, 10, 27, 20, net="VDD"))
+    assert found == [
+        "note: zone GND on F.Cu: outline on the board at (25, 0), not past its edge",
+        "note: zone VDD on F.Cu: outline on the board at (25.54, 10), not past its edge",
+    ]
 
 
 def test_zone_edge_in_a_slot() -> None:
