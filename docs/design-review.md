@@ -55,11 +55,13 @@ DNP parts, and all silkscreen text.
 
 ## pairs: review_pairs.py
 
-For each pair and layer: the first net's length, and the edge-to-edge
-gap from each of its segments (0.5 mm and longer) to the nearest
-segment of the second net on that layer: minimum, median, maximum, and
-the share of length with a gap of 0.3 mm or less.  A pair routed as a
-pair shows a near-constant gap and a high share.
+Each net's length per layer and widths.  For each pair and layer: the
+first net's length, and the edge-to-edge gap from each of its tracks
+(segments and arcs, 0.5 mm and longer; an arc in chords) to the
+nearest track of the second net on that layer: minimum, median
+(weighted by length), maximum, and the share of length with a gap of
+0.3 mm or less.  A pair routed as a pair shows a near-constant gap and
+a high share.
 
 ## pages: review_pages.py
 
