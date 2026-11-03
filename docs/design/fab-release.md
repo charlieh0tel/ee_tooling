@@ -5,8 +5,9 @@ and `jlcpcb.toml` with a fab-neutral `fab-release` and `fab.toml`, with
 JLCPCB as one profile.  Decided in review: the names below, a neutral
 core with profiles, required per-board fab values, the house BOM in the
 core, rules added by the release (not refused when stale), no `kicad`
-profile yet, no alias for the old command, a flag day, and the fab
-notes deferred.  Open: the questions at the end.
+profile yet, no alias for the old command, a flag day, and DNP parts
+at Qty 0 in the house BOM.  Deferred: the fab notes and the
+no-extra-cost via rules.  Nothing is open.
 
 ## Names
 
@@ -66,7 +67,8 @@ electrical_test = "100% netlist test per IPC-9252"
   `stackup.txt`, `fab-notes.txt`, the schematic and board PDFs (the
   board's with User.Drawings), and the source tgz.
 - The house BOM, `NAME-REV-bom.csv`: Reference, Value, Footprint, Qty,
-  DNP, LCSC, MPN, Manufacturer, Datasheet.
+  DNP, LCSC, MPN, Manufacturer, Datasheet.  A DNP part is a row of its
+  own with Qty 0 and DNP `yes`, never grouped with fitted parts.
 - One ungrouped BOM export and one placement export, parsed into `Part`
   and `Placement` rows for the house BOM and the profile.
 
@@ -298,8 +300,3 @@ rules.
 - Not served, not foreclosed: PCB and assembly from different fabs (an
   `assembly` key later); KiKit panels, which have no schematic (a
   `kind = "panel"` board later).
-
-## Open
-
-1. Does the house BOM include DNP parts, marked (proposed), or leave them
-   out?
