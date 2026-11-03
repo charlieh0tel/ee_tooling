@@ -19,6 +19,7 @@ ee-tooling-adopt = "ee_tooling.adopt:main"
 placement-score = "ee_tooling.placement_kicad:main"
 kicad-style-check = "ee_tooling.kicad_style_check:main"
 stitch = "ee_tooling.stitch_kicad:main"
+design-review = "ee_tooling.review:main"
 
 [build-system]
 requires = ["uv_build>=0.13.2,<0.14.0"]
