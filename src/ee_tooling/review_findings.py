@@ -17,8 +17,9 @@ CLASSES = ("Defect", "Spec mismatch", "Rubric miss", "Observation")
 SUSPECTED = "(suspected)"
 # Evidence must name one of: a KiCad file, a refdes, a net path, a
 # coordinate pair, a page, a line, a source file or a review evidence file.
+# A net path's slash follows no letter or digit, so "and/or" is not one.
 EVIDENCE = re.compile(
-    r"\.kicad_(sch|pcb)|\b[A-Z]{1,3}\d{1,4}\b|/[A-Za-z0-9_]+"
+    r"\.kicad_(sch|pcb)|\b[A-Z]{1,3}\d{1,4}\b|(?<![A-Za-z0-9])/[A-Za-z0-9_]+"
     r"|\(\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*\)|\bpage\s*\d+|\bline\s*\d+"
     r"|\.(txt|md|csv|json|zen|py)\b"
 )

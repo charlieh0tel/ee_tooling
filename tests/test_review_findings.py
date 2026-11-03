@@ -62,6 +62,7 @@ def test_evidence_forms() -> None:
     forms = (
         "(12.5, 40)",
         "/CAN2/CAN_H",
+        "/mcu/sda",
         "page 3",
         "line 288",
         "board.md",
@@ -71,3 +72,10 @@ def test_evidence_forms() -> None:
     for evidence in forms:
         row = f"| A-1 | Defect | r | f | {evidence} | a consequence long enough |\n"
         assert lint(HEADER + row).ok, evidence
+
+
+def test_evidence_not_a_net_path() -> None:
+    row = "| A-1 | Defect | r | f | high and/or low | a consequence long enough |\n"
+    assert [p.message for p in lint(HEADER + row).problems] == [
+        "Evidence names no file, refdes, net, page or point"
+    ]
