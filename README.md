@@ -12,6 +12,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `src/ee_tooling/stitch*.py` | `stitch BOARD`: ground stitching vias along every board edge and on a grid, checked by KiCad's DRC (`docs/stitch.md`) |
 | `src/ee_tooling/sexpr.py` | KiCad's S-expressions: parse, write, library symbol lookup (`KICAD10_SYMBOL_DIR`, else `/usr/share/kicad/symbols`) |
 | `src/ee_tooling/kicad_style_*.py` | `kicad-style-check FILE...`: a schematic, board or project against `docs/kicad-style.md` (`docs/kicad-style-check.md`) |
+| `src/ee_tooling/rules/` | KiCad's own DRC rules, Board Setup minimums and ERC severities: JLCPCB's limits and the house rules (`docs/kicad-rules.md`) |
 | `src/ee_tooling/step_model.py` | STEP stand-in models (boxes, faceted cylinders) for parts whose makers' models may not be redistributed |
 | `src/ee_tooling/parts.toml` | JLCPCB's rotation and offset corrections, by LCSC part |
 | `tools/odb_current/` | DC resistance and current capacity of a net, from ODB++ |

@@ -1,0 +1,11 @@
+{
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_clearance": 0.1,
+        "min_copper_edge_clearance": 0.2,
+        "min_hole_clearance": 0.2
+      }
+    }
+  }
+}

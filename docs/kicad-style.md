@@ -33,6 +33,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   tantalum").
 
 `kicad-style-check` checks these rules (`docs/kicad-style-check.md`).
+KiCad's ERC checks some of them with ee_tooling's severities
+(`docs/kicad-rules.md`).
 
 ## Board layout
 
@@ -113,6 +115,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
 
 `kicad-style-check` checks the zone, routing, net class and finishing
 rules it can (`docs/kicad-style-check.md`).
+KiCad's DRC checks mounting holes, right-angle bends and differential
+pairs' coupling with ee_tooling's rules (`docs/kicad-rules.md`).
 
 ### Board finishing
 
