@@ -5,7 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.kicad_style_board import BoardError, Point, arc, check_board, on_board, segments
+from ee_tooling.kicad_style_board import (
+    BoardError,
+    Point,
+    arc,
+    check_board,
+    nearest,
+    on_board,
+    segments,
+)
 from ee_tooling.sexpr import parse
 
 
@@ -209,3 +217,19 @@ def test_command(tmp_path: Path) -> None:
     r = run(other)
     assert r.returncode == 2
     assert "not a .kicad_sch, .kicad_pcb or .kicad_pro" in r.stderr
+
+
+@pytest.mark.parametrize(
+    ("p", "expected"),
+    [
+        ((1, 1), (1, 0)),  # beside it
+        ((-1, 1), (0, 0)),  # past its start
+        ((3, -1), (2, 0)),  # past its end
+    ],
+)
+def test_nearest(p: Point, expected: Point) -> None:
+    assert nearest(p, ((0, 0), (2, 0))) == expected
+
+
+def test_nearest_on_a_point() -> None:
+    assert nearest((1, 1), ((2, 2), (2, 2))) == (2, 2)

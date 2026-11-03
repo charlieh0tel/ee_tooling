@@ -164,12 +164,17 @@ def edge(board: Expression) -> list[Segment]:
     ]
 
 
-def distance(p: Point, s: Segment) -> float:
+def nearest(p: Point, s: Segment) -> Point:
+    """The point of s nearest p."""
     (ax, ay), (bx, by) = s
     length = math.dist(*s) ** 2
     t = 0.0 if length == 0 else ((p[0] - ax) * (bx - ax) + (p[1] - ay) * (by - ay)) / length
     t = min(1.0, max(0.0, t))
-    return math.dist(p, (ax + t * (bx - ax), ay + t * (by - ay)))
+    return ax + t * (bx - ax), ay + t * (by - ay)
+
+
+def distance(p: Point, s: Segment) -> float:
+    return math.dist(p, nearest(p, s))
 
 
 def on_board(p: Point, outline: list[Segment]) -> bool:
