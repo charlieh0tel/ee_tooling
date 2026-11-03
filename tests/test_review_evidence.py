@@ -31,7 +31,7 @@ def test_dry_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert len(lines) == len(commands(Project(tmp_path, "W"), tmp_path / "out", COPPER))
     board = str(tmp_path / "W.kicad_pcb")
     assert any(line.endswith(f"/out/pcb/In1.Cu.svg {board}") for line in lines)
-    assert (tmp_path / "out" / "png").is_dir()
+    assert not (tmp_path / "out").exists()
 
 
 def test_tools_missing(

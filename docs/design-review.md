@@ -35,7 +35,8 @@ From `DIR/NAME.kicad_sch` and `DIR/NAME.kicad_pcb` into `OUT`:
 A failed export, or a tool not on the path, is printed on stderr and
 the rest run; a summary whose source was not exported (`nets.txt` and
 `components.txt`, `erc.md`) is skipped, on stderr.  The exit status is
-1 if any export failed.  `--dry-run` prints the commands.
+1 if any export failed.  `--dry-run` prints the commands and writes
+nothing.
 
 ## netlist: review_netlist.py
 

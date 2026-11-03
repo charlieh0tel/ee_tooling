@@ -214,14 +214,14 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
     """Runs the commands; the ones that failed, on stderr and returned.
     A failed export, or a tool not on the path, does not stop the rest;
     a summary without its source is skipped, on stderr."""
+    copper = [name for name, _ in copper_layers(parse(project.board.read_text(encoding="utf-8")))]
+    if dry_run:
+        print("\n".join(" ".join(cmd) for cmd in commands(project, out, copper)))
+        return []
     for sub in ("sch", "pcb", "png"):
         (out / sub).mkdir(parents=True, exist_ok=True)
-    copper = [name for name, _ in copper_layers(parse(project.board.read_text(encoding="utf-8")))]
     failed = []
     for cmd in commands(project, out, copper):
-        if dry_run:
-            print(" ".join(cmd))
-            continue
         try:
             done = subprocess.run(cmd, capture_output=True, text=True)
         except FileNotFoundError:
@@ -231,8 +231,6 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
         if done.returncode != 0:
             print(f"failed: {' '.join(cmd)}\n{done.stderr.strip()}", file=sys.stderr)
             failed.append(" ".join(cmd))
-    if dry_run:
-        return []
     netlist, erc = out / "netlist.net", out / "erc.json"
     if netlist.exists():
         condense(netlist, out)
