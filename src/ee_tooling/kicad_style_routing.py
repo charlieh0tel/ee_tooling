@@ -17,8 +17,8 @@ is the run from it to its capacitors; a capacitor's supply pad needs no
 via of its own (the supply check sees that it is fed).
 
 Supply through the capacitor (`check_supply`): a decoupled supply pin
-reaches no zone and no other part's pad except through its capacitor's
-pad, and the capacitor reaches one.  The decoupling map is
+reaches no zone and no other part's pad except through one of its
+capacitors' pads, and each capacitor reaches one.  The decoupling map is
 placement.toml's (placement.py's Rules), or else `inferred_decoupling`.
 
 Copper connects so: a track's end on another track of its layer and net
@@ -879,12 +879,16 @@ def source(n: Node, own: set[int]) -> bool:
 
 def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
     """Rule two: each decoupled pin reaches no zone and no other part's pad
-    but through its capacitor's pad, and the capacitor reaches one."""
+    but through one of its capacitors' pads, and each capacitor reaches
+    one."""
     problems = []
     by_pin: dict[int, set[int]] = defaultdict(set)  # pin: its capacitors' pads
+    names: dict[int, list[str]] = defaultdict(list)  # pin: its capacitors, in order
     for f in fed:
         by_pin[f.pin].add(f.capacitor_pad)
+        names[f.pin].append(f.capacitor)
     nets: dict[str, Net] = {}
+    bypasses: dict[int, Node | None] = {}  # pin: a source it reaches past every capacitor
     for f in fed:
         pin = c.pads[f.pin]
         n = nets.setdefault(pin.net, Net(c, pin.net))
@@ -896,12 +900,17 @@ def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
         if cap not in n.reach(("pad", f.pin)):
             problems.append(f"{what}: no copper to {f.capacitor}")
             continue
-        bypass = next(
-            (m for m in n.reach(("pad", f.pin), without=[f.capacitor_pad]) if source(m, own)), None
-        )
-        if bypass:
-            problems.append(f"{what}: reaches {n.describe(bypass)} without {f.capacitor}")
-        elif not any(source(m, own) for m in n.reach(cap)):
+        if f.pin not in bypasses:
+            bypasses[f.pin] = next(
+                (m for m in n.reach(("pad", f.pin), without=by_pin[f.pin]) if source(m, own)),
+                None,
+            )
+            if bypass := bypasses[f.pin]:
+                without = " or ".join(names[f.pin])
+                problems.append(f"{what}: reaches {n.describe(bypass)} without {without}")
+        if bypasses[f.pin]:
+            continue
+        if not any(source(m, own) for m in n.reach(cap)):
             problems.append(f"{what}: {f.capacitor} reaches no zone or other part")
     return problems
 

@@ -502,6 +502,32 @@ def test_supply_shares_the_pin() -> None:
     ]
 
 
+# A second capacitor, C2, with its own feed: the pin reaches it only
+# through C1 and the plane.
+C2 = footprint("C2", 15, 10, pad("1", 0.75, 0, "+3V3"), pad("2", -0.75, 0, "GND"))
+TO_C2 = [
+    segment((15.75, 10), (15.75, 9), "+3V3"),
+    via(15.75, 9, "+3V3"),
+    segment((14.25, 10), (14.25, 9), "GND"),
+    via(14.25, 9, "GND"),
+]
+BOTH = Rules(
+    frozenset({"GND", "+3V3"}),
+    (Decoupling("C1", "U1", "1", "2"), Decoupling("C2", "U1", "1", "2")),
+)
+
+
+def test_supply_through_either_capacitor() -> None:
+    assert check(*SUPPLY, C2, *TO_C2, *FEED, *TO_PIN, *EN, rules=BOTH) == []
+
+
+def test_supply_past_both_capacitors() -> None:
+    own = [segment((18, 15), (18, 16.2), "+3V3"), via(18, 16.2, "+3V3")]
+    assert check(*SUPPLY, C2, *TO_C2, *FEED, *TO_PIN, *own, *EN, rules=BOTH) == [
+        "U1 pad 1 (+3V3): reaches zone +3V3 on In2.Cu without C1 or C2"
+    ]
+
+
 def test_supply_not_joined() -> None:
     assert check(*SUPPLY, *FEED, *EN) == ["U1 pad 1 (+3V3): no copper to C1"]
 

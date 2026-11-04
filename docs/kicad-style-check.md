@@ -76,9 +76,9 @@ the board or more.
   no via of its own.
 - No via serving two pads; no trace on a plane net from pad to pad but
   within one part.
-- A supply pin is reached through its decoupling capacitor: with the
-  capacitor's pad taken away, the pin reaches no zone and no other
-  part's pad.  The decoupling map is `placement.toml`'s, or inferred: a
+- A supply pin is reached through its decoupling capacitors: with
+  their pads taken away, the pin reaches no zone and no other part's
+  pad; each capacitor reaches one.  The decoupling map is `placement.toml`'s, or inferred: a
   capacitor across a supply and a ground (`GND`, `AGND`, `VSS`, `0V`
   ...) decouples the nearest `U` or `IC` supply pin within 5 mm on that
   supply and ground (a power pin, where the board gives pin types).

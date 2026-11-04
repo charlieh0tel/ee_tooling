@@ -99,7 +99,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   trace from pad to pad.  Mounting hardware tied to ground (a mounting
   hole's pad, a standoff) needs no via.
 - A supply runs from its trace or plane to the decoupling capacitor,
-  then from the capacitor to the package's pin.  A regulator's input and
+  then from the capacitor to the package's pin.  A pin with more than
+  one capacitor is fed through at least one of them.  A regulator's input and
   output pins each go to their capacitor first, before anything else,
   the capacitors as near the pins as possible.
 
