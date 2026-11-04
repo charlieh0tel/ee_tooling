@@ -18,7 +18,9 @@ via of its own (the supply check sees that it is fed).
 
 Supply through the capacitor (`check_supply`): a decoupled supply pin
 reaches no zone and no other part's pad except through one of its
-capacitors' pads, and each capacitor reaches one.  The decoupling map is
+capacitors' pads, and each capacitor reaches one, unless the net has
+no zone and no other part's pad (the part's own output, such as a
+regulator's).  The decoupling map is
 placement.toml's (placement.py's Rules), or else `inferred_decoupling`.
 
 Copper connects so: a track's end on another track of its layer and net
@@ -908,7 +910,9 @@ def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
             if bypass := bypasses[f.pin]:
                 without = " or ".join(names[f.pin])
                 problems.append(f"{what}: reaches {n.describe(bypass)} without {without}")
-        if bypasses[f.pin]:
+        # A net with no source at all is the pin's part's own output (a
+        # regulator's), which its capacitor alone is on.
+        if bypasses[f.pin] or not (n.zones or set(n.pads) - own):
             continue
         if not any(source(m, own) for m in n.reach(cap)):
             problems.append(f"{what}: {f.capacitor} reaches no zone or other part")

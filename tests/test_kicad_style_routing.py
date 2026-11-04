@@ -536,6 +536,22 @@ def test_capacitor_fed_by_nothing() -> None:
     assert check(*SUPPLY, *TO_PIN, *EN) == ["U1 pad 1 (+3V3): C1 reaches no zone or other part"]
 
 
+TO_PIN_V3 = [segment((19.25, 12), (18, 12), "V3"), segment((18, 12), (18, 15), "V3")]
+
+
+def test_capacitor_on_the_parts_own_output() -> None:
+    """A regulator's output, decoupled and joined to nothing else."""
+    u1 = footprint(
+        "U1",
+        20,
+        15,
+        pad("1", -2, 0, "V3", size=(0.6, 1.2), pintype="power_out"),
+        pad("2", 2, 0, "GND", size=(0.6, 1.2), pintype="power_in"),
+    )
+    c1 = footprint("C1", 20, 12, pad("1", -0.75, 0, "V3"), pad("2", 0.75, 0, "GND"))
+    assert check(GND_PLANE, u1, c1, *GROUNDS, *TO_PIN_V3) == []
+
+
 def test_rules_decoupling() -> None:
     """The rules' map, not inference: with it naming another pin, U1 pad 1
     is a plane net's pad like any other."""

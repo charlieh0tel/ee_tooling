@@ -78,7 +78,8 @@ the board or more.
   within one part.
 - A supply pin is reached through its decoupling capacitors: with
   their pads taken away, the pin reaches no zone and no other part's
-  pad; each capacitor reaches one.  The decoupling map is `placement.toml`'s, or inferred: a
+  pad; each capacitor reaches one, unless the net has no zone and no
+  other part's pad (the part's own output, such as a regulator's).  The decoupling map is `placement.toml`'s, or inferred: a
   capacitor across a supply and a ground (`GND`, `AGND`, `VSS`, `0V`
   ...) decouples the nearest `U` or `IC` supply pin within 5 mm on that
   supply and ground (a power pin, where the board gives pin types).
