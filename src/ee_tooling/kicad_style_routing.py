@@ -553,16 +553,16 @@ class Net:
         self.links[a].add(b)
         self.links[b].add(a)
 
-    def reach(self, start: Node, without: int | None = None) -> Iterator[Node]:
+    def reach(self, start: Node, without: Iterable[int] = ()) -> Iterator[Node]:
         """The nodes copper joins to start, nearest first, not passing
-        through the pad without: neither it nor a track that runs over it
+        through the pads without: neither one nor a track that runs over it
         (its ends off it)."""
         blocked: set[Node] = set()
-        if without is not None:
-            pad = self.copper.pads[without]
-            blocked = {("pad", without)} | {
+        for i in without:
+            pad = self.copper.pads[i]
+            blocked |= {("pad", i)} | {
                 m
-                for m in self.links[("pad", without)]
+                for m in self.links[("pad", i)]
                 if m[0] == "track"
                 and not any(pad.contains(e) for e in self.copper.tracks[m[1]].ends)
             }
@@ -897,7 +897,7 @@ def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
             problems.append(f"{what}: no copper to {f.capacitor}")
             continue
         bypass = next(
-            (m for m in n.reach(("pad", f.pin), without=f.capacitor_pad) if source(m, own)), None
+            (m for m in n.reach(("pad", f.pin), without=[f.capacitor_pad]) if source(m, own)), None
         )
         if bypass:
             problems.append(f"{what}: reaches {n.describe(bypass)} without {f.capacitor}")
