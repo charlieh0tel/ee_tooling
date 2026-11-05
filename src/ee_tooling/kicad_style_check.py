@@ -79,6 +79,7 @@ class Part:
     value: str
     fields: dict[str, str]  # the instance's properties
     shown: str  # the Value and every field shown on the sheet, joined
+    dnp: bool  # marked do not populate: its problems are notes
 
 
 @dataclass
@@ -88,7 +89,7 @@ class Schematic:
     no_connects: list[Point] = field(default_factory=list)
     labels: list[tuple[str, Point]] = field(default_factory=list)
     pins: list[Pin] = field(default_factory=list)
-    parts: dict[str, Part] = field(default_factory=dict)  # bought parts, by reference
+    parts: dict[str, Part] = field(default_factory=dict)  # BOM parts, DNP too, by reference
 
 
 def point(x: float, y: float) -> Point:
@@ -193,9 +194,10 @@ def read(sheet: Expression) -> Schematic:
             # A power symbol's pin is its connection, hidden or not.
             hidden = flag(p, "hide") and not power
             s.pins.append(Pin(reference, number_text, sheet_point, power, hidden))
-        bought = not power and flag(sym, "in_bom") and not flag(sym, "dnp")
-        if bought and not reference.startswith("#"):
-            s.parts[reference] = Part(reference, fields.get("Value", ""), fields, shown(sym))
+        if not power and flag(sym, "in_bom") and not reference.startswith("#"):
+            s.parts[reference] = Part(
+                reference, fields.get("Value", ""), fields, shown(sym), flag(sym, "dnp")
+            )
     return s
 
 
@@ -298,14 +300,15 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
     ]
 
     for part in sorted(s.parts.values(), key=lambda x: x.reference):
+        name = f"{NOTE}{part.reference} (DNP)" if part.dnp else part.reference
         missing = [f for f in BOM_FIELDS if not part.fields.get(f, "").strip()]
         if missing:
-            problems.append(f"{part.reference}: no {', '.join(missing)}")
+            problems.append(f"{name}: no {', '.join(missing)}")
         if CAPACITOR.match(part.reference) and not (
             DIELECTRIC.search(part.shown) and VOLTAGE.search(part.shown)
         ):
             problems.append(
-                f"{part.reference}: value {part.value!r} and its shown fields"
+                f"{name}: value {part.value!r} and its shown fields"
                 " do not show dielectric or type, and voltage"
             )
     return problems
