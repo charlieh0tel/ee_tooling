@@ -5,7 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.kicad_style_board import BoardError, Point, arc, check_board, on_board, segments
+from ee_tooling.kicad_style_board import (
+    BoardError,
+    Point,
+    arc,
+    check_board,
+    on_board,
+    outline_points,
+    segments,
+)
 from ee_tooling.sexpr import parse
 
 
@@ -209,3 +217,30 @@ def test_command(tmp_path: Path) -> None:
     r = run(other)
     assert r.returncode == 2
     assert "not a .kicad_sch, .kicad_pcb or .kicad_pro" in r.stderr
+
+
+def test_polygon_with_arcs() -> None:
+    """A KiCad 10 polygon holds arcs among its points; a semicircle is
+    walked, not skipped, and the polygon closes."""
+    shape = parse(
+        "(gr_poly (pts (xy 0 0) (arc (start 10 0) (mid 15 5) (end 10 10)) (xy 0 10))"
+        ' (layer "Edge.Cuts"))'
+    )
+    points = outline_points(shape[1])  # type: ignore[arg-type]
+    assert points[0] == (0, 0) and points[1] == (10, 0) and points[-1] == (0, 10)
+    assert any(math.isclose(p[0], 15, abs_tol=0.01) for p in points)
+    found = segments(shape)
+    assert found[-1] == ((0, 10), (0, 0))
+
+
+def test_polygon_without_points() -> None:
+    with pytest.raises(BoardError, match="a gr_poly without points"):
+        segments(parse('(gr_poly (pts) (layer "Edge.Cuts"))'))
+
+
+def test_polygon_unknown_item(capsys: pytest.CaptureFixture[str]) -> None:
+    shape = parse("(pts (xy 0 0) (bezier (pts)) (xy 1 0) loose (xy 1 1))")
+    assert outline_points(shape) == [(0, 0), (1, 0), (1, 1)]
+    err = capsys.readouterr().err
+    assert "skipped: (bezier ...) in a polygon's points" in err
+    assert "skipped: 'loose' in a polygon's points" in err
