@@ -26,7 +26,8 @@ def test_commands() -> None:
     pngs = [c for c in found if c[0] == "pdftoppm"]
     assert len(pngs) == len(COPPER) + len(PNG_GROUPS)
     assert pngs[1][-1] == "/out/png/In1.Cu"
-    assert pngs[-1][-1] == "/out/png/F.Mask_F.Paste"
+    assert pngs[-1][-1] == "/out/png/B.Mask_B.Paste"
+    assert "/out/pcb/B.Paste.svg" in [c[-2] for c in svgs]
 
 
 def test_dry_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

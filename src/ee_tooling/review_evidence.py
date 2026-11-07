@@ -21,13 +21,14 @@ from ee_tooling.review_netlist import condense
 from ee_tooling.sexpr import parse
 
 # Layers plotted one to a file, each with Edge.Cuts, after the board's copper layers.
-PLOT_LAYERS = ("F.SilkS", "B.SilkS", "F.Mask", "B.Mask", "F.Paste", "F.Fab", "B.Fab")
+PLOT_LAYERS = ("F.SilkS", "B.SilkS", "F.Mask", "B.Mask", "F.Paste", "B.Paste", "F.Fab", "B.Fab")
 # Layer groups rasterized for the layout reviewers, after each copper layer alone.
 PNG_GROUPS = (
     ("F.SilkS", "F.Fab"),
     ("B.SilkS", "B.Fab"),
     ("F.Cu", "F.SilkS"),
     ("F.Mask", "F.Paste"),
+    ("B.Mask", "B.Paste"),
 )
 EDGE = "Edge.Cuts"
 RENDER_SIZE = ("3600", "2000")  # pixels

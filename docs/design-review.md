@@ -27,10 +27,10 @@ From `DIR/NAME.kicad_sch` and `DIR/NAME.kicad_pcb` into `OUT`:
 | `bom.csv` | `sch export bom`, grouped by value, footprint and MPN |
 | `sch/NAME.pdf`, `sch/*.svg` | `sch export pdf`, `sch export svg` |
 | `drc.json`, `drc-parity.json` | `pcb drc --severity-all`, without and with `--schematic-parity` |
-| `pcb/*.svg` | each of the board's copper layers, then mask, paste, silk and fab, one a file with Edge.Cuts |
+| `pcb/*.svg` | each of the board's copper layers, then mask, paste, silk and fab, top and bottom, one a file with Edge.Cuts |
 | `pcb/positions.csv`, `pcb/drill/` | `pcb export pos`, `pcb export drill` with a PDF map |
 | `png/render-top.png`, `png/render-bottom.png` | `pcb render`, 3600 x 2000 |
-| `png/LAYERS.png` | `pcb export pdf` of each copper layer, then silk with fab, F.Cu with silk, mask with paste; rasterized at 220 dpi |
+| `png/LAYERS.png` | `pcb export pdf` of each copper layer, then silk with fab (top, bottom), F.Cu with silk, mask with paste (top, bottom); rasterized at 220 dpi |
 | `board.md` | the board summary (below) |
 
 A failed export, or a tool not on the path, is printed on stderr and
