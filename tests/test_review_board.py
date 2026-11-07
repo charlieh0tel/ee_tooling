@@ -11,6 +11,7 @@ from ee_tooling.review_board import (
     outline,
     path_length,
     placed,
+    power_net,
     summary,
     track_path,
 )
@@ -132,3 +133,23 @@ def test_longest_nets_besides_power(tmp_path: Path) -> None:
     text = summary(path)
     shown = [n for n in names if f"| {n} |" in text]
     assert shown == names[:-1]
+
+
+@pytest.mark.parametrize(
+    "net",
+    [
+        *("+3V3", "+5V", "-12V", "/pwr/+1V8", "GND", "/x/AGND", "VDD_IO", "AVDD", "VBUS"),
+        *("V3V3", "V1P8", "VOUT", "SW1", "LX", "BST2"),
+    ],
+)
+def test_power_net(net: str) -> None:
+    assert power_net(net)
+
+
+@pytest.mark.parametrize(
+    "net", ["/mcu/LX_SEL", "DBOOT", "HOLDOVER_EN", "LXX", "SWDIO", "BOOT0", "/pwr/SDA", "PWR_GOOD"]
+)
+def test_not_power_net(net: str) -> None:
+    """By the net's own name, not its sheet's; a signal named like a switch
+    node is not one."""
+    assert not power_net(net)

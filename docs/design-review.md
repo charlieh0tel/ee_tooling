@@ -53,11 +53,15 @@ Thickness, copper layers, stackup, setup clearances, outline bounding
 box, track count and length per layer and width histogram, via count
 and size histogram, every zone (net, layers, priority, connection,
 fill, bounding box; keepouts with their rules), the routing of every
-power net (`POWER_NET`) and the 25 longest other nets, every
+power net and the 25 longest other nets, every
 footprint with side, position and angle, fiducials, test points,
 mounting holes and DNP parts, and the silkscreen text: footprint
 properties (Reference, Value) and texts, and board texts, less the
-hidden ones.
+hidden ones.  A power net is one whose own name (its last hierarchical
+part) is a supply or ground (`kicad_style_netclass.POWER_NAME`: +3V3,
+-12V, GND, AGND, VDD_IO, VBUS ...), an analog or digital supply (AVDD,
+DVCC), a rail written V3V3 or V1P8, VOUT, CHASSIS, or a switch node or
+bootstrap (SW, LX, BST, numbered).
 
 ## pairs: review_pairs.py
 

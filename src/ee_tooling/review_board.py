@@ -22,14 +22,19 @@ from ee_tooling.kicad_style_board import (
     xy,
 )
 from ee_tooling.kicad_style_check import flag
+from ee_tooling.kicad_style_netclass import POWER_NAME, SHEET
 from ee_tooling.kicad_style_routing import text
 from ee_tooling.review_netlist import refdes_key
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
 COPPER_TYPES = frozenset({"signal", "power", "mixed"})
-# Nets in the routing table whatever their length.
+# Nets in the routing table whatever their length, by their own name (the
+# last hierarchical part), besides kicad_style_netclass's POWER_NAME: an
+# analog or digital supply (AVDD, DVCC), a rail written V3V3 or V1P8, an
+# output, chassis, and a regulator's switch node or bootstrap (SW, LX,
+# BST, numbered, nothing after).
 POWER_NET = re.compile(
-    r"V\d+V|V\d+P\d|VDD|VCC|VBAT|VBUS|VIN|VOUT|GND|CHASSIS|\bSW\b|SW_|\bLX|BST|BOOT|PWR|_EN\b",
+    r"^(?:[AD]V(?:DD|CC)[0-9A-Z_]*|V\d+[VP]\d*(?:_[0-9A-Z]+)?|VOUT\d*|CHASSIS|(?:SW|LX|BST)\d*)$",
     re.I,
 )
 # Nets other than the power nets in the routing table, longest first.
@@ -48,6 +53,12 @@ SETUP_FIELDS = (
 )
 STACKUP_FIELDS = ("copper_finish", "dielectric_constraints", "edge_connector", "castellated_pads")
 SILK = frozenset({"F.SilkS", "B.SilkS"})
+
+
+def power_net(net: str) -> bool:
+    """Whether a net is power by its own name."""
+    last = net.rsplit(SHEET, 1)[-1]
+    return bool(POWER_NAME.match(last) or POWER_NET.match(last))
 
 
 @dataclass
@@ -280,7 +291,7 @@ def summary(path: Path) -> str:
     out.append("|---|---|---|---|---|---|---|")
     longest = 0
     for net, r in sorted(routing.items(), key=lambda kv: -kv[1].length):
-        if not POWER_NET.search(net):
+        if not power_net(net):
             if longest == LONGEST_NETS:
                 continue
             longest += 1
