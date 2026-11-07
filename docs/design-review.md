@@ -40,7 +40,8 @@ the rest run; a summary whose source was not exported (`nets.txt` and
 none is left from an earlier one.  A board that cannot be read is
 printed on stderr: its copper layers are not exported and `board.md`
 counts as failed.  The exit status is 1 if any export failed.
-`--dry-run` prints the commands and writes nothing.
+`--dry-run` prints the commands, quoted for a shell, and writes
+nothing.
 
 ## netlist: review_netlist.py
 

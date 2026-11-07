@@ -1,3 +1,4 @@
+import shlex
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,17 @@ def test_board_unreadable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) ->
     (tmp_path / "W.kicad_pcb").write_text("(kicad_pcb (layers", encoding="utf-8")
     assert export(Project(tmp_path, "W"), tmp_path / "out", dry_run=True) == []
     assert "unreadable" in capsys.readouterr().err
+
+
+def test_dry_run_quoted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Each line pastes into a shell: a path with a space and ${QUANTITY}
+    are quoted."""
+    project = tmp_path / "my proj"
+    project.mkdir()
+    (project / "W.kicad_pcb").write_text('(kicad_pcb (layers (0 "F.Cu" signal)))', encoding="utf-8")
+    export(Project(project, "W"), tmp_path / "out", dry_run=True)
+    lines = capsys.readouterr().out.splitlines()
+    assert [shlex.split(line) for line in lines] == commands(
+        Project(project, "W"), tmp_path / "out", ["F.Cu"]
+    )
+    assert any("'Reference,Value,Footprint,MPN,Manufacturer,${QUANTITY},DNP'" in x for x in lines)

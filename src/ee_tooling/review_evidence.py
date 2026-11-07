@@ -8,6 +8,7 @@ png/render-bottom.png, png/LAYERS.png (per-layer PDF rasterized), then
 nets.txt, components.txt, board.md and erc.md from the review modules.
 """
 
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -229,7 +230,7 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
         )
         copper = []
     if dry_run:
-        print("\n".join(" ".join(cmd) for cmd in commands(project, out, copper)))
+        print("\n".join(shlex.join(cmd) for cmd in commands(project, out, copper)))
         return []
     for sub in ("sch", "pcb", "png"):
         (out / sub).mkdir(parents=True, exist_ok=True)
@@ -240,12 +241,12 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
         try:
             done = subprocess.run(cmd, capture_output=True, text=True)
         except FileNotFoundError:
-            print(f"failed: {cmd[0]} not on the path: {' '.join(cmd)}", file=sys.stderr)
-            failed.append(" ".join(cmd))
+            print(f"failed: {cmd[0]} not on the path: {shlex.join(cmd)}", file=sys.stderr)
+            failed.append(shlex.join(cmd))
             continue
         if done.returncode != 0:
-            print(f"failed: {' '.join(cmd)}\n{done.stderr.strip()}", file=sys.stderr)
-            failed.append(" ".join(cmd))
+            print(f"failed: {shlex.join(cmd)}\n{done.stderr.strip()}", file=sys.stderr)
+            failed.append(shlex.join(cmd))
     netlist, erc = out / "netlist.net", out / "erc.json"
     if netlist.exists():
         condense(netlist, out)
