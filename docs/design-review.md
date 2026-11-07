@@ -36,8 +36,10 @@ From `DIR/NAME.kicad_sch` and `DIR/NAME.kicad_pcb` into `OUT`:
 A failed export, or a tool not on the path, is printed on stderr and
 the rest run; a summary whose source was not exported (`nets.txt` and
 `components.txt`, `erc.md`) is skipped, on stderr; those files, and
-`erc.json` and `netlist.net`, are removed before a run, so none is
-left from an earlier one.  The exit status is 1 if any export failed.
+`erc.json`, `netlist.net` and `board.md`, are removed before a run, so
+none is left from an earlier one.  A board that cannot be read is
+printed on stderr: its copper layers are not exported and `board.md`
+counts as failed.  The exit status is 1 if any export failed.
 `--dry-run` prints the commands and writes nothing.
 
 ## netlist: review_netlist.py

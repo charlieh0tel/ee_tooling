@@ -35,7 +35,7 @@ BOM_FIELDS = "Reference,Value,Footprint,MPN,Manufacturer,${QUANTITY},DNP"
 BOM_GROUP = "Value,Footprint,MPN"
 # The exports the summaries read, and the summaries: removed before a
 # run, so a failed export leaves no summary of an earlier run's file.
-SUMMARIZED = ("erc.json", "netlist.net", "erc.md", "nets.txt", "components.txt")
+SUMMARIZED = ("erc.json", "netlist.net", "erc.md", "nets.txt", "components.txt", "board.md")
 
 
 @dataclass(frozen=True)
@@ -217,8 +217,17 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
     """Runs the commands; the ones that failed, on stderr and returned.
     A failed export, or a tool not on the path, does not stop the rest;
     a summary without its source is skipped, on stderr, with no file
-    left from an earlier run in its place."""
-    copper = [name for name, _ in copper_layers(parse(project.board.read_text(encoding="utf-8")))]
+    left from an earlier run in its place.  A board that cannot be read
+    (ValueError covers ParseError and BoardError) loses its copper
+    layers' exports and board.md, which is returned as failed."""
+    try:
+        board = parse(project.board.read_text(encoding="utf-8"))
+        copper = [name for name, _ in copper_layers(board)]
+    except (OSError, ValueError) as e:
+        print(
+            f"skipped: the copper layers' exports, unreadable {project.board}: {e}", file=sys.stderr
+        )
+        copper = []
     if dry_run:
         print("\n".join(" ".join(cmd) for cmd in commands(project, out, copper)))
         return []
@@ -242,7 +251,11 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
         condense(netlist, out)
     else:
         print(f"skipped: nets.txt and components.txt, without {netlist}", file=sys.stderr)
-    (out / "board.md").write_text(board_summary(project.board), encoding="utf-8")
+    try:
+        (out / "board.md").write_text(board_summary(project.board), encoding="utf-8")
+    except (OSError, ValueError) as e:
+        print(f"failed: board.md, from {project.board}: {e}", file=sys.stderr)
+        failed.append(f"board.md: {e}")
     if erc.exists():
         (out / "erc.md").write_text(erc_summary(erc), encoding="utf-8")
     else:

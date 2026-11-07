@@ -61,5 +61,25 @@ def test_tools_missing(
     assert "failed: kicad-cli not on the path: kicad-cli sch erc" in err
     assert "skipped: nets.txt and components.txt, without" in err
     assert "skipped: erc.md, without" in err
-    assert (out / "board.md").is_file()
-    assert not any((out / stale).exists() for stale in SUMMARIZED)
+    assert (out / "board.md").read_text(encoding="utf-8") != "from an earlier run"
+    assert not any((out / stale).exists() for stale in SUMMARIZED if stale != "board.md")
+
+
+def test_board_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No board file: said on stderr, board.md failed, the rest still run."""
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    out = tmp_path / "out"
+    failed = export(Project(tmp_path, "W"), out)
+    err = capsys.readouterr().err
+    assert "skipped: the copper layers' exports, unreadable" in err
+    assert "failed: board.md, from" in err
+    assert len(failed) == len(commands(Project(tmp_path, "W"), out, [])) + 1
+    assert not (out / "board.md").exists()
+
+
+def test_board_unreadable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "W.kicad_pcb").write_text("(kicad_pcb (layers", encoding="utf-8")
+    assert export(Project(tmp_path, "W"), tmp_path / "out", dry_run=True) == []
+    assert "unreadable" in capsys.readouterr().err
