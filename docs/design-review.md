@@ -50,9 +50,10 @@ SHEET | MPN | FLAGS`, sorted by reference; flags are `dnp` and
 ## board: review_board.py
 
 Thickness, copper layers, stackup, setup clearances, outline bounding
-box, track count and length per layer and width histogram, via count
-and size histogram, every zone (net, layers, priority, connection,
-fill, bounding box; keepouts with their rules), the routing of every
+box, track count and length per layer and width histogram, via count,
+kinds (through, blind, buried, micro) and size histogram, every zone
+(net, layers, priority, connection, fill, bounding box; keepouts with
+their rules), the routing of every
 power net and the 25 longest other nets, every
 footprint with side, position and angle, fiducials, test points,
 mounting holes and DNP parts, and the silkscreen text: footprint

@@ -153,3 +153,14 @@ def test_not_power_net(net: str) -> None:
     """By the net's own name, not its sheet's; a signal named like a switch
     node is not one."""
     assert not power_net(net)
+
+
+def test_via_kinds(tmp_path: Path) -> None:
+    vias = " ".join(
+        f'(via {kind} (at 0 0) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu"))'
+        for kind in ("", "blind", "buried", "micro")
+    )
+    path = tmp_path / "b.kicad_pcb"
+    path.write_text(f"(kicad_pcb {vias})", encoding="utf-8")
+    text = summary(path)
+    assert "kinds: {'through': 1, 'blind': 1, 'buried': 1, 'micro': 1}" in text

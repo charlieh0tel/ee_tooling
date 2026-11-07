@@ -37,6 +37,9 @@ POWER_NET = re.compile(
     r"^(?:[AD]V(?:DD|CC)[0-9A-Z_]*|V\d+[VP]\d*(?:_[0-9A-Z]+)?|VOUT\d*|CHASSIS|(?:SW|LX|BST)\d*)$",
     re.I,
 )
+# A via's kind keyword after (via, as KiCad 10 writes it; a via with none
+# is a through via.
+VIA_KINDS = ("blind", "buried", "micro")
 # Nets other than the power nets in the routing table, longest first.
 LONGEST_NETS = 25
 # Footprints and references that are fiducials, test points and mounting holes.
@@ -233,7 +236,7 @@ def summary(path: Path) -> str:
     for v in children(board, "via"):
         via_sizes[(text(v, "size"), text(v, "drill"))] += 1
         via_nets[item_net(v, table)] += 1
-        via_kinds[next((k for k in ("blind", "micro") if k in v), "through")] += 1
+        via_kinds[next((k for k in VIA_KINDS if k in v), "through")] += 1
     out.append("\n## Vias\n")
     out.append(f"count: {sum(via_sizes.values())}; kinds: {dict(via_kinds)}")
     out.append(
