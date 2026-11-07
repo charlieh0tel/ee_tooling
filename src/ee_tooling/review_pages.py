@@ -11,6 +11,7 @@ from pathlib import Path
 LABEL = re.compile(r"(Sheet: */.*?(?=\s{2,}|$)|File: *\S.*?\.kicad_sch)", re.M)
 # Labels kept per page: the sheet path and the file.
 LABELS_KEPT = 2
+# pdfinfo's page count line.
 PAGE_COUNT = re.compile(r"^Pages:\s+(\d+)", re.M)
 
 

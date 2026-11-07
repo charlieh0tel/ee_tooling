@@ -27,6 +27,7 @@ from ee_tooling.kicad_style_routing import text
 from ee_tooling.review_netlist import refdes_key
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
 
+# The (layers ...) types of a copper layer; jumper and user are not.
 COPPER_TYPES = frozenset({"signal", "power", "mixed"})
 # Nets in the routing table whatever their length, by their own name (the
 # last hierarchical part), besides kicad_style_netclass's POWER_NAME: an
@@ -54,7 +55,9 @@ SETUP_FIELDS = (
     "pad_to_paste_clearance_ratio",
     "allow_soldermask_bridges_in_footprints",
 )
+# Stackup fields reported, besides its layers.
 STACKUP_FIELDS = ("copper_finish", "dielectric_constraints", "edge_connector", "castellated_pads")
+# The silkscreen layers, whose text is listed.
 SILK = frozenset({"F.SilkS", "B.SilkS"})
 
 

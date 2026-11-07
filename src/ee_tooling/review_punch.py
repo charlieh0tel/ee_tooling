@@ -33,7 +33,7 @@ STRUCK = "~~"
 REGRADED = re.compile(rf"\b({'|'.join(SEVERITIES)})\s*->\s*({'|'.join(SEVERITIES)})\b")
 # A column of the Adjudication table, which no findings table has.
 DECISION = "Decision"
-# The report's section of numbered open questions.
+# The report's section of numbered open questions, and one of them.
 QUESTIONS = re.compile(r"^##\s+Unresolved questions\s*$", re.I)
 QUESTION_ITEM = re.compile(r"^\s*(\d+)\.\s")
 # A question cited by number: `question 7`, `questions 7 and 8`; only the

@@ -12,6 +12,7 @@ from pathlib import Path
 from ee_tooling.kicad_style_routing import text
 from ee_tooling.sexpr import Expression, child, children, parse
 
+# The first line of nets.txt and of components.txt, naming the columns.
 NETS_HEADER = "# net name: pin count : ref.pin(pinfunction/type) ...\n"
 COMPONENTS_HEADER = "ref | value | footprint | sheet | MPN | flags\n"
 # A component's children, or properties, that go in its flags column when

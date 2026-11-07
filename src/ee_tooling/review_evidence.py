@@ -30,11 +30,21 @@ PNG_GROUPS = (
     ("F.Mask", "F.Paste"),
     ("B.Mask", "B.Paste"),
 )
+# The board outline, plotted with every layer.
 EDGE = "Edge.Cuts"
-RENDER_SIZE = ("3600", "2000")  # pixels
+# The 3D renders' width and height, pixels.
+RENDER_SIZE = ("3600", "2000")
+# The layer PNGs' resolution, dots per inch.
 PNG_DPI = "220"
+# The BOM's columns, and the fields its rows are grouped by.
 BOM_FIELDS = "Reference,Value,Footprint,MPN,Manufacturer,${QUANTITY},DNP"
 BOM_GROUP = "Value,Footprint,MPN"
+# kicad-cli pcb export svg --page-size-mode: 2, the board's area only.
+SVG_BOARD_AREA = "2"
+# kicad-cli pcb export pdf --scale: 0, fit to the page.
+PDF_FIT = "0"
+# The layer PDFs' background, white for rasterizing.
+PDF_BACKGROUND = "#ffffff"
 # The exports the summaries read, and the summaries: removed before a
 # run, so a failed export leaves no summary of an earlier run's file.
 SUMMARIZED = ("erc.json", "netlist.net", "erc.md", "nets.txt", "components.txt", "board.md")
@@ -159,7 +169,7 @@ def commands(project: Project, out: Path, copper: list[str]) -> list[list[str]]:
             "--layers",
             f"{layer},{EDGE}",
             "--page-size-mode",
-            "2",
+            SVG_BOARD_AREA,
             "--exclude-drawing-sheet",
             "-o",
             str(out / "pcb" / f"{layer}.svg"),
@@ -201,9 +211,9 @@ def commands(project: Project, out: Path, copper: list[str]) -> list[list[str]]:
                 ",".join((*group, EDGE)),
                 "--mode-single",
                 "--bg-color",
-                "#ffffff",
+                PDF_BACKGROUND,
                 "--scale",
-                "0",
+                PDF_FIT,
                 "-o",
                 str(pdf),
                 pcb,
