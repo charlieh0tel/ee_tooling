@@ -14,6 +14,7 @@ from ee_tooling.kicad_style_board import (
     on_board,
     outline_points,
     segments,
+    zone_outline,
 )
 from ee_tooling.sexpr import parse
 
@@ -295,6 +296,14 @@ def test_nearest(p: Point, expected: Point) -> None:
 
 def test_nearest_on_a_point() -> None:
     assert nearest((1, 1), ((2, 2), (2, 2))) == (2, 2)
+
+
+def test_zone_outline_with_arcs() -> None:
+    zone = parse(
+        '(zone (net "GND") (layer "F.Cu") (polygon (pts (xy 0 0)'
+        " (arc (start 10 0) (mid 15 5) (end 10 10)) (xy 0 10))))"
+    )
+    assert max(p[0] for p in zone_outline(zone)) == pytest.approx(15, abs=0.01)
 
 
 def test_polygon_with_arcs() -> None:

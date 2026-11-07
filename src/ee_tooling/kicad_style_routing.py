@@ -66,6 +66,7 @@ from ee_tooling.kicad_style_board import (
     nearest,
     net_name,
     on_board,
+    outline_points,
     place,
     polyline,
     segments,
@@ -444,20 +445,17 @@ def read(board: Expression) -> Copper:
         on = copper_of(z, stack)
         if child(z, "keepout") or not on or not net(z):
             continue
-        pts = children(child(child(z, "polygon") or [], "pts") or [], "xy")
+        pts = outline_points(child(child(z, "polygon") or [], "pts") or [])
         if not pts:
             raise BoardError(f"zone {net(z)} has no polygon")
         fills: dict[str, list[Fill]] = defaultdict(list)
         for fp in children(z, "filled_polygon"):
-            xy = children(child(fp, "pts") or [], "xy")
-            fills[text(fp, "layer") or on[0]].append(
-                Fill([(number(q[1]), number(q[2])) for q in xy])
-            )
+            fills[text(fp, "layer") or on[0]].append(Fill(outline_points(child(fp, "pts") or [])))
         c.zones.append(
             Zone(
                 net(z),
                 on,
-                polyline([(number(q[1]), number(q[2])) for q in pts], closed=True),
+                polyline(pts, closed=True),
                 dict(fills),
             )
         )

@@ -103,6 +103,20 @@ def test_clean() -> None:
     assert problems(EDGE, zone(), STITCHED) == []
 
 
+def test_plane_net_area_counts_arcs() -> None:
+    """A zone outline's arcs count toward its area: the half disc makes +5V
+    the larger, 139 mm2 to 110."""
+    square = (
+        '(zone (net "+3V3") (layer "In1.Cu")'
+        " (polygon (pts (xy 0 0) (xy 11 0) (xy 11 10) (xy 0 10))))"
+    )
+    rounded = (
+        '(zone (net "+5V") (layer "In2.Cu") (polygon (pts (xy 0 0)'
+        " (arc (start 10 0) (mid 15 5) (end 10 10)) (xy 0 10))))"
+    )
+    assert plane_net(parse(board(square, rounded))) == "+5V"
+
+
 def test_not_a_board() -> None:
     with pytest.raises(BoardError):
         check_finishing(parse("(kicad_sch)"))

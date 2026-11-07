@@ -39,6 +39,7 @@ from ee_tooling.kicad_style_board import (
     layers,
     net_name,
     on_board,
+    outline_points,
     place,
     polyline,
     where,
@@ -107,8 +108,8 @@ def plane_net(board: Expression) -> str | None:
         if not name or not copper or child(zone, "keepout"):
             continue
         for polygon in children(zone, "polygon"):
-            pts = children(child(polygon, "pts") or [], "xy")
-            covered[name] += len(copper) * area([(number(p[1]), number(p[2])) for p in pts])
+            pts = outline_points(child(polygon, "pts") or [])
+            covered[name] += len(copper) * area(pts)
     named = sorted(k for k in covered if GROUND.match(k))
     if named:
         return named[0]

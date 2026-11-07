@@ -358,6 +358,20 @@ def test_via_short_of_the_plane() -> None:
     ]
 
 
+# A polygon's points with a half disc from (10, 0) round (15, 5) to (10, 10).
+ROUNDED = "(pts (xy 0 0) (arc (start 10 0) (mid 15 5) (end 10 10)) (xy 0 10))"
+
+
+def test_zone_arcs() -> None:
+    """A zone's outline and fill read their arcs: a point in the half disc
+    is on the fill, and the outline reaches x = 15."""
+    filled = f'(filled_polygon (layer "In1.Cu") {ROUNDED})'
+    c = read(parse(board(zone("GND", "In1.Cu", extra=filled, outline=f"(polygon {ROUNDED})"))))
+    z = c.zones[0]
+    assert z.reaches("In1.Cu", [(14, 5)])
+    assert max(p[0] for s in z.outline for p in s) == pytest.approx(15, abs=0.01)
+
+
 def test_via_off_the_fill() -> None:
     """A filled plane is tested against its fill: here its left half."""
     filled = zone("GND", "In1.Cu", extra=polygon(0, 0, 20, HEIGHT, "filled_polygon"))

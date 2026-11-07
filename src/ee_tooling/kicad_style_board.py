@@ -244,11 +244,11 @@ def zone_name(zone: Expression) -> str:
 
 
 def zone_outline(zone: Expression) -> list[Point]:
-    """A zone's outline, its (polygon)'s points."""
-    pts = children(child(child(zone, "polygon") or [], "pts") or [], "xy")
+    """A zone's outline, its (polygon)'s points, arcs included."""
+    pts = outline_points(child(child(zone, "polygon") or [], "pts") or [])
     if not pts:
         raise BoardError(f"{zone_name(zone)} has no polygon")
-    return [(number(q[1]), number(q[2])) for q in pts]
+    return pts
 
 
 def zone_clearance(zone: Expression) -> float:
