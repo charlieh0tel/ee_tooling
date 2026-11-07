@@ -74,3 +74,9 @@ def test_median_weighted_by_length() -> None:
     (f,) = gaps(h, low)
     assert len(f.gaps) == 4 and f.gaps[2] > 10
     assert f.median == 0.1
+
+
+def test_track_without_width(capsys: pytest.CaptureFixture[str]) -> None:
+    board = parse('(kicad_pcb (segment (start 0 0) (end 1 0) (layer "F.Cu") (net "A")))')
+    assert tracks(board) == {}
+    assert "skipped: (segment ...) without its width" in capsys.readouterr().err

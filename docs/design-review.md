@@ -72,7 +72,7 @@ first net's length, and the edge-to-edge gap from each of its tracks
 nearest track of the second net on that layer: minimum, median
 (weighted by length), maximum, and the share of length with a gap of
 0.3 mm or less.  A pair routed as a pair shows a near-constant gap and
-a high share.
+a high share.  A track without a width is skipped, on stderr.
 
 ## pages: review_pages.py
 

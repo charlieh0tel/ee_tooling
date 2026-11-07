@@ -5,6 +5,7 @@ RS-485) is routed as a pair."""
 
 import itertools
 import math
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,7 +64,10 @@ def tracks(board: Expression) -> dict[str, list[Track]]:
     for s in children(board, "segment") + children(board, "arc"):
         center = track_path(s)
         width = child(s, "width")
-        if center is None or width is None:
+        if center is None:
+            continue
+        if width is None:
+            print(f"skipped: ({s[0]} ...) without its width", file=sys.stderr)
             continue
         found[item_net(s, table)] += [
             Track(text(s, "layer"), number(width[1]), piece, path_length(center))
