@@ -129,6 +129,7 @@ def test_cells_escaped_bar() -> None:
     ("evidence", "named"),
     [
         *(("R141 DNP", True), ("SW3", True), ("LED2", True), ("TP4", True), ("JP1", True)),
+        *(("W2 jumper wire", True), ("G1 oscillator", True), ("RT1 thermistor", True)),
         *(("DDR4 timing", False), ("A4 drawing", False), ("USB2 port", False)),
     ],
 )

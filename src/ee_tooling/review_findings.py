@@ -28,8 +28,8 @@ SUSPECTED = "(suspected)"
 REFDES_PREFIXES = tuple(
     sorted(
         {"BT", "C", "CR", "D", "DS", "E", "F", "FB", "FID", "H", "IC", "J", "JP", "K", "L"}
-        | {"LED", "LS", "M", "MH", "MK", "NT", "P", "PS", "Q", "R", "RN", "RV", "S", "SW"}
-        | {"T", "TP", "TR", "U", "VR", "X", "Y", "Z"},
+        | {"G", "LED", "LS", "M", "MH", "MK", "NT", "P", "PS", "Q", "R", "RN", "RT", "RV"}
+        | {"S", "SW", "T", "TP", "TR", "U", "VR", "W", "X", "Y", "Z"},
         key=lambda prefix: (-len(prefix), prefix),
     )
 )
