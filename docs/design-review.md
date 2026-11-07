@@ -77,7 +77,8 @@ a high share.  A track without a width is skipped, on stderr.
 ## pages: review_pages.py
 
 `page-NN: Sheet: /PATH/ File: NAME.kicad_sch` from each page's title
-block, for pointing a reviewer at a page.
+block, for pointing a reviewer at a page; a sheet path or file name may
+hold spaces.
 
 ## findings: review_findings.py
 

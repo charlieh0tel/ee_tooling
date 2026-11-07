@@ -17,3 +17,8 @@ def test_labels_spaces_and_hyphens() -> None:
 
 def test_labels_empty() -> None:
     assert labels("nothing here") == []
+
+
+def test_labels_file_with_spaces() -> None:
+    page = "Sheet: /Power/   Size: A4\nFile: power supply.kicad_sch   Sheet 3/9\n"
+    assert labels(page) == ["Sheet: /Power/", "File: power supply.kicad_sch"]
