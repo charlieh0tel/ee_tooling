@@ -73,7 +73,11 @@ def main() -> None:
         case "erc":
             sys.stdout.write(review_erc.summary(a.erc_json))
         case "pages":
-            print("\n".join(review_pages.page_map(a.pdf)))
+            try:
+                print("\n".join(review_pages.page_map(a.pdf)))
+            except review_pages.PagesError as e:
+                print(f"design-review pages: {e}", file=sys.stderr)
+                sys.exit(1)
         case "pairs":
             sys.stdout.write(review_pairs.report(a.pcb, a.pairs))
         case "findings":

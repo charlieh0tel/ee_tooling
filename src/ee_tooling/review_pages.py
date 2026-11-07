@@ -14,17 +14,30 @@ LABELS_KEPT = 2
 PAGE_COUNT = re.compile(r"^Pages:\s+(\d+)", re.M)
 
 
+class PagesError(Exception):
+    """A PDF poppler could not read, or poppler not on the path."""
+
+
+def poppler(cmd: list[str]) -> str:
+    """A poppler tool's stdout; a failure, or the tool missing, is a
+    PagesError naming the command."""
+    try:
+        return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    except FileNotFoundError as e:
+        raise PagesError(f"{cmd[0]}: not on the path") from e
+    except subprocess.CalledProcessError as e:
+        raise PagesError(f"{' '.join(cmd)}: exit {e.returncode}: {e.stderr.strip()}") from e
+
+
 def page_count(pdf: Path) -> int:
-    out = subprocess.run(["pdfinfo", str(pdf)], check=True, capture_output=True, text=True)
-    m = PAGE_COUNT.search(out.stdout)
+    m = PAGE_COUNT.search(poppler(["pdfinfo", str(pdf)]))
     if m is None:
-        raise ValueError(f"pdfinfo gave no page count for {pdf}")
+        raise PagesError(f"pdfinfo gave no page count for {pdf}")
     return int(m.group(1))
 
 
 def page_text(pdf: Path, page: int) -> str:
-    cmd = ["pdftotext", "-f", str(page), "-l", str(page), "-layout", str(pdf), "-"]
-    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    return poppler(["pdftotext", "-f", str(page), "-l", str(page), "-layout", str(pdf), "-"])
 
 
 def labels(text: str) -> list[str]:

@@ -78,7 +78,8 @@ a high share.  A track without a width is skipped, on stderr.
 
 `page-NN: Sheet: /PATH/ File: NAME.kicad_sch` from each page's title
 block, for pointing a reviewer at a page; a sheet path or file name may
-hold spaces.
+hold spaces.  A PDF poppler cannot read, or a poppler tool not on the
+path, is printed on stderr, with exit status 1.
 
 ## findings: review_findings.py
 
