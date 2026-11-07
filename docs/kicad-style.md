@@ -33,7 +33,9 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   ("50V X7R", "25V tantalum"), in its value or a field shown on the
   sheet.
 
-`kicad-style-check` checks these rules (`docs/kicad-style-check.md`).
+`kicad-style-check` checks these rules (`docs/kicad-style-check.md`); a
+break judged intentional is waived, with its reason, in the board's
+`kicad-style.toml`.
 
 ## Board layout
 

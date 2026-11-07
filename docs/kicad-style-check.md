@@ -5,8 +5,9 @@
 prints one problem a line, `FILE: problem [RULE]`, RULE being its rule's
 id (below), and exits 1 on any problem, 2 if a file cannot be read; an
 unreadable file is never clean.  A line starting `note:` is for the
-board's owner to judge and does not fail the check.  What a check cannot decide (an unfilled zone, a board with no
-tracks) is said on stderr.
+board's owner to judge and does not fail the check.  What a check cannot
+decide (an unfilled zone, a board with no tracks) is said on stderr.  A
+finding the owner has waived (Waivers, below) is not printed.
 
 ```
 uv run kicad-style-check NAME/NAME.kicad_sch NAME/NAME.kicad_pcb NAME/NAME.kicad_pro
@@ -106,6 +107,42 @@ patterns and assignments.
 - A net named like half a pair (ending `+`, `-`, `_P`, `DP` or `DM`) with
   no other half is a `note:`; a lone `_N`, often active low, is not.
 - A class assigned or in a pattern but not defined.
+
+## Waivers
+
+`kicad-style.toml` beside the checked file (the board's directory)
+holds the findings its owner has judged intentional; `--waivers FILE`
+uses FILE for every file instead.  Each `[[waiver]]` names a rule's id,
+every one of its subject fields (Rule ids, below), and a non-empty
+`reason`:
+
+```toml
+[[waiver]]
+rule = "trace-pad-to-pad"
+net = "GND"
+pads = ["J7 pad 3", "J8 pad 3"]
+reason = "GND return across the breakaway tab, beside +5V and 1PPS."
+```
+
+- A waiver waives a finding of its rule whose subject is equal on every
+  field: a set field (`pads`, `pins`, `nets`, `layers`) as a set, so a
+  third pad is not waived; `at`, `[x, y]` in mm, within 0.01 mm.  It
+  ignores the finding's values: a waived stub's via moved further is
+  still waived.
+- A field given a list of its values (a list of lists for a set field, a
+  list of `[x, y]` for `at`) waives each.
+- A waived finding, note or problem, is not printed or counted; stderr
+  says `FILE: N waived (WAIVERS)`.  `--waived` prints each, not counted:
+  `FILE: waived: <finding> [RULE]: <reason>`.
+- A waiver that matches no finding is stale, a problem:
+  `WAIVERS: stale waiver: RULE FIELD=VALUE; ...`.  It is judged only for
+  rules that ran on a file given: a schematic rule's waiver is not stale
+  when only the board is checked, nor a routing rule's on a board with no
+  tracks.
+- An unknown rule, a missing or unexpected field, a value of the wrong
+  form, a missing or empty reason, or a file that is not TOML: the files
+  it covers cannot be checked (exit 2).
+- No patterns, and no turning a rule off for a whole board.
 
 ## Rule ids
 

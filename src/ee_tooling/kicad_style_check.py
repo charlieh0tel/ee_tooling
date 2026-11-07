@@ -1,7 +1,9 @@
 """Check KiCad schematics and boards against the house style.
 
 kicad-style-check FILE...: each problem on a line, `FILE: problem [RULE]`,
-RULE its id (kicad_style_finding.RULES).
+RULE its id (kicad_style_finding.RULES), but those waived by the
+kicad-style.toml beside the file (kicad_style_waivers.py); a waiver that
+waives nothing is a problem.
 Exits 1 if there are problems (a line starting `note: ` is for the owner
 to judge, and does not count), 2 if a file cannot be read; an unreadable
 file is never clean.  Notes on what a check cannot decide go to stderr.
@@ -35,6 +37,7 @@ from ee_tooling.kicad_style_finding import SCHEMATIC_RULES, Checked, Finding, fo
 from ee_tooling.kicad_style_finishing import check_finishing
 from ee_tooling.kicad_style_netclass import check_project
 from ee_tooling.kicad_style_routing import check_routing
+from ee_tooling.kicad_style_waivers import WAIVERS, Waiver, WaiverError, load, waive
 from ee_tooling.placement import Rules
 from ee_tooling.placement_kicad import RULES
 from ee_tooling.sexpr import Atom, Expression, child, children, number, parse
@@ -388,17 +391,51 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     ap.add_argument("files", nargs="+", type=Path, metavar="FILE")
     ap.add_argument("--grid", type=float, default=GRID, help="a schematic's grid, mm")
+    ap.add_argument(
+        "--waivers",
+        type=Path,
+        metavar="FILE",
+        help=f"the waivers for every FILE, not the {WAIVERS} beside each",
+    )
+    ap.add_argument("--waived", action="store_true", help="print each waived finding")
     a = ap.parse_args()
     counted = 0
     unreadable = False
+    loaded: dict[Path, list[Waiver] | None] = {}  # waivers file: its waivers, None if bad
+    ran: dict[Path, set[str]] = defaultdict(set)  # waivers file: rules run on its files
+    used: dict[Path, set[int]] = defaultdict(set)  # waivers file: its waivers that matched
     for path in a.files:
+        source = a.waivers or path.parent / WAIVERS
+        if source not in loaded:
+            try:
+                loaded[source] = load(source.read_text()) if a.waivers or source.is_file() else []
+            except (OSError, UnicodeDecodeError, WaiverError) as e:
+                print(f"{source}: cannot check: {e}", file=sys.stderr)
+                loaded[source] = None
+        waivers = loaded[source]
+        if waivers is None:
+            unreadable = True
+            continue
         try:
             checked = check_file(path, a.grid)
         except (OSError, UnicodeDecodeError, ValueError, IndexError, KeyError) as e:
             print(f"{path}: cannot check: {e}", file=sys.stderr)
             unreadable = True
             continue
-        for f in checked.findings:
+        kept, waived, hits = waive(waivers, checked.findings)
+        used[source] |= hits
+        ran[source] |= checked.ran
+        for f in kept:
             print(f"{path}: {f} [{f.rule}]")
-        counted += sum(not f.note for f in checked.findings)
+        counted += sum(not f.note for f in kept)
+        if waived:
+            print(f"{path}: {len(waived)} waived ({source})", file=sys.stderr)
+        if a.waived:
+            for f, w in waived:
+                print(f"{path}: waived: {f} [{f.rule}]: {w.reason}")
+    for source, waivers in loaded.items():
+        for i, w in enumerate(waivers or []):
+            if i not in used[source] and w.rule in ran[source]:
+                print(f"{source}: stale waiver: {w}")
+                counted += 1
     sys.exit(2 if unreadable else 1 if counted else 0)

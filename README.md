@@ -11,7 +11,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `src/ee_tooling/placement*.py` | `placement-score`: a board's ratsnest crossings and length, decoupling distances and order, courtyard overlaps, and a render (`docs/placement.md`) |
 | `src/ee_tooling/stitch*.py` | `stitch BOARD`: ground stitching vias along every board edge and on a grid, checked by KiCad's DRC (`docs/stitch.md`) |
 | `src/ee_tooling/sexpr.py` | KiCad's S-expressions: parse, write, library symbol lookup (`KICAD10_SYMBOL_DIR`, else `/usr/share/kicad/symbols`) |
-| `src/ee_tooling/kicad_style_*.py` | `kicad-style-check FILE...`: a schematic, board or project against `docs/kicad-style.md` (`docs/kicad-style-check.md`) |
+| `src/ee_tooling/kicad_style_*.py` | `kicad-style-check FILE...`: a schematic, board or project against `docs/kicad-style.md`, less the waivers in its `kicad-style.toml` (`docs/kicad-style-check.md`) |
 | `src/ee_tooling/step_model.py` | STEP stand-in models (boxes, faceted cylinders) for parts whose makers' models may not be redistributed |
 | `src/ee_tooling/parts.toml` | JLCPCB's rotation and offset corrections, by LCSC part |
 | `tools/odb_current/` | DC resistance and current capacity of a net, from ODB++ |
