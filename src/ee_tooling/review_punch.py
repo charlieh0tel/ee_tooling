@@ -56,6 +56,7 @@ class Report:
 
     findings: dict[str, Finding] = field(default_factory=dict)
     questions: set[int] = field(default_factory=set)
+    problems: list[Problem] = field(default_factory=list)  # rows it could not read
 
     @property
     def prefixes(self) -> set[str]:
@@ -81,6 +82,7 @@ def report(markdown: str) -> Report:
         for n, line in enumerate(lines[TABLE_HEAD:], start=first + TABLE_HEAD):
             row = cells(line)
             if len(row) != len(header):
+                found.problems.append(Problem(n, f"{len(row)} cells, header has {len(header)}"))
                 continue
             ident = row[column["ID"]]
             words = row[column["Severity"]].split()
@@ -113,7 +115,8 @@ def check(report_markdown: str, punch_markdown: str) -> tuple[list[Problem], lis
     """The problems: in the punch list, and in the report."""
     known = report(report_markdown)
     if not known.findings:
-        return [], [Problem(0, "no findings table (an ID column and Severity) in the report")]
+        missing = Problem(0, "no findings table (an ID column and Severity) in the report")
+        return [], known.problems or [missing]
     in_punch: list[Problem] = []
     cited: set[str] = set()
     for n, line in enumerate(punch_markdown.splitlines(), start=1):
@@ -127,7 +130,7 @@ def check(report_markdown: str, punch_markdown: str) -> tuple[list[Problem], lis
                     in_punch.append(
                         Problem(n, f"question {number} is not in the report's Unresolved questions")
                     )
-    in_report = [
+    in_report = known.problems + [
         Problem(f.line, f"{ident} ({f.severity}) is not on the punch list")
         for ident, f in known.findings.items()
         if f.severity in MUST_SEVERITIES and not f.dropped and ident not in cited

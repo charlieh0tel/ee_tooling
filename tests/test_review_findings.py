@@ -1,4 +1,4 @@
-from ee_tooling.review_findings import CLASSES, REVIEWER, SEVERITIES, lint
+from ee_tooling.review_findings import CLASSES, REVIEWER, SEVERITIES, cells, lint
 
 HEADER = (
     "| ID | Class | Rubric/Spec | Finding | Evidence | Consequence |\n|---|---|---|---|---|---|\n"
@@ -114,3 +114,10 @@ def test_evidence_not_a_net_path() -> None:
     assert [p.message for p in lint(HEADER + row).problems] == [
         "Evidence names no file, refdes, net, page or point"
     ]
+
+
+def test_cells_escaped_bar() -> None:
+    """`\\|` is a `|` inside a cell, at the row's end too."""
+    assert cells("| a | b \\| c | d |") == ["a", "b | c", "d"]
+    assert cells("| a | b \\|") == ["a", "b |"]
+    assert cells("|x|y|") == ["x", "y"]

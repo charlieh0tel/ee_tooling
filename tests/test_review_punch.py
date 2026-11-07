@@ -84,3 +84,28 @@ def test_no_findings_in_report() -> None:
     assert [p.message for p in in_report] == [
         "no findings table (an ID column and Severity) in the report"
     ]
+
+
+# A findings table with a `|` inside a cell, written plain and escaped.
+PIPED = """| ID | Severity | Rubric/Spec | Finding | Evidence | Recommendation | Source |
+|---|---|---|---|---|---|---|
+| S-1 | Minor | sch 1 | a | R1 | fix | M |
+| S-2 | Major | sch 1 | EN tied A|B | R2 | fix | M |
+| S-3 | Major | sch 1 | EN tied A\\|B | R3 | fix | M |
+"""
+
+
+def test_row_with_a_bar() -> None:
+    """A row whose cells do not match the header is reported, not dropped;
+    an escaped bar is part of its cell."""
+    _, in_report = check(PIPED, "S-1\n")
+    assert [(p.line, p.message) for p in in_report] == [
+        (4, "8 cells, header has 7"),
+        (5, "S-3 (Major) is not on the punch list"),
+    ]
+
+
+def test_only_unreadable_rows() -> None:
+    lines = PIPED.splitlines()
+    _, in_report = check("\n".join([*lines[:2], lines[3]]), "")
+    assert [p.message for p in in_report] == ["8 cells, header has 7"]

@@ -35,6 +35,9 @@ EVIDENCE = re.compile(
 CONSEQUENCE_MIN = 10
 # Table lines before the first data row: the header and its rule.
 TABLE_HEAD = 2
+# A cell separator, and a `|` written inside a cell.
+UNESCAPED_BAR = re.compile(r"(?<!\\)\|")
+ESCAPED_BAR = "\\|"
 
 
 @dataclass(frozen=True)
@@ -59,7 +62,12 @@ class Lint:
 
 
 def cells(line: str) -> list[str]:
-    return [c.strip() for c in line.strip().strip("|").split("|")]
+    """A table row's cells; `\\|` is a `|` inside a cell, as in GitHub's
+    Markdown."""
+    row = line.strip().removeprefix("|")
+    if row.endswith("|") and not row.endswith(ESCAPED_BAR):
+        row = row[:-1]
+    return [c.strip().replace(ESCAPED_BAR, "|") for c in UNESCAPED_BAR.split(row)]
 
 
 def tables(markdown: str) -> list[tuple[int, list[str]]]:

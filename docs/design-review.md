@@ -93,7 +93,8 @@ Blocker, Major, Minor or Note, which may carry tags (`FIRMWARE`,
 `(suspected)`); a Rubric/Spec reference (`none` for a round 2 item);
 Evidence naming a KiCad file, refdes, net path, coordinate pair, page,
 line, source file (`.zen`, `.py`) or evidence file; in a reviewer's
-table, a Consequence of 10 characters or more.  Problems print as
+table, a Consequence of 10 characters or more.  A row's cells number
+the header's; a `|` inside a cell is written `\|`.  Problems print as
 `FILE:LINE: problem`; line 0 is the file.
 
 ## punch-list: review_punch.py
@@ -106,6 +107,8 @@ unless dropped, waived or struck (its Recommendation cell, the
 Adjudication table, or `~~` around its ID); every question number
 cited (`question 7`, `questions 7 and 8`) is in the report's
 Unresolved questions.  An ID is a token `PREFIX-N` whose prefix one of
-the report's IDs has, so a part such as SOT-23 is not one.  Problems
-print as `FILE:LINE: problem`, against the punch list or the report.
+the report's IDs has, so a part such as SOT-23 is not one.  A findings
+row whose cells do not number the header's is a problem in the report.
+Problems print as `FILE:LINE: problem`, against the punch list or the
+report.
 
