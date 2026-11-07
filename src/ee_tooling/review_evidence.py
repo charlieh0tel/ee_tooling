@@ -45,6 +45,9 @@ SVG_BOARD_AREA = "2"
 PDF_FIT = "0"
 # The layer PDFs' background, white for rasterizing.
 PDF_BACKGROUND = "#ffffff"
+# Seconds one export may take: a high-quality render of a large board
+# takes a minute or two.
+EXPORT_TIMEOUT = 600
 # The exports the summaries read, and the summaries: removed before a
 # run, so a failed export leaves no summary of an earlier run's file.
 SUMMARIZED = ("erc.json", "netlist.net", "erc.md", "nets.txt", "components.txt", "board.md")
@@ -250,9 +253,13 @@ def export(project: Project, out: Path, dry_run: bool = False) -> list[str]:
     failed = []
     for cmd in commands(project, out, copper):
         try:
-            done = subprocess.run(cmd, capture_output=True, text=True)
+            done = subprocess.run(cmd, capture_output=True, text=True, timeout=EXPORT_TIMEOUT)
         except FileNotFoundError:
             print(f"failed: {cmd[0]} not on the path: {shlex.join(cmd)}", file=sys.stderr)
+            failed.append(shlex.join(cmd))
+            continue
+        except subprocess.TimeoutExpired:
+            print(f"failed: over {EXPORT_TIMEOUT} s: {shlex.join(cmd)}", file=sys.stderr)
             failed.append(shlex.join(cmd))
             continue
         if done.returncode != 0:

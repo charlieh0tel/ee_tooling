@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from ee_tooling import review_evidence
 from ee_tooling.review_evidence import (
     PLOT_LAYERS,
     PNG_GROUPS,
@@ -99,3 +100,23 @@ def test_dry_run_quoted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
         Project(project, "W"), tmp_path / "out", ["F.Cu"]
     )
     assert any("'Reference,Value,Footprint,MPN,Manufacturer,${QUANTITY},DNP'" in x for x in lines)
+
+
+def test_export_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tool that hangs is stopped and reported; the rest run."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("kicad-cli", "pdftoppm"):
+        (bin_dir / tool).write_text("#!/bin/sh\nexec sleep 5\n", encoding="utf-8")
+        (bin_dir / tool).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    monkeypatch.setattr(review_evidence, "EXPORT_TIMEOUT", 0.05)
+    (tmp_path / "W.kicad_pcb").write_text(
+        '(kicad_pcb (layers (0 "F.Cu" signal)))', encoding="utf-8"
+    )
+    out = tmp_path / "out"
+    failed = export(Project(tmp_path, "W"), out)
+    assert len(failed) == len(commands(Project(tmp_path, "W"), out, ["F.Cu"]))
+    assert "failed: over 0.05 s: kicad-cli sch erc" in capsys.readouterr().err

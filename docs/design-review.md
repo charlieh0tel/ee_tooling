@@ -33,8 +33,8 @@ From `DIR/NAME.kicad_sch` and `DIR/NAME.kicad_pcb` into `OUT`:
 | `png/LAYERS.png` | `pcb export pdf` of each copper layer, then silk with fab (top, bottom), F.Cu with silk, mask with paste (top, bottom); rasterized at 220 dpi |
 | `board.md` | the board summary (below) |
 
-A failed export, or a tool not on the path, is printed on stderr and
-the rest run; a summary whose source was not exported (`nets.txt` and
+A failed export, one over 600 s, or a tool not on the path, is printed
+on stderr and the rest run; a summary whose source was not exported (`nets.txt` and
 `components.txt`, `erc.md`) is skipped, on stderr; those files, and
 `erc.json`, `netlist.net` and `board.md`, are removed before a run, so
 none is left from an earlier one.  A board that cannot be read is
@@ -81,8 +81,8 @@ a high share.  A track without a width is skipped, on stderr.
 
 `page-NN: Sheet: /PATH/ File: NAME.kicad_sch` from each page's title
 block, for pointing a reviewer at a page; a sheet path or file name may
-hold spaces.  A PDF poppler cannot read, or a poppler tool not on the
-path, is printed on stderr, with exit status 1.
+hold spaces.  A PDF poppler cannot read, a poppler tool over 60 s or
+not on the path, is printed on stderr, with exit status 1.
 
 ## findings: review_findings.py
 

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from ee_tooling import review_pages
 from ee_tooling.review_pages import PagesError, labels, page_map, poppler
 
 PAGE = """   Widget
@@ -39,3 +40,9 @@ def test_missing_pdf(tmp_path: Path) -> None:
 def test_tool_not_on_the_path() -> None:
     with pytest.raises(PagesError, match="no-such-poppler-tool: not on the path"):
         poppler(["no-such-poppler-tool"])
+
+
+def test_poppler_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(review_pages, "POPPLER_TIMEOUT", 0.05)
+    with pytest.raises(PagesError, match=r"sleep 5: over 0.05 s"):
+        poppler(["sleep", "5"])

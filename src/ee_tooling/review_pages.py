@@ -15,17 +15,25 @@ LABELS_KEPT = 2
 PAGE_COUNT = re.compile(r"^Pages:\s+(\d+)", re.M)
 
 
+# Seconds a poppler tool may take on one page or file.
+POPPLER_TIMEOUT = 60
+
+
 class PagesError(Exception):
     """A PDF poppler could not read, or poppler not on the path."""
 
 
 def poppler(cmd: list[str]) -> str:
-    """A poppler tool's stdout; a failure, or the tool missing, is a
-    PagesError naming the command."""
+    """A poppler tool's stdout; a failure, a timeout, or the tool missing,
+    is a PagesError naming the command."""
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+        return subprocess.run(
+            cmd, check=True, capture_output=True, text=True, timeout=POPPLER_TIMEOUT
+        ).stdout
     except FileNotFoundError as e:
         raise PagesError(f"{cmd[0]}: not on the path") from e
+    except subprocess.TimeoutExpired as e:
+        raise PagesError(f"{' '.join(cmd)}: over {POPPLER_TIMEOUT} s") from e
     except subprocess.CalledProcessError as e:
         raise PagesError(f"{' '.join(cmd)}: exit {e.returncode}: {e.stderr.strip()}") from e
 
