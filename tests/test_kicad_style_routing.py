@@ -401,6 +401,30 @@ def test_pad_to_pad() -> None:
     ]
 
 
+def through(number: str, net: str) -> str:
+    """A through-hole pad at its footprint's origin."""
+    return pad(number, 0, 0, net, kind="thru_hole", layers='"*.Cu" "*.Mask"')
+
+
+def test_pad_to_pad_through_hole() -> None:
+    """Two through-hole pins, each on the plane through its barrel: the
+    trace is no pin's only way to it."""
+    j1 = footprint("J1", 10, 10, through("3", "GND"))
+    j2 = footprint("J2", 18, 10, through("3", "GND"))
+    assert check(GND_PLANE, j1, j2, segment((10, 10), (18, 10), "GND")) == []
+
+
+def test_pad_to_pad_through_hole_off_the_plane() -> None:
+    """A through-hole pin the plane does not reach is still traced pad to
+    pad."""
+    j1 = footprint("J1", 10, 10, through("3", "GND"))
+    j2 = footprint("J2", 18, 10, through("3", "GND"))
+    plane = zone("GND", "In1.Cu", extra=polygon(0, 0, 14, HEIGHT, "filled_polygon"))
+    assert check(plane, j1, j2, segment((10, 10), (18, 10), "GND")) == [
+        "GND: trace from J1 pad 3 to J2 pad 3 on F.Cu"
+    ]
+
+
 def test_pads_on_each_other() -> None:
     """A footprint's pads on top of each other are one pad."""
     stacked = footprint("J1", 10, 10, pad("A1", 0, 0, "GND"), pad("B12", 0, 0, "GND"))

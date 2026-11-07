@@ -80,7 +80,8 @@ the board or more.
   connector's plated-through shell, a QFN's exposed pad with vias) needs
   no via of its own.
 - No via serving two pads; no trace on a plane net from pad to pad but
-  within one part.
+  within one part, or between two through-hole pads each on one of the
+  net's zones itself.
 - A supply pin is reached through its decoupling capacitors: with
   their pads taken away, the pin reaches no zone and no other part's
   pad; each capacitor reaches one, unless the net has no zone and no

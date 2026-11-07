@@ -97,7 +97,8 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   guideline for any big one), N/S/E/W by preference, the
   via inside the part's courtyard where it fits (outside is fine where
   it does not).  Other plane nets and power stubs the same.  Never a
-  trace from pad to pad.  Mounting hardware tied to ground (a mounting
+  trace from pad to pad, except between two through-hole pins each on
+  the plane through its barrel.  Mounting hardware tied to ground (a mounting
   hole's pad, a standoff) needs no via.
 - A supply runs from its trace or plane to the decoupling capacitor,
   then from the capacitor to the package's pin.  A pin with more than

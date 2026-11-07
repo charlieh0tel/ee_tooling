@@ -11,7 +11,8 @@ courtyard is fine.  Mounting hardware (MOUNTING_HARDWARE) is exempt: tied
 to ground, it needs no via.  A pad traced to a pad of its own part that
 reaches the plane (a connector's shell, a QFN's exposed pad) needs none
 either.  No via serves two pads, and no trace on a plane net runs from
-pad to pad but within a part.  A
+pad to pad but within a part, or between two through-hole pads each on
+the net's zone itself (its barrel is its way into the plane).  A
 decoupled supply pin is exempt, being fed through its capacitor, and so
 is the run from it to its capacitors; a capacitor's supply pad needs no
 via of its own (the supply check sees that it is fed).
@@ -866,10 +867,17 @@ def check_pad_to_pad(
 ) -> list[str]:
     """Rule one: no trace on a plane net runs from pad to pad, but within
     a group (a decoupled pin and its capacitors' pads) or a part (a QFN's
-    pin to its exposed pad, a connector's pins to its shell)."""
+    pin to its exposed pad, a connector's pins to its shell), or between
+    two through-hole pads each on the net's zone itself."""
     problems = []
     for name in sorted(plane):
         n = Net(c, name)
+        # Through-hole pads a zone of the net reaches directly.
+        on_zone = {
+            i
+            for i in n.pads
+            if c.pads[i].through and any(m[0] == "zone" for m in n.links[("pad", i)])
+        }
         seen: set[int] = set()
         for i in n.tracks:
             if i in seen:
@@ -886,8 +894,10 @@ def check_pad_to_pad(
             pads = sorted({m[1] for t in run for m in n.links[("track", t)] if m[0] == "pad"})
             for k, a in enumerate(pads):
                 for b in pads[k + 1 :]:
-                    if c.pads[a].reference == c.pads[b].reference or any(
-                        {a, b} <= g for g in groups
+                    if (
+                        c.pads[a].reference == c.pads[b].reference
+                        or any({a, b} <= g for g in groups)
+                        or {a, b} <= on_zone
                     ):
                         continue
                     problems.append(
