@@ -207,9 +207,9 @@ become groups chosen per board, and whether a value the board and
 ## Migration
 
 A flag day: the breaking commits land on `main` in one merge and are
-released as 0.2.0.  `v0.1.0` is tagged on `main` before the merge, the
-pin for a board repository not yet migrated.  A board repository cannot release from the merge
-until it runs `adopt --yes`, checks `[board.fab]`, draws the stackup
+released as 0.3.0.  The release before it, `v0.2.0` or a later
+0.2.x, is the pin for a board repository not yet migrated.  A board
+repository cannot release from the merge until it runs `adopt --yes`, checks `[board.fab]`, draws the stackup
 table and passes DRC under the profile's rules.
 
 Breaking changes:
@@ -247,7 +247,6 @@ Breaking changes:
 Refactor first, with no change in behavior; each commit passes every
 check, with its docs.
 
-0. Tag `v0.1.0` on `main`, after CI.
 1. Split `jlcpcb_release.py` into `fab_release.py` and
    `profiles/jlcpcb.py`; same command, same files.
 2. `Profile`, `GerberOptions`, `PROFILES`; the core calls the JLCPCB
@@ -271,7 +270,7 @@ Then one PR, breaking, merged as one:
     stale warning.
 12. The JLCPCB profile refuses a fitted part with no LCSC number.
 13. `adopt` sets the ERC severities and connection grid.
-14. Release 0.2.0; tag after CI.
+14. Release 0.3.0; tag after CI.
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
