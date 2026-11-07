@@ -96,8 +96,10 @@ unique in the file; a Class of Defect, Spec mismatch, Rubric miss or
 Observation, which may carry `(suspected)`, or a Severity opening with
 Blocker, Major, Minor or Note, which may carry tags (`FIRMWARE`,
 `(suspected)`); a Rubric/Spec reference (`none` for a round 2 item);
-Evidence naming a KiCad file, refdes, net path, coordinate pair, page,
-line, source file (`.zen`, `.py`) or evidence file; in a reviewer's
+Evidence naming a KiCad file, refdes (a reference prefix of IEEE 315
+or KiCad's libraries, such as R, SW, TP, so DDR4 is not one), net path,
+coordinate pair, page, line, source file (`.zen`, `.py`) or evidence
+file; in a reviewer's
 table, a Consequence of 10 characters or more.  A row's cells number
 the header's; a `|` inside a cell is written `\|`.  Problems print as
 `FILE:LINE: problem`; line 0 is the file.

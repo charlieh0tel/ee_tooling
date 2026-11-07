@@ -23,11 +23,24 @@ SEVERITIES = ("Blocker", "Major", "Minor", "Note")
 # A Class may carry this suffix: the brief asks for it in the Finding, but
 # reviewers put it on the Class too.
 SUSPECTED = "(suspected)"
+# The reference prefixes of IEEE 315 and KiCad's libraries, longest first
+# so that a regex alternation takes the whole prefix.
+REFDES_PREFIXES = tuple(
+    sorted(
+        {"BT", "C", "CR", "D", "DS", "E", "F", "FB", "FID", "H", "IC", "J", "JP", "K", "L"}
+        | {"LED", "LS", "M", "MH", "MK", "NT", "P", "PS", "Q", "R", "RN", "RV", "S", "SW"}
+        | {"T", "TP", "TR", "U", "VR", "X", "Y", "Z"},
+        key=lambda prefix: (-len(prefix), prefix),
+    )
+)
 # Evidence must name one of: a KiCad file, a refdes, a net path, a
 # coordinate pair, a page, a line, a source file or a review evidence file.
 # A net path's slash follows no letter or digit, so "and/or" is not one.
+# A refdes has a reference prefix (REFDES_PREFIXES), so DDR4 and A4 are
+# not one.
 EVIDENCE = re.compile(
-    r"\.kicad_(sch|pcb)|\b[A-Z]{1,3}\d{1,4}\b|(?<![A-Za-z0-9])/[A-Za-z0-9_]+"
+    rf"\.kicad_(sch|pcb)|\b(?:{'|'.join(REFDES_PREFIXES)})\d{{1,4}}\b"
+    r"|(?<![A-Za-z0-9])/[A-Za-z0-9_]+"
     r"|\(\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*\)|\bpage\s*\d+|\bline\s*\d+"
     r"|\.(txt|md|csv|json|zen|py)\b"
 )

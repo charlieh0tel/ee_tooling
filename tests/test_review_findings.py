@@ -1,4 +1,6 @@
-from ee_tooling.review_findings import CLASSES, REVIEWER, SEVERITIES, cells, lint
+import pytest
+
+from ee_tooling.review_findings import CLASSES, EVIDENCE, REVIEWER, SEVERITIES, cells, lint
 
 HEADER = (
     "| ID | Class | Rubric/Spec | Finding | Evidence | Consequence |\n|---|---|---|---|---|---|\n"
@@ -121,3 +123,15 @@ def test_cells_escaped_bar() -> None:
     assert cells("| a | b \\| c | d |") == ["a", "b | c", "d"]
     assert cells("| a | b \\|") == ["a", "b |"]
     assert cells("|x|y|") == ["x", "y"]
+
+
+@pytest.mark.parametrize(
+    ("evidence", "named"),
+    [
+        *(("R141 DNP", True), ("SW3", True), ("LED2", True), ("TP4", True), ("JP1", True)),
+        *(("DDR4 timing", False), ("A4 drawing", False), ("USB2 port", False)),
+    ],
+)
+def test_evidence_refdes(evidence: str, named: bool) -> None:
+    """A refdes has a reference prefix; a part name like DDR4 is not one."""
+    assert bool(EVIDENCE.search(evidence)) is named
