@@ -109,3 +109,32 @@ def test_only_unreadable_rows() -> None:
     lines = PIPED.splitlines()
     _, in_report = check("\n".join([*lines[:2], lines[3]]), "")
     assert [p.message for p in in_report] == ["8 cells, header has 7"]
+
+
+DECIDED = """| ID | Severity | Rubric/Spec | Finding | Evidence | Recommendation | Source |
+|---|---|---|---|---|---|---|
+| S-1 | Major | sch 1 | a | R1 | Must not be dropped: fix R1 | M |
+| S-2 | Major | sch 1 | b | R2 | fix | M |
+| S-3 | Major | sch 1 | c | R3 | Waived: owner's call | M |
+
+| Rubric item or ID | Decision | Effect |
+|---|---|---|
+| S-2 | Keep; the waiver was struck down | none |
+"""
+
+
+def test_dropped_only_as_the_decision() -> None:
+    """A decision word inside other text is not the decision."""
+    _, in_report = check(DECIDED, "")
+    assert [p.message for p in in_report] == [
+        "S-1 (Major) is not on the punch list",
+        "S-2 (Major) is not on the punch list",
+    ]
+
+
+def test_adjudication_row_unreadable() -> None:
+    report_text = DECIDED.replace(
+        "| S-2 | Keep; the waiver was struck down | none |", "| S-2 | Keep |"
+    )
+    _, in_report = check(report_text, "S-1 S-2\n")
+    assert [(p.line, p.message) for p in in_report] == [(9, "2 cells, header has 3")]

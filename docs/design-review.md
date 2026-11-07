@@ -103,12 +103,15 @@ Checks a punch list against its report: every finding ID the punch
 list cites is in the report's findings tables (ID and Severity
 columns); every finding at Blocker or Major, after the Adjudication
 table's regrading (`Minor -> Major`), is cited on the punch list
-unless dropped, waived or struck (its Recommendation cell, the
-Adjudication table, or `~~` around its ID); every question number
+unless dropped, waived or struck: its Recommendation cell, or its row's
+Decision cell in the Adjudication table, opens with `Dropped`,
+`Waived` or `Struck` (after `Adjudicated:` if written), or `~~` is
+around its ID; every question number
 cited (`question 7`, `questions 7 and 8`) is in the report's
 Unresolved questions.  An ID is a token `PREFIX-N` whose prefix one of
 the report's IDs has, so a part such as SOT-23 is not one.  A findings
-row whose cells do not number the header's is a problem in the report.
+or Adjudication row whose cells do not number the header's is a problem
+in the report.
 Problems print as `FILE:LINE: problem`, against the punch list or the
 report.
 

@@ -3,8 +3,9 @@ sections 8 and 9):
 
 - every finding ID it cites is a finding of the report;
 - every report finding at `MUST_SEVERITIES`, after adjudication, is on
-  it, unless dropped, waived or struck in its Recommendation, its ID
-  cell or the Adjudication table;
+  it, unless dropped, waived or struck: its Recommendation or the
+  Adjudication table's Decision opening with that word, or its ID
+  struck through;
 - every question number it cites is in the report's Unresolved
   questions.
 
@@ -22,8 +23,10 @@ from ee_tooling.review_findings import SEVERITIES, TABLE_HEAD, Problem, cells, t
 MUST_SEVERITIES = frozenset({"Blocker", "Major"})
 # A token that may be a finding ID.
 ID = re.compile(r"\b([A-Z]+)-(\d+)\b")
-# A finding taken out in adjudication.
-DROPPED = re.compile(r"\b(dropped|waived|struck)\b", re.I)
+# A finding taken out in adjudication: the decision opening its
+# Recommendation cell (after `Adjudicated:`, if written) or the Decision
+# cell of the Adjudication table.
+DROPPED = re.compile(r"^(?:adjudicated:\s*)?(?:dropped|waived|struck)\b", re.I)
 # Strikethrough around an ID.
 STRUCK = "~~"
 # A severity changed in adjudication: `Minor -> Major`.
@@ -70,11 +73,16 @@ class Report:
 
 def report(markdown: str) -> Report:
     found = Report()
-    adjudication: list[list[str]] = []
+    adjudication: list[tuple[str, str, str]] = []  # subject, decision, the rest
     for first, lines in tables(markdown):
         header = cells(lines[0])
         if DECISION in header:
-            adjudication += [cells(line) for line in lines[TABLE_HEAD:]]
+            for n, line in enumerate(lines[TABLE_HEAD:], start=first + TABLE_HEAD):
+                row = cells(line)
+                if len(row) != len(header):
+                    found.problems.append(Problem(n, f"{len(row)} cells, header has {len(header)}"))
+                    continue
+                adjudication.append((row[0], row[header.index(DECISION)], " ".join(row[1:])))
             continue
         if "ID" not in header or "Severity" not in header:
             continue
@@ -90,15 +98,14 @@ def report(markdown: str) -> Report:
             found.findings[ident.strip(STRUCK).strip()] = Finding(
                 n,
                 words[0] if words else "",
-                STRUCK in ident or bool(DROPPED.search(recommendation)),
+                STRUCK in ident or bool(DROPPED.match(recommendation)),
             )
-    for row in adjudication:
-        rest = " ".join(row[1:])
-        for ident in found.ids(row[0]):
+    for subject, decision, rest in adjudication:
+        for ident in found.ids(subject):
             finding = found.findings.get(ident)
             if finding is None:
                 continue
-            finding.dropped |= bool(DROPPED.search(rest))
+            finding.dropped |= bool(DROPPED.match(decision))
             regraded = REGRADED.findall(rest)
             if regraded:
                 finding.severity = regraded[-1][1]

@@ -147,7 +147,10 @@ item and per open question, in punch-list order, with the finding, the
 evidence and your recommendation.  Each decision goes in
 `decisions.md` (`templates/decisions.md`) with the date, then into the
 report's Adjudication table and inline on the finding, and the punch
-list, each in its own commit.
+list, each in its own commit.  A finding taken out opens its
+Recommendation, and its Adjudication row's Decision, with `Dropped`,
+`Waived` or `Struck`, which `punch-list` reads; the word elsewhere in
+the cell does not count.
 
 - Dropped: the item is deleted from the punch list; it stays in the
   report and `decisions.md`.
