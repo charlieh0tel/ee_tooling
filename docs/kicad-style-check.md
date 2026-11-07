@@ -2,10 +2,10 @@
 
 `kicad-style-check FILE...` checks KiCad 10 files against
 `docs/kicad-style.md`, choosing the checks by the file's suffix.  It
-prints one problem a line, `FILE: problem`, and exits 1 on any problem,
-2 if a file cannot be read; an unreadable file is never clean.  A line
-starting `note:` is for the board's owner to judge and does not fail the
-check.  What a check cannot decide (an unfilled zone, a board with no
+prints one problem a line, `FILE: problem [RULE]`, RULE being its rule's
+id (below), and exits 1 on any problem, 2 if a file cannot be read; an
+unreadable file is never clean.  A line starting `note:` is for the
+board's owner to judge and does not fail the check.  What a check cannot decide (an unfilled zone, a board with no
 tracks) is said on stderr.
 
 ```
@@ -106,3 +106,57 @@ patterns and assignments.
 - A net named like half a pair (ending `+`, `-`, `_P`, `DP` or `DM`) with
   no other half is a `note:`; a lone `_N`, often active low, is not.
 - A class assigned or in a pattern but not defined.
+
+## Rule ids
+
+Each finding names its rule's id and its subject: the fields that say
+what it is about.  A pad is written as printed, `R1 pad 2`; a pin
+`U1 pin 3`; `pads`, `pins`, `nets` and `layers` are sets; `at` is a
+position in mm, used only where nothing else names the item.  Ids and
+subject fields are part of the semver API.
+
+| Checker | Id | Subject | Finding |
+|---|---|---|---|
+| Schematic | `off-grid` | `at` | a connection point off the grid |
+| Schematic | `power-on-pin` | `pins` | a power symbol on a pin |
+| Schematic | `pins-touching` | `pins` | pins of two parts touching |
+| Schematic | `pin-on-wire` | `pins` | a pin on a wire's run |
+| Schematic | `pin-no-wire` | `pin` | a pin with no wire or no-connect |
+| Schematic | `wires-join-at-pin` | `pins` | two or more wires at a pin |
+| Schematic | `pin-wire-short` | `pins` | a pin's wire under one grid unit |
+| Schematic | `join-no-junction` | `at` | a join of three or more with no junction |
+| Schematic | `junction-not-at-join` | `at` | a junction not at a join |
+| Schematic | `no-connect-off-pin` | `at` | a no-connect off every pin |
+| Schematic | `zero-length-wire` | `at` | a zero-length wire |
+| Schematic | `overlapping-wires` | `at` | overlapping wires, at the first one's start |
+| Schematic | `part-fields` | `reference` | a BOM part missing Manufacturer, MPN or LCSC |
+| Schematic | `capacitor-value` | `reference` | a capacitor not showing dielectric and voltage |
+| Zones | `filled-shape` | `at` | a filled shape on copper, at its first point |
+| Zones | `no-outline` | none | no Edge.Cuts outline |
+| Zones | `zone-unlocked` | `net`, `layers` | a zone not locked |
+| Zones | `zone-on-board` | `net`, `layers` | a zone's outline on the board (note) |
+| Finishing | `stitching-unchecked` | none | no copper zone with a net |
+| Finishing | `outline-open` | `at` | an open Edge.Cuts outline |
+| Finishing | `stitching-gap` | `net`, `at` | a stitching gap over 10 mm, at its start |
+| Finishing | `mounting-hole-no-drill` | `reference` | a mounting hole with no drilled pad |
+| Finishing | `mounting-hole-unplated` | `reference` | a mounting hole not plated |
+| Finishing | `mounting-hole-ring` | `reference` | a mounting hole's ring under 0.5 mm |
+| Finishing | `mounting-hole-no-net` | `reference` | a mounting hole on no net |
+| Routing | `decoupling-no-pin` | `capacitor`, `pin` | placement.toml's pin not on the board |
+| Routing | `decoupling-no-pad` | `capacitor`, `pin` | the capacitor has no pad on the pin's net |
+| Routing | `via-off-plane` | `net`, `pad` | a stub's via not reaching the plane |
+| Routing | `stub-direction` | `net`, `pad` | a stub not N/S/E/W (note) |
+| Routing | `stub-length` | `net`, `pad` | a stub's via over 1 mm from the pad |
+| Routing | `thermal-vias` | `net`, `pad` | a thermal pad with too few vias |
+| Routing | `big-pad-vias` | `net`, `pad` | a big pad with too few vias (note) |
+| Routing | `pad-no-via` | `net`, `pad` | a pad with no via into the plane |
+| Routing | `via-shared` | `net`, `pads` | a via serving two or more pads |
+| Routing | `trace-pad-to-pad` | `net`, `pads` | a trace on a plane net from pad to pad |
+| Routing | `supply-no-copper` | `pin`, `capacitor` | no copper from the pin to its capacitor |
+| Routing | `supply-bypass` | `pin` | the pin reaching a source past its capacitors |
+| Routing | `supply-unfed` | `pin`, `capacitor` | the capacitor reaching no zone or other part |
+| Project | `class-impedance-name` | `netclass` | a class named for an impedance, misnamed |
+| Project | `class-undefined` | `netclass` | a class assigned or in a pattern, not defined |
+| Project | `power-net-class` | `net` | a power net with no class |
+| Project | `half-pair` | `net` | a net named like half a pair (note) |
+| Project | `pair-class` | `nets` | a pair not in one Z_DIFF class |

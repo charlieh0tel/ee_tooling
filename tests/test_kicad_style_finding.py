@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 import pytest
 
 from ee_tooling.kicad_style_finding import (
@@ -41,3 +44,13 @@ def test_finding_prints_as_before() -> None:
 def test_subject_must_be_the_rules(subject: dict[str, str]) -> None:
     with pytest.raises(ValueError, match="via-shared: subject"):
         found("via-shared", "x", False, **subject)
+
+
+def test_rules_documented() -> None:
+    """docs/kicad-style-check.md's table lists every rule and its subject."""
+    doc = Path(__file__).parent.parent / "docs" / "kicad-style-check.md"
+    table = {
+        m[1]: tuple(re.findall(r"`([a-z]+)`", m[2]))
+        for m in re.finditer(r"^\| \w+ \| `([a-z-]+)` \| ([^|]*) \|", doc.read_text(), re.M)
+    }
+    assert table == RULES

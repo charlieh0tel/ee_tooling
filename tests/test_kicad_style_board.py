@@ -270,7 +270,7 @@ def test_command(tmp_path: Path) -> None:
 
     assert run(good).returncode == 0
     r = run(bad)
-    assert (r.returncode, r.stdout) == (1, f"{bad}: zone GND on F.Cu: not locked\n")
+    assert (r.returncode, r.stdout) == (1, f"{bad}: zone GND on F.Cu: not locked [zone-unlocked]\n")
     noted = tmp_path / "noted.kicad_pcb"
     noted.write_text(board(SMALL, zone(1, -1, 3, 3)))
     r = run(noted)

@@ -343,7 +343,7 @@ def test_command_exit_status(tmp_path: Path) -> None:
     assert run(clean).returncode == 0
     r = run(bad)
     assert r.returncode == 1
-    assert r.stdout == f"{bad}: junction not at a join at (50.8, 40.64)\n"
+    assert r.stdout == f"{bad}: junction not at a join at (50.8, 40.64) [junction-not-at-join]\n"
     r = run(clean, broken)
     assert r.returncode == 2
     assert f"{broken}: cannot check:" in r.stderr

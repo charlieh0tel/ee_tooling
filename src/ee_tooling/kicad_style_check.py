@@ -1,6 +1,7 @@
 """Check KiCad schematics and boards against the house style.
 
-kicad-style-check FILE...: each problem on a line, `FILE: problem`.
+kicad-style-check FILE...: each problem on a line, `FILE: problem [RULE]`,
+RULE its id (kicad_style_finding.RULES).
 Exits 1 if there are problems (a line starting `note: ` is for the owner
 to judge, and does not count), 2 if a file cannot be read; an unreadable
 file is never clean.  Notes on what a check cannot decide go to stderr.
@@ -398,6 +399,6 @@ def main() -> None:
             unreadable = True
             continue
         for f in checked.findings:
-            print(f"{path}: {f}")
+            print(f"{path}: {f} [{f.rule}]")
         counted += sum(not f.note for f in checked.findings)
     sys.exit(2 if unreadable else 1 if counted else 0)
