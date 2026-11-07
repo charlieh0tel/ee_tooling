@@ -92,7 +92,7 @@ def board(*items: str) -> str:
 
 
 def problems(*items: str) -> list[str]:
-    return check_finishing(parse(board(*items)))
+    return [str(f) for f in check_finishing(parse(board(*items))).findings]
 
 
 EDGE = rectangle(0, 0, WIDTH, HEIGHT)

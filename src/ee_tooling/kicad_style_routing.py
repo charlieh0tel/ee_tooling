@@ -52,7 +52,6 @@ from dataclasses import dataclass, field
 from ee_tooling.kicad_style_board import (
     CAPACITOR,
     COPPER,
-    NOTE,
     POWER_PIN_TYPES,
     STEP,
     UNCONNECTED,
@@ -73,6 +72,7 @@ from ee_tooling.kicad_style_board import (
     unplace,
     where,
 )
+from ee_tooling.kicad_style_finding import ROUTING_RULES, Checked, Finding, found
 from ee_tooling.placement import Decoupling, Rules
 from ee_tooling.sexpr import Expression, child, children, number
 
@@ -731,16 +731,25 @@ class Feed:
     capacitor_pad: int  # index in Copper.pads
 
 
-def feeds(c: Copper, decoupling: Iterable[Decoupling]) -> tuple[list[Feed], list[str]]:
+def feeds(c: Copper, decoupling: Iterable[Decoupling]) -> tuple[list[Feed], list[Finding]]:
     """decoupling's pins and capacitor pads, and problems finding them."""
-    out, problems = [], []
+    out: list[Feed] = []
+    problems: list[Finding] = []
     for d in decoupling:
+        named = f"{d.part} pad {d.supply}"
         pin = next(
             (i for i, p in enumerate(c.pads) if p.reference == d.part and p.number == d.supply),
             None,
         )
         if pin is None:
-            problems.append(f"{d.capacitor}: no {d.part} pad {d.supply} to decouple")
+            problems.append(
+                found(
+                    "decoupling-no-pin",
+                    f"{d.capacitor}: no {named} to decouple",
+                    capacitor=d.capacitor,
+                    pin=named,
+                )
+            )
             continue
         supply = c.pads[pin].net
         pad = next(
@@ -748,7 +757,14 @@ def feeds(c: Copper, decoupling: Iterable[Decoupling]) -> tuple[list[Feed], list
             None,
         )
         if pad is None:
-            problems.append(f"{d.capacitor}: no pad on {c.pads[pin]}'s net {supply}")
+            problems.append(
+                found(
+                    "decoupling-no-pad",
+                    f"{d.capacitor}: no pad on {c.pads[pin]}'s net {supply}",
+                    capacitor=d.capacitor,
+                    pin=named,
+                )
+            )
             continue
         out.append(Feed(d.capacitor, pin, pad))
     return out, problems
@@ -756,13 +772,13 @@ def feeds(c: Copper, decoupling: Iterable[Decoupling]) -> tuple[list[Feed], list
 
 def check_vias(
     c: Copper, plane: dict[str, frozenset[str]], exempt: set[int], fed: set[int]
-) -> list[str]:
+) -> list[Finding]:
     """Rule one: each SMD pad on a plane net, but those in exempt, has
     stubs to vias into the plane, or for those in fed (a capacitor's
     supply pad) may have none, or is traced to a pad of its own part that
     reaches the plane (its plated-through shell, a pad with a via); no via
     serves two pads."""
-    problems = []
+    problems: list[Finding] = []
     thermal = thermal_pads(c)
     for name in sorted(plane):
         n = Net(c, name)
@@ -785,15 +801,35 @@ def check_vias(
                 v = c.vias[s.via]
                 at_via = f"via at {where(v.position)}"
                 if not n.via_on_plane(s.via, plane[name], p.layers):
-                    problems.append(f"{what}: {at_via} does not reach the plane")
+                    problems.append(
+                        found(
+                            "via-off-plane",
+                            f"{what}: {at_via} does not reach the plane",
+                            net=name,
+                            pad=str(p),
+                        )
+                    )
                     continue
                 reaching.add(s.via)
                 if not s.straight(c):
-                    problems.append(f"{NOTE}{what}: stub to the {at_via} not N/S/E/W")
+                    problems.append(
+                        found(
+                            "stub-direction",
+                            f"{what}: stub to the {at_via} not N/S/E/W",
+                            note=True,
+                            net=name,
+                            pad=str(p),
+                        )
+                    )
                 gap = p.gap(v.position)
                 if gap > STUB_LENGTH:
                     problems.append(
-                        f"{what}: {at_via} {gap:.2f} mm from the pad, over {STUB_LENGTH:g} mm"
+                        found(
+                            "stub-length",
+                            f"{what}: {at_via} {gap:.2f} mm from the pad, over {STUB_LENGTH:g} mm",
+                            net=name,
+                            pad=str(p),
+                        )
                     )
             for j in reaching:
                 if not any(p.same_copper(c.pads[k]) for k in served[j]):
@@ -806,11 +842,23 @@ def check_vias(
                 size = f"{round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm"
                 if i in thermal:
                     problems.append(
-                        f"{what}: {size} thermal pad with {len(reaching)} via, needs {BIG_PAD_VIAS}"
+                        found(
+                            "thermal-vias",
+                            f"{what}: {size} thermal pad with {len(reaching)} via,"
+                            f" needs {BIG_PAD_VIAS}",
+                            net=name,
+                            pad=str(p),
+                        )
                     )
                 elif p.area() >= BIG_PAD_AREA:
                     problems.append(
-                        f"{NOTE}{what}: {size} pad with {len(reaching)} via, {BIG_PAD_VIAS} advised"
+                        found(
+                            "big-pad-vias",
+                            f"{what}: {size} pad with {len(reaching)} via, {BIG_PAD_VIAS} advised",
+                            note=True,
+                            net=name,
+                            pad=str(p),
+                        )
                     )
         for i in via_less:
             p = c.pads[i]
@@ -820,12 +868,24 @@ def check_vias(
                 if c.pads[k].reference == p.reference and (c.pads[k].through or k in reaches)
             ]
             if not own:
-                problems.append(f"{p} ({name}) at {where(p.position)}: no via into the plane")
+                problems.append(
+                    found(
+                        "pad-no-via",
+                        f"{p} ({name}) at {where(p.position)}: no via into the plane",
+                        net=name,
+                        pad=str(p),
+                    )
+                )
         for j, pads in sorted(served.items()):
             if len(pads) > 1:
                 problems.append(
-                    f"{name}: via at {where(c.vias[j].position)} serves"
-                    f" {', '.join(str(c.pads[i]) for i in pads)}"
+                    found(
+                        "via-shared",
+                        f"{name}: via at {where(c.vias[j].position)} serves"
+                        f" {', '.join(str(c.pads[i]) for i in pads)}",
+                        net=name,
+                        pads=frozenset(str(c.pads[i]) for i in pads),
+                    )
                 )
     return problems
 
@@ -863,7 +923,7 @@ def track_tied(n: Net, pad: int) -> set[int]:
 
 def check_pad_to_pad(
     c: Copper, plane: dict[str, frozenset[str]], groups: list[set[int]]
-) -> list[str]:
+) -> list[Finding]:
     """Rule one: no trace on a plane net runs from pad to pad, but within
     a group (a decoupled pin and its capacitors' pads) or a part (a QFN's
     pin to its exposed pad, a connector's pins to its shell)."""
@@ -891,7 +951,12 @@ def check_pad_to_pad(
                     ):
                         continue
                     problems.append(
-                        f"{name}: trace from {c.pads[a]} to {c.pads[b]} on {c.tracks[i].layer}"
+                        found(
+                            "trace-pad-to-pad",
+                            f"{name}: trace from {c.pads[a]} to {c.pads[b]} on {c.tracks[i].layer}",
+                            net=name,
+                            pads=frozenset((str(c.pads[a]), str(c.pads[b]))),
+                        )
                     )
     return problems
 
@@ -901,7 +966,7 @@ def source(n: Node, own: set[int]) -> bool:
     return n[0] == "zone" or (n[0] == "pad" and n[1] not in own)
 
 
-def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
+def check_supply(c: Copper, fed: list[Feed]) -> list[Finding]:
     """Rule two: each decoupled pin reaches no zone and no other part's pad
     but through one of its capacitors' pads, and each capacitor reaches
     one."""
@@ -922,7 +987,14 @@ def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
         # Not sources: the pin's part's pads, and its capacitors'.
         own = {i for i in n.pads if c.pads[i].reference == pin.reference} | by_pin[f.pin]
         if cap not in n.reach(("pad", f.pin)):
-            problems.append(f"{what}: no copper to {f.capacitor}")
+            problems.append(
+                found(
+                    "supply-no-copper",
+                    f"{what}: no copper to {f.capacitor}",
+                    pin=str(pin),
+                    capacitor=f.capacitor,
+                )
+            )
             continue
         if f.pin not in bypasses:
             bypasses[f.pin] = next(
@@ -931,23 +1003,36 @@ def check_supply(c: Copper, fed: list[Feed]) -> list[str]:
             )
             if bypass := bypasses[f.pin]:
                 without = " or ".join(names[f.pin])
-                problems.append(f"{what}: reaches {n.describe(bypass)} without {without}")
+                problems.append(
+                    found(
+                        "supply-bypass",
+                        f"{what}: reaches {n.describe(bypass)} without {without}",
+                        pin=str(pin),
+                    )
+                )
         # A net with no source at all is the pin's part's own output (a
         # regulator's), which its capacitor alone is on.
         if bypasses[f.pin] or not (n.zones or set(n.pads) - own):
             continue
         if not any(source(m, own) for m in n.reach(cap)):
-            problems.append(f"{what}: {f.capacitor} reaches no zone or other part")
+            problems.append(
+                found(
+                    "supply-unfed",
+                    f"{what}: {f.capacitor} reaches no zone or other part",
+                    pin=str(pin),
+                    capacitor=f.capacitor,
+                )
+            )
     return problems
 
 
-def check_routing(board: Expression, rules: Rules | None = None) -> list[str]:
-    """The board's routing problems, each a line.  rules give the plane
+def check_routing(board: Expression, rules: Rules | None = None) -> Checked:
+    """The board's routing findings.  rules give the plane
     nets (poured) and the decoupling map; without them both are inferred."""
     c = read(board)
     if not c.tracks and not c.vias:
         print("routing: no tracks or vias, not checked", file=sys.stderr)
-        return []
+        return Checked([], frozenset())
     for z in c.zones:
         if not z.fills:
             print(
@@ -964,4 +1049,4 @@ def check_routing(board: Expression, rules: Rules | None = None) -> list[str]:
     problems += check_vias(c, plane, set(groups) | hardware, {f.capacitor_pad for f in fed})
     problems += check_pad_to_pad(c, plane, list(groups.values()))
     problems += check_supply(c, fed)
-    return list(dict.fromkeys(problems))
+    return Checked(list(dict.fromkeys(problems)), frozenset(ROUTING_RULES))

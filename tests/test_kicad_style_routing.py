@@ -99,7 +99,7 @@ ELSEWHERE = via(35, 25, "OTHER")
 
 
 def check(*items: str, rules: Rules | None = None) -> list[str]:
-    return check_routing(parse(board(*items, ELSEWHERE)), rules)
+    return [str(f) for f in check_routing(parse(board(*items, ELSEWHERE)), rules).findings]
 
 
 GND_PLANE = zone("GND", "In1.Cu")
@@ -418,7 +418,7 @@ def test_shared_via() -> None:
 
 
 def test_no_tracks(capsys: pytest.CaptureFixture[str]) -> None:
-    assert check_routing(parse(board(GND_PLANE, GND_PAD))) == []
+    assert check_routing(parse(board(GND_PLANE, GND_PAD))).findings == []
     assert "no tracks or vias, not checked" in capsys.readouterr().err
 
 

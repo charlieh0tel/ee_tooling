@@ -21,8 +21,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ee_tooling.kicad_style_board import NOTE, POWER_PIN_TYPES, UNCONNECTED, net_name
+from ee_tooling.kicad_style_board import POWER_PIN_TYPES, UNCONNECTED, net_name
+from ee_tooling.kicad_style_finding import NETCLASS_RULES, Checked, Finding, found
 from ee_tooling.sexpr import Expression, child, children, parse
+
+# The rules that need the board's nets, skipped without it.
+NET_RULES = frozenset({"power-net-class", "half-pair", "pair-class"})
 
 # The class every net is in; it does not count as one.
 DEFAULT = "Default"
@@ -249,24 +253,31 @@ def half_pairs(nets: set[str]) -> list[tuple[str, str]]:
 
 def check_netclasses(
     project: dict[str, Any], board: Expression | None, sheets: list[Expression]
-) -> list[str]:
-    """A project's net class problems, each a line: from its parsed
-    .kicad_pro, its parsed board (None if it has none) and its parsed
-    schematic sheets."""
+) -> Checked:
+    """A project's net class findings: from its parsed .kicad_pro, its
+    parsed board (None if it has none) and its parsed schematic sheets."""
     settings = net_settings(project)
-    problems = [
-        f"net class {name}: named for an impedance, not {DIFF_CLASS_FORM} or {SE_CLASS_FORM}"
+    problems: list[Finding] = [
+        found(
+            "class-impedance-name",
+            f"net class {name}: named for an impedance, not {DIFF_CLASS_FORM} or {SE_CLASS_FORM}",
+            netclass=name,
+        )
         for name in sorted(settings.classes)
         if IMPEDANCE.search(name) and not IMPEDANCE_CLASS.match(name)
     ]
     used = {c for names in settings.assignments.values() for c in names}
     used |= {c for _, _, c in settings.patterns}
     problems += [
-        f"net class {name}: assigned or in a pattern, but not defined"
+        found(
+            "class-undefined",
+            f"net class {name}: assigned or in a pattern, but not defined",
+            netclass=name,
+        )
         for name in sorted(used - settings.classes - {DEFAULT})
     ]
     if board is None:
-        return problems
+        return Checked(problems, frozenset(NETCLASS_RULES) - NET_RULES)
     pads = [p for p in board_pads(board) if not p.net.startswith(UNCONNECTED)]
     nets = {p.net for p in pads}
     power = power_nets(pads, schematic_power(sheets))
@@ -274,9 +285,18 @@ def check_netclasses(
     def defined(net: str) -> set[str]:
         return settings.classes_of(net) & settings.classes
 
-    problems += [f"power net {net}: no net class" for net in sorted(power) if not defined(net)]
     problems += [
-        f"{NOTE}net {net}: named like half a differential pair, with no {other}"
+        found("power-net-class", f"power net {net}: no net class", net=net)
+        for net in sorted(power)
+        if not defined(net)
+    ]
+    problems += [
+        found(
+            "half-pair",
+            f"net {net}: named like half a differential pair, with no {other}",
+            note=True,
+            net=net,
+        )
         for net, other in half_pairs(nets - power)
     ]
     for positive, negative in pairs(nets - power):
@@ -287,10 +307,11 @@ def check_netclasses(
             continue
         what = f"differential pair {positive} and {negative}"
         if p or n:
-            problems.append(f"{what}: in different net classes {', '.join(sorted(p | n))}")
+            message = f"{what}: in different net classes {', '.join(sorted(p | n))}"
         else:
-            problems.append(f"{what}: in no {DIFF_CLASS_FORM} net class")
-    return problems
+            message = f"{what}: in no {DIFF_CLASS_FORM} net class"
+        problems.append(found("pair-class", message, nets=frozenset((positive, negative))))
+    return Checked(problems, frozenset(NETCLASS_RULES))
 
 
 def sheets(root: Path) -> Iterator[Expression]:
@@ -316,8 +337,8 @@ def sheets(root: Path) -> Iterator[Expression]:
                 todo.append(found.resolve())
 
 
-def check_project(path: Path) -> list[str]:
-    """A .kicad_pro's net class problems, with its board and schematic
+def check_project(path: Path) -> Checked:
+    """A .kicad_pro's net class findings, with its board and schematic
     beside it, of the same name."""
     project = json.loads(path.read_text())
     if not isinstance(project, dict):

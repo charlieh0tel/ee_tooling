@@ -43,7 +43,11 @@ from ee_tooling.kicad_style_board import (
     polyline,
     where,
 )
+from ee_tooling.kicad_style_finding import FINISHING_RULES, Checked, Finding, found
 from ee_tooling.sexpr import Atom, Expression, child, children, number
+
+# The rules edge stitching runs, skipped without a ground net or outline.
+STITCHING_RULES = frozenset({"outline-open", "stitching-gap"})
 
 # A barrel's center this far in from an outline, or nearer, stitches it, mm:
 # a via of 0.6-0.8 mm beside the copper's 0.3-0.5 mm edge clearance sits
@@ -213,7 +217,7 @@ def size(pad: Expression) -> float:
     return min(number(x) for x in s[1:]) if s else 0.0
 
 
-def mounting_hole(footprint: Expression) -> list[str]:
+def mounting_hole(footprint: Expression) -> list[Finding]:
     """A mounting hole's problems: plated, ring, net."""
     reference = next(
         (str(p[2]) for p in children(footprint, "property") if p[1] == "Reference"), "?"
@@ -222,34 +226,51 @@ def mounting_hole(footprint: Expression) -> list[str]:
     what = f"mounting hole {reference} at {where(placed(footprint, (0, 0)))}"
     holes = [p for p in pads if drill(p) > 0]
     if not holes:
-        return [f"{what}: no drilled pad"]
+        return [found("mounting-hole-no-drill", f"{what}: no drilled pad", reference=reference)]
     hole = max(holes, key=drill)
     if str(hole[2]) != PLATED:
-        return [f"{what}: not plated"]
+        return [found("mounting-hole-unplated", f"{what}: not plated", reference=reference)]
     center = position(hole)
     radius = drill(hole) / 2
     land = [p for p in pads if math.dist(position(p), center) <= CONCENTRIC]
     ring = max(size(p) for p in land) / 2 - radius
     problems = []
     if ring < MIN_RING:
-        problems.append(f"{what}: annular ring {ring:.2f} mm, under {MIN_RING:g} mm")
+        problems.append(
+            found(
+                "mounting-hole-ring",
+                f"{what}: annular ring {ring:.2f} mm, under {MIN_RING:g} mm",
+                reference=reference,
+            )
+        )
     if net(hole) is None:
-        problems.append(f"{what}: on no net, not a ground tie; the owner decides")
+        problems.append(
+            found(
+                "mounting-hole-no-net",
+                f"{what}: on no net, not a ground tie; the owner decides",
+                reference=reference,
+            )
+        )
     return problems
 
 
-def check_finishing(board: Expression) -> list[str]:
-    """The board's finishing problems, each a line."""
+def check_finishing(board: Expression) -> Checked:
+    """The board's finishing findings."""
     if not board or board[0] != "kicad_pcb":
         raise BoardError("not a kicad_pcb")
     problems = []
     ground = plane_net(board)
     outline = edge(board)
+    ran = set(FINISHING_RULES) - STITCHING_RULES
     if ground is None:
-        problems.append("no copper zone with a net: edge stitching not checked")
+        problems.append(
+            found("stitching-unchecked", "no copper zone with a net: edge stitching not checked")
+        )
     elif outline:
+        ran |= STITCHING_RULES
         problems += [
-            f"{EDGE} outline open at {where(p)}: not checked" for p in outlines(outline)[1]
+            found("outline-open", f"{EDGE} outline open at {where(p)}: not checked", at=p)
+            for p in outlines(outline)[1]
         ]
         for gap in stitching(board, ground):
             if gap.length <= MAX_GAP:
@@ -262,9 +283,14 @@ def check_finishing(board: Expression) -> list[str]:
                 case _:
                     span = f"between vias at {where(gap.start)} and {where(gap.end)}"
             problems.append(
-                f"{ground} stitching gap {gap.length:.1f} mm, over {MAX_GAP:g} mm, {span}"
+                found(
+                    "stitching-gap",
+                    f"{ground} stitching gap {gap.length:.1f} mm, over {MAX_GAP:g} mm, {span}",
+                    net=ground,
+                    at=gap.start,
+                )
             )
     for footprint in children(board, "footprint"):
         if str(footprint[1]).rpartition(":")[2].startswith(MOUNTING_HOLE):
             problems += mounting_hole(footprint)
-    return problems
+    return Checked(problems, frozenset(ran))

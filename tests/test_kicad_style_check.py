@@ -94,7 +94,7 @@ CLEAN = (
 
 
 def problems(*items: str, grid: float = 2.54) -> list[str]:
-    return check(read(parse(schematic(*items))), grid)
+    return [str(f) for f in check(read(parse(schematic(*items))), grid).findings]
 
 
 def test_clean() -> None:

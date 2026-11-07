@@ -11,6 +11,7 @@ import itertools
 import math
 import re
 
+from ee_tooling.kicad_style_finding import ZONE_RULES, Checked, found
 from ee_tooling.sexpr import Atom, Expression, child, children, number
 
 Point = tuple[float, float]  # mm, KiCad's axes (y down)
@@ -41,10 +42,6 @@ UNCONNECTED = "unconnected-"
 POWER_PIN_TYPES = frozenset(("power_in", "power_out"))
 # A capacitor's reference.
 CAPACITOR = re.compile(r"^C\d+$")
-
-# A finding for the owner to judge, not a broken rule: printed, but not
-# counted in kicad-style-check's exit status.
-NOTE = "note: "
 
 
 class BoardError(ValueError):
@@ -263,8 +260,8 @@ def faces(p: Point, zone: Expression, neighbors: list[Neighbor]) -> bool:
     )
 
 
-def check_board(board: Expression) -> list[str]:
-    """The board's zone problems, each a line."""
+def check_board(board: Expression) -> Checked:
+    """The board's zone findings."""
     if not board or board[0] != "kicad_pcb":
         raise BoardError("not a kicad_pcb")
     problems = []
@@ -275,11 +272,16 @@ def check_board(board: Expression) -> list[str]:
             if on_copper and fill and str(fill[1]) not in UNFILLED:
                 first = segments(shape)[0][0]
                 problems.append(
-                    f"filled {kind} on {', '.join(on_copper)} at {where(first)}: pours are zones"
+                    found(
+                        "filled-shape",
+                        f"filled {kind} on {', '.join(on_copper)} at {where(first)}:"
+                        " pours are zones",
+                        at=first,
+                    )
                 )
     outline = edge(board)
     if not outline:
-        problems.append(f"no {EDGE} outline")
+        problems.append(found("no-outline", f"no {EDGE} outline"))
     zones = [(zone, zone_name(zone), zone_outline(zone)) for zone in children(board, "zone")]
     neighbors = [
         (net_name(zone), layers(zone), polyline(points, closed=True), zone_clearance(zone))
@@ -287,8 +289,9 @@ def check_board(board: Expression) -> list[str]:
         if not child(zone, "keepout")
     ]
     for zone, what, points in zones:
+        net, on = net_name(zone) or "", frozenset(layers(zone))
         if not locked(zone):
-            problems.append(f"{what}: not locked")
+            problems.append(found("zone-unlocked", f"{what}: not locked", net=net, layers=on))
         if child(zone, "keepout") or not outline:
             continue
         inside = next(
@@ -297,6 +300,12 @@ def check_board(board: Expression) -> list[str]:
         )
         if inside:
             problems.append(
-                f"{NOTE}{what}: outline on the board at {where(inside)}, not past its edge"
+                found(
+                    "zone-on-board",
+                    f"{what}: outline on the board at {where(inside)}, not past its edge",
+                    note=True,
+                    net=net,
+                    layers=on,
+                )
             )
-    return problems
+    return Checked(problems, frozenset(ZONE_RULES))

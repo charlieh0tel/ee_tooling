@@ -15,6 +15,12 @@ from ee_tooling.kicad_style_netclass import (
 from ee_tooling.sexpr import Expression, parse
 
 
+def netclasses(
+    settings: dict[str, Any], board: Expression | None, sheets: list[Expression]
+) -> list[str]:
+    return [str(f) for f in check_netclasses(settings, board, sheets).findings]
+
+
 def project(
     classes: tuple[str, ...] = (),
     patterns: tuple[tuple[str, str], ...] = (),
@@ -146,14 +152,14 @@ def test_not_a_board() -> None:
     ],
 )
 def test_impedance_class_names(name: str, bad: bool) -> None:
-    problems = check_netclasses(project((name,)), None, [])
+    problems = netclasses(project((name,)), None, [])
     assert problems == (
         [f"net class {name}: named for an impedance, not <ohms>Z_DIFF or <ohms>Z_SE"] if bad else []
     )
 
 
 def test_undefined_class() -> None:
-    problems = check_netclasses(
+    problems = netclasses(
         project(("A",), (("X", "Gone"),), {"Y": ["Lost", "A", "Default"]}), None, []
     )
     assert problems == [
@@ -166,20 +172,20 @@ def test_power_by_name() -> None:
     nets = ["GND", "AGND", "GNDA", "+3V3", "+5V", "-12V", "/sub/VDD_USB", "VBUS", "VCC_RF"]
     signals = ["/SDA", "/D+", "VREF", "/V_SENSE", "/SENSE+"]
     b = board(footprint("J1", *(pad(str(n), x) for n, x in enumerate(nets + signals))))
-    problems = [p for p in check_netclasses(project(), b, []) if not p.startswith("note: ")]
+    problems = [p for p in netclasses(project(), b, []) if not p.startswith("note: ")]
     assert problems == [f"power net {n}: no net class" for n in sorted(nets)]
 
 
 def test_power_classed_by_pattern_or_assignment() -> None:
     b = board(footprint("J1", pad("1", "GND"), pad("2", "+5V"), pad("3", "VBUS")))
     settings = project(("Power",), (("GND", "Power"),), {"+5V": ["Power"], "VBUS": ["Default"]})
-    assert check_netclasses(settings, b, []) == ["power net VBUS: no net class"]
+    assert netclasses(settings, b, []) == ["power net VBUS: no net class"]
 
 
 def test_power_in_undefined_class() -> None:
     b = board(footprint("J1", pad("1", "GND")))
-    assert check_netclasses(project(), b, []) == ["power net GND: no net class"]
-    problems = check_netclasses(project((), (("GND", "Nope"),)), b, [])
+    assert netclasses(project(), b, []) == ["power net GND: no net class"]
+    problems = netclasses(project((), (("GND", "Nope"),)), b, [])
     assert "power net GND: no net class" in problems
 
 
@@ -192,7 +198,7 @@ def test_power_by_pad_pin_type() -> None:
             pad("3", "Net-(U1-IO)", "bidirectional"),
         )
     )
-    assert check_netclasses(project(), b, []) == [
+    assert netclasses(project(), b, []) == [
         "power net Net-(U1-AVDD): no net class",
         "power net Net-(U1-VREG): no net class",
     ]
@@ -207,7 +213,7 @@ def test_power_by_schematic_pin_type() -> None:
         [library("Lib:IC", ("power_in", "8"), ("input", "1"))],
         [symbol("Lib:IC", "U?", "IC", "U1", "U2")],  # one sheet, two instances
     )
-    assert check_netclasses(project(), b, [sheet]) == [
+    assert netclasses(project(), b, [sheet]) == [
         "power net Net-(U1-VCC): no net class",
         "power net Net-(U2-VCC): no net class",
     ]
@@ -222,7 +228,7 @@ def test_power_by_symbol() -> None:
         ],
         [symbol("power:HT", "#PWR01", "HT"), symbol("power:AUX", "#PWR02", "AUX")],
     )
-    assert check_netclasses(project(), b, [sheet]) == [
+    assert netclasses(project(), b, [sheet]) == [
         "power net /sheet/AUX: no net class",
         "power net HT: no net class",
     ]
@@ -234,7 +240,7 @@ def test_lib_name_preferred() -> None:
         ['(symbol (lib_name "IC_1") (lib_id "Lib:IC") (property "Reference" "U1"))'],
     )
     b = board(footprint("U1", pad("8", "Net-(U1-VCC)")))
-    assert check_netclasses(project(), b, [sheet]) == ["power net Net-(U1-VCC): no net class"]
+    assert netclasses(project(), b, [sheet]) == ["power net Net-(U1-VCC): no net class"]
 
 
 def test_missing_library_symbol() -> None:
@@ -251,7 +257,7 @@ def test_unconnected_and_old_net_syntax() -> None:
         ' (pad "2" smd rect (net 2 "unconnected-(U1-VCC-Pad2)") (pintype "power_in"))'
         ' (pad "3" smd rect)))'
     )
-    assert check_netclasses(project(), b, []) == ["power net GND: no net class"]
+    assert netclasses(project(), b, []) == ["power net GND: no net class"]
 
 
 @pytest.mark.parametrize(
@@ -279,12 +285,12 @@ def pair_board(*nets: str) -> Expression:
 
 def test_pair_in_diff_class() -> None:
     b = pair_board("/D+", "/D-")
-    assert check_netclasses(project(("90Z_DIFF",), (("/D*", "90Z_DIFF"),)), b, []) == []
+    assert netclasses(project(("90Z_DIFF",), (("/D*", "90Z_DIFF"),)), b, []) == []
 
 
 def test_pair_in_no_diff_class() -> None:
     b = pair_board("/D+", "/D-", "USB_DP", "USB_DM")
-    problems = check_netclasses(project(("50Z_SE",), (("/D*", "50Z_SE"),)), b, [])
+    problems = netclasses(project(("50Z_SE",), (("/D*", "50Z_SE"),)), b, [])
     assert problems == [
         "differential pair /D+ and /D-: in no <ohms>Z_DIFF net class",
         "differential pair USB_DP and USB_DM: in no <ohms>Z_DIFF net class",
@@ -294,7 +300,7 @@ def test_pair_in_no_diff_class() -> None:
 @pytest.mark.parametrize("name", ["/SENSE", "ISNS_", "KELVIN", "/I_sense"])
 def test_kelvin_pair_needs_no_class(name: str) -> None:
     b = pair_board(f"{name}+", f"{name}-")
-    assert check_netclasses(project(), b, []) == []
+    assert netclasses(project(), b, []) == []
 
 
 @pytest.mark.parametrize(
@@ -309,7 +315,7 @@ def test_kelvin_pair_needs_no_class(name: str) -> None:
 )
 def test_half_a_pair(net: str, other: str) -> None:
     b = pair_board(net, "/OTHER")
-    assert check_netclasses(project(), b, []) == [
+    assert netclasses(project(), b, []) == [
         f"note: net {net}: named like half a differential pair, with no {other}"
     ]
 
@@ -317,14 +323,14 @@ def test_half_a_pair(net: str, other: str) -> None:
 @pytest.mark.parametrize("net", ["/RESET_N", "/EN", "/PWDN", "/D+"])
 def test_not_half_a_pair(net: str) -> None:
     nets = (net, "/D-") if net == "/D+" else (net,)
-    found = check_netclasses(project(("90Z_DIFF",), (("/D*", "90Z_DIFF"),)), pair_board(*nets), [])
+    found = netclasses(project(("90Z_DIFF",), (("/D*", "90Z_DIFF"),)), pair_board(*nets), [])
     assert not [p for p in found if "half" in p]
 
 
 def test_pair_in_different_diff_classes() -> None:
     b = pair_board("/D+", "/D-")
     settings = project(("90Z_DIFF", "100Z_DIFF"), (("/D+", "90Z_DIFF"),), {"/D-": ["100Z_DIFF"]})
-    assert check_netclasses(settings, b, []) == [
+    assert netclasses(settings, b, []) == [
         "differential pair /D+ and /D-: in different net classes 100Z_DIFF, 90Z_DIFF"
     ]
 
@@ -332,7 +338,7 @@ def test_pair_in_different_diff_classes() -> None:
 def test_half_a_pair_classed() -> None:
     b = pair_board("/D+", "/D-")
     settings = project(("90Z_DIFF",), (), {"/D+": ["90Z_DIFF"]})
-    assert check_netclasses(settings, b, []) == [
+    assert netclasses(settings, b, []) == [
         "differential pair /D+ and /D-: in different net classes 90Z_DIFF"
     ]
 
@@ -340,7 +346,7 @@ def test_half_a_pair_classed() -> None:
 def test_power_is_not_a_pair() -> None:
     b = board(footprint("U1", pad("1", "VP", "power_in"), pad("2", "VN", "power_in")))
     settings = project(("Power",), (("V?", "Power"),))
-    assert check_netclasses(settings, b, []) == []
+    assert netclasses(settings, b, []) == []
 
 
 def write(path: Path, text: str) -> Path:
@@ -364,7 +370,7 @@ def test_check_project(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
         f" {symbol('Lib:IC', 'U1')}"
         ' (sheet (property "Sheetfile" "s.kicad_sch")))',  # itself again, beside it
     )
-    assert check_project(pro) == [
+    assert [str(f) for f in check_project(pro).findings] == [
         "net class USB_90Z: named for an impedance, not <ohms>Z_DIFF or <ohms>Z_SE",
         "power net Net-(U1-VCC): no net class",
     ]
@@ -373,7 +379,7 @@ def test_check_project(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
 
 def test_check_project_alone(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     pro = write(tmp_path / "b.kicad_pro", json.dumps(project(("90ohm",))))
-    assert check_project(pro) == [
+    assert [str(f) for f in check_project(pro).findings] == [
         "net class 90ohm: named for an impedance, not <ohms>Z_DIFF or <ohms>Z_SE"
     ]
     err = capsys.readouterr().err

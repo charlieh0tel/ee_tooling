@@ -29,7 +29,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ee_tooling.kicad_style_board import CAPACITOR, NOTE, check_board
+from ee_tooling.kicad_style_board import CAPACITOR, check_board
+from ee_tooling.kicad_style_finding import SCHEMATIC_RULES, Checked, Finding, found
 from ee_tooling.kicad_style_finishing import check_finishing
 from ee_tooling.kicad_style_netclass import check_project
 from ee_tooling.kicad_style_routing import check_routing
@@ -240,9 +241,9 @@ def off_grid(p: Point, grid: float) -> bool:
     return any(abs(v / grid - round(v / grid)) * grid > GRID_TOLERANCE for v in p)
 
 
-def check(s: Schematic, grid: float = GRID) -> list[str]:
-    """The drawing's problems, each a line."""
-    problems = []
+def check(s: Schematic, grid: float = GRID) -> Checked:
+    """The drawing's findings."""
+    problems: list[Finding] = []
     ends = Counter(p for w in s.wires if w[0] != w[1] for p in w)
     pins_at: dict[Point, list[Pin]] = defaultdict(list)
     for pin in s.pins:
@@ -255,7 +256,7 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
     points += [(f"label {text!r}", p) for text, p in s.labels]
     points += [(str(pin), pin.point) for pin in s.pins if not pin.hidden]
     problems += [
-        f"off the {grid:g} mm grid: {what} at {where(p)}"
+        found("off-grid", f"off the {grid:g} mm grid: {what} at {where(p)}", at=p)
         for what, p in dict.fromkeys(points)
         if off_grid(p, grid)
     ]
@@ -263,21 +264,41 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
     for p, here in pins_at.items():
         powered = [x for x in here if x.power]
         others = [x for x in here if not x.power]
+        named = ", ".join(map(str, here))
+        pins = frozenset(map(str, here))
         if powered and others:
-            problems.append(f"power symbol on a pin: {', '.join(map(str, here))} at {where(p)}")
+            problems.append(
+                found("power-on-pin", f"power symbol on a pin: {named} at {where(p)}", pins=pins)
+            )
         if len({x.reference for x in others}) > 1:
-            problems.append(f"pins touching: {', '.join(map(str, others))} at {where(p)}")
+            problems.append(
+                found(
+                    "pins-touching",
+                    f"pins touching: {', '.join(map(str, others))} at {where(p)}",
+                    pins=frozenset(map(str, others)),
+                )
+            )
         runs = [w for w in s.wires if on_run(p, w)]
         if runs:
-            problems.append(f"pin on a wire's run: {', '.join(map(str, here))} at {where(p)}")
+            problems.append(
+                found("pin-on-wire", f"pin on a wire's run: {named} at {where(p)}", pins=pins)
+            )
         elif ends[p] == 0 and p not in s.no_connects and len(here) == 1:
-            problems.append(f"pin with no wire: {here[0]} at {where(p)}")
+            problems.append(
+                found("pin-no-wire", f"pin with no wire: {here[0]} at {where(p)}", pin=str(here[0]))
+            )
         if ends[p] > 1:
-            problems.append(f"wires join at a pin: {', '.join(map(str, here))} at {where(p)}")
+            problems.append(
+                found("wires-join-at-pin", f"wires join at a pin: {named} at {where(p)}", pins=pins)
+            )
         for w in s.wires:
             if p in w and w[0] != w[1] and math.dist(*w) < grid - GRID_TOLERANCE:
                 problems.append(
-                    f"pin wire shorter than {grid:g} mm: {', '.join(map(str, here))} at {where(p)}"
+                    found(
+                        "pin-wire-short",
+                        f"pin wire shorter than {grid:g} mm: {named} at {where(p)}",
+                        pins=pins,
+                    )
                 )
 
     branches: Counter[Point] = Counter(ends)
@@ -287,34 +308,64 @@ def check(s: Schematic, grid: float = GRID) -> list[str]:
         branches[p] += 2 * sum(on_run(p, w) for w in s.wires)
     joins = {p for p, n in branches.items() if n >= 3}
     junctions = set(s.junctions)
-    problems += [f"join with no junction at {where(p)}" for p in sorted(joins - junctions)]
-    problems += [f"junction not at a join at {where(p)}" for p in sorted(junctions - joins)]
+    problems += [
+        found("join-no-junction", f"join with no junction at {where(p)}", at=p)
+        for p in sorted(joins - junctions)
+    ]
+    problems += [
+        found("junction-not-at-join", f"junction not at a join at {where(p)}", at=p)
+        for p in sorted(junctions - joins)
+    ]
 
     any_pin = {pin.point for pin in s.pins}
-    problems += [f"no-connect off a pin at {where(p)}" for p in s.no_connects if p not in any_pin]
-    problems += [f"zero-length wire at {where(a)}" for a, b in s.wires if a == b]
     problems += [
-        f"overlapping wires {where(w1[0])}-{where(w1[1])} and {where(w2[0])}-{where(w2[1])}"
+        found("no-connect-off-pin", f"no-connect off a pin at {where(p)}", at=p)
+        for p in s.no_connects
+        if p not in any_pin
+    ]
+    problems += [
+        found("zero-length-wire", f"zero-length wire at {where(a)}", at=a)
+        for a, b in s.wires
+        if a == b
+    ]
+    problems += [
+        found(
+            "overlapping-wires",
+            f"overlapping wires {where(w1[0])}-{where(w1[1])} and {where(w2[0])}-{where(w2[1])}",
+            at=w1[0],
+        )
         for w1, w2 in itertools.combinations(s.wires, 2)
         if overlap(w1, w2)
     ]
 
     for part in sorted(s.parts.values(), key=lambda x: x.reference):
-        name = f"{NOTE}{part.reference} (DNP)" if part.dnp else part.reference
+        name = f"{part.reference} (DNP)" if part.dnp else part.reference
         missing = [f for f in BOM_FIELDS if not part.fields.get(f, "").strip()]
         if missing:
-            problems.append(f"{name}: no {', '.join(missing)}")
+            problems.append(
+                found(
+                    "part-fields",
+                    f"{name}: no {', '.join(missing)}",
+                    note=part.dnp,
+                    reference=part.reference,
+                )
+            )
         if CAPACITOR.match(part.reference) and not (
             DIELECTRIC.search(part.shown) and VOLTAGE.search(part.shown)
         ):
             problems.append(
-                f"{name}: value {part.value!r} and its shown fields"
-                " do not show dielectric or type, and voltage"
+                found(
+                    "capacitor-value",
+                    f"{name}: value {part.value!r} and its shown fields"
+                    " do not show dielectric or type, and voltage",
+                    note=part.dnp,
+                    reference=part.reference,
+                )
             )
-    return problems
+    return Checked(problems, frozenset(SCHEMATIC_RULES))
 
 
-def check_file(path: Path, grid: float) -> list[str]:
+def check_file(path: Path, grid: float) -> Checked:
     match path.suffix:
         case ".kicad_sch":
             return check(read(parse(path.read_text())), grid)
@@ -322,7 +373,10 @@ def check_file(path: Path, grid: float) -> list[str]:
             board = parse(path.read_text())
             rules_file = path.parent / RULES
             rules = Rules.load(rules_file.read_text()) if rules_file.exists() else None
-            return [*check_board(board), *check_finishing(board), *check_routing(board, rules)]
+            parts = [check_board(board), check_finishing(board), check_routing(board, rules)]
+            return Checked(
+                [f for c in parts for f in c.findings], frozenset().union(*(c.ran for c in parts))
+            )
         case ".kicad_pro":
             return check_project(path)
         case _:
@@ -334,16 +388,16 @@ def main() -> None:
     ap.add_argument("files", nargs="+", type=Path, metavar="FILE")
     ap.add_argument("--grid", type=float, default=GRID, help="a schematic's grid, mm")
     a = ap.parse_args()
-    found = 0
+    counted = 0
     unreadable = False
     for path in a.files:
         try:
-            problems = check_file(path, a.grid)
+            checked = check_file(path, a.grid)
         except (OSError, UnicodeDecodeError, ValueError, IndexError, KeyError) as e:
             print(f"{path}: cannot check: {e}", file=sys.stderr)
             unreadable = True
             continue
-        for line in problems:
-            print(f"{path}: {line}")
-        found += sum(not line.startswith(NOTE) for line in problems)
-    sys.exit(2 if unreadable else 1 if found else 0)
+        for f in checked.findings:
+            print(f"{path}: {f}")
+        counted += sum(not f.note for f in checked.findings)
+    sys.exit(2 if unreadable else 1 if counted else 0)
