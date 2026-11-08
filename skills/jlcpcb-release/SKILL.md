@@ -33,7 +33,8 @@ production = "production"          # where YYYYMMDD-REV/ goes
 sources = ["docs"]                 # added to the source tgz
 ```
 
-Paths are from the repository root.  The source tgz holds the project's
+Paths are from the repository root.  `adopt` writes `production` for
+a lone board and `production/<name>` for each of several.  The source tgz holds the project's
 `.kicad_pcb`, `.kicad_sch`, `.kicad_pro`, `.kicad_dru`, `.pretty`,
 `.3dshapes`, `fp-lib-table` and `sym-lib-table` that exist, then
 `sources`.

@@ -89,9 +89,17 @@ def test_jlcpcb_config(tmp_path: Path) -> None:
     config = jlcpcb_config(layout)
     assert config is not None
     assert '[[board]]\nname = "jig"\ndirectory = "hardware/jig"\n' in config
-    assert 'copper = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]\nproduction = "production"\n' in config
+    assert (
+        'copper = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]\nproduction = "production/jig"\n' in config
+    )
     assert 'production = "production/main"' in config
     assert '"x"' not in config
+
+
+def test_jlcpcb_config_one_board(tmp_path: Path) -> None:
+    config = jlcpcb_config(repository(tmp_path, "main"))
+    assert config is not None
+    assert 'production = "production"\n' in config
 
 
 def test_jlcpcb_config_no_project(tmp_path: Path) -> None:

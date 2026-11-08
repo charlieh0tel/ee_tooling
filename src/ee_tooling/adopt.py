@@ -133,13 +133,14 @@ def jlcpcb_config(layout: Layout) -> str | None:
         "# from the repository root.  Written by ee-tooling-adopt: check each",
         "# board's production directory and add its sources.",
     ]
-    for n, project in enumerate(projects):
+    for project in projects:
+        # One board owns production/; several each get their own directory.
+        production = "production" if len(projects) == 1 else f"production/{project.stem}"
         pcb = project.with_suffix(".kicad_pcb")
         copper = copper_layers(pcb.read_text()) if pcb.exists() else []
         if not copper:
             why = "no copper layers in it" if pcb.exists() else "not there"
             print(f"{pcb.relative_to(layout.root)}: {why}; copper left empty", file=sys.stderr)
-        production = "production" if n == 0 else f"production/{project.stem}"
         lines += [
             "",
             "[[board]]",
