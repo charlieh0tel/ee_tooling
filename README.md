@@ -49,4 +49,5 @@ uv run ruff format
 uv run ruff check
 uv run mypy
 uv run pytest
+uv run pytest --cov=ee_tooling --cov-report=term-missing   # coverage
 ```
