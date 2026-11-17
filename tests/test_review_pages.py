@@ -46,3 +46,27 @@ def test_poppler_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(review_pages, "POPPLER_TIMEOUT", 0.05)
     with pytest.raises(PagesError, match=r"sleep 5: over 0.05 s"):
         poppler(["sleep", "5"])
+
+
+def test_page_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each page's labels, from pdfinfo's count and pdftotext's text."""
+    texts = {"1": "   Widget\nSheet: /\nFile: Widget.kicad_sch\n", "2": PAGE, "3": "blank\n"}
+
+    def fake(cmd: list[str]) -> str:
+        if cmd[0] == "pdfinfo":
+            return "Title:   Widget\nPages:           3\n"
+        assert cmd[:2] == ["pdftotext", "-f"] and cmd[2] == cmd[4]
+        return texts[cmd[2]]
+
+    monkeypatch.setattr(review_pages, "poppler", fake)
+    assert page_map(Path("w.pdf")) == [
+        "page-01: Sheet: / File: Widget.kicad_sch",
+        "page-02: Sheet: /PWR/ File: PWR.kicad_sch",
+        "page-03: ",
+    ]
+
+
+def test_page_count_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(review_pages, "poppler", lambda cmd: "Title: x\n")
+    with pytest.raises(PagesError, match=r"pdfinfo gave no page count for w\.pdf"):
+        page_map(Path("w.pdf"))
