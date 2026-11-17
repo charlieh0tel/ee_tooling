@@ -138,3 +138,11 @@ def test_adjudication_row_unreadable() -> None:
     )
     _, in_report = check(report_text, "S-1 S-2\n")
     assert [(p.line, p.message) for p in in_report] == [(9, "2 cells, header has 3")]
+
+
+def test_adjudication_of_an_unknown_id() -> None:
+    """An Adjudication row for an ID no findings table has changes nothing."""
+    extra = REPORT.replace(
+        "| S-4 | Dropped | waived |", "| S-4 | Dropped | waived |\n| S-8 | Dropped | x |"
+    )
+    assert report(extra).findings == report(REPORT).findings

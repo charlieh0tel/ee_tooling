@@ -136,3 +136,8 @@ def test_cells_escaped_bar() -> None:
 def test_evidence_refdes(evidence: str, named: bool) -> None:
     """A refdes has a reference prefix; a part name like DDR4 is not one."""
     assert bool(EVIDENCE.search(evidence)) is named
+
+
+def test_empty_id() -> None:
+    row = "|  | Defect | r | f | R1 | a consequence long enough |\n"
+    assert [(p.line, p.message) for p in lint(HEADER + row).problems] == [(3, "empty ID")]

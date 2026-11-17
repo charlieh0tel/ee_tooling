@@ -166,3 +166,23 @@ def test_export_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert list((out / "pcb" / "drill").iterdir())
     assert "segments: 1; length per layer (mm): F.Cu 30" in (out / "board.md").read_text()
     assert (out / "erc.md").read_text().startswith("# ERC summary: erc.json")
+
+
+def test_export_failure_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tool that exits non-zero is reported with its stderr; the rest run."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("kicad-cli", "pdftoppm"):
+        (bin_dir / tool).write_text("#!/bin/sh\necho broken >&2\nexit 3\n", encoding="utf-8")
+        (bin_dir / tool).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    (tmp_path / "W.kicad_pcb").write_text(
+        '(kicad_pcb (layers (0 "F.Cu" signal)))', encoding="utf-8"
+    )
+    out = tmp_path / "out"
+    failed = export(Project(tmp_path, "W"), out)
+    assert len(failed) == len(commands(Project(tmp_path, "W"), out, ["F.Cu"]))
+    err = capsys.readouterr().err
+    assert "failed: kicad-cli sch erc" in err and "\nbroken\n" in err
