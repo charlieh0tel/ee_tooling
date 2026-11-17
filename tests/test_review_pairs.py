@@ -80,3 +80,9 @@ def test_track_without_width(capsys: pytest.CaptureFixture[str]) -> None:
     board = parse('(kicad_pcb (segment (start 0 0) (end 1 0) (layer "F.Cu") (net "A")))')
     assert tracks(board) == {}
     assert "skipped: (segment ...) without its width" in capsys.readouterr().err
+
+
+def test_tracks_skip_one_without_points(capsys: pytest.CaptureFixture[str]) -> None:
+    board = parse('(kicad_pcb (segment (start 0 0) (width 0.2) (layer "F.Cu") (net "A")))')
+    assert tracks(board) == {}
+    assert "skipped: (segment ...) without its start, end or mid" in capsys.readouterr().err

@@ -164,3 +164,19 @@ def test_via_kinds(tmp_path: Path) -> None:
     path.write_text(f"(kicad_pcb {vias})", encoding="utf-8")
     text = summary(path)
     assert "kinds: {'through': 1, 'blind': 1, 'buried': 1, 'micro': 1}" in text
+
+
+def test_item_net_named_on_the_item() -> None:
+    """KiCad 10 names the net on the item: (net "NAME")."""
+    assert item_net(parse('(segment (net "VBUS"))'), {}) == "VBUS"
+
+
+def test_summary_skips_a_track_without_points(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "b.kicad_pcb"
+    path.write_text(
+        '(kicad_pcb (segment (start 0 0) (width 0.2) (layer "F.Cu") (net "A")))', encoding="utf-8"
+    )
+    assert "segments: 0;" in summary(path)
+    assert "skipped: (segment ...) without its start, end or mid" in capsys.readouterr().err
