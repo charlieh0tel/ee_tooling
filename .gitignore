@@ -11,6 +11,9 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 
+# pytest-cov's data
+.coverage
+
 # Local release notes (AGENTS.md)
 CHANGELOG.md
 
