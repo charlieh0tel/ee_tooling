@@ -51,3 +51,7 @@ uv run mypy
 uv run pytest
 uv run pytest --cov=ee_tooling --cov-report=term-missing   # coverage
 ```
+
+Tests that need `kicad-cli` (KiCad 10) or poppler are skipped without
+them; CI's `kicad` job installs both, KiCad from the
+`kicad/kicad-10.0-releases` PPA, and fails if any of them is skipped.
