@@ -52,6 +52,10 @@ uv run pytest
 uv run pytest --cov=ee_tooling --cov-report=term-missing   # coverage
 ```
 
-Tests that need `kicad-cli` (KiCad 10) or poppler are skipped without
-them; CI's `kicad` job installs both, KiCad from the
-`kicad/kicad-10.0-releases` PPA, and fails if any of them is skipped.
+Tests that need `kicad-cli` (KiCad 10), KiCad's `pcbnew` module or
+poppler are skipped without them.  `pcbnew` belongs to the system
+Python, so it needs a venv made with `uv venv --system-site-packages
+--python /usr/bin/python3`, and that Python 3.12 or later.  CI's
+`kicad` job installs KiCad from the `kicad/kicad-10.0-releases` PPA and
+poppler, makes such a venv, and fails if any of those tests is
+skipped.

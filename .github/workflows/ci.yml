@@ -17,8 +17,10 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv run mypy
   kicad:
-    # The tests the other jobs skip for want of kicad-cli (KiCad 10) and
-    # poppler; failing if any of them is skipped here.
+    # The tests the other jobs skip for want of kicad-cli (KiCad 10),
+    # KiCad's pcbnew module and poppler; failing if any of them is skipped
+    # here.  pcbnew is the system Python's, so the venv is made on it with
+    # its site packages.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,8 +32,10 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: |
           set -o pipefail
+          uv venv --system-site-packages --python /usr/bin/python3
+          uv run python -c "import pcbnew; print(pcbnew.Version())"
           uv run pytest -rs | tee pytest.log
-          ! grep -E "^SKIPPED.*(kicad-cli|poppler)" pytest.log
+          ! grep -E "^SKIPPED.*(kicad-cli|pcbnew|poppler)" pytest.log
   attribution:
     # No commit credits an AI assistant (AGENTS.md): the commit-msg
     # hook's checks of the messages, authors and committers over the
