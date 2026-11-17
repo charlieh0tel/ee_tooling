@@ -1,4 +1,5 @@
 import shlex
+import shutil
 from pathlib import Path
 
 import pytest
@@ -120,3 +121,48 @@ def test_export_timeout(
     failed = export(Project(tmp_path, "W"), out)
     assert len(failed) == len(commands(Project(tmp_path, "W"), out, ["F.Cu"]))
     assert "failed: over 0.05 s: kicad-cli sch erc" in capsys.readouterr().err
+
+
+# A two-layer board with one track, and an empty schematic, that kicad-cli
+# 10 reads.
+E2E_SCHEMATIC = """(kicad_sch (version 20250114) (generator "eeschema") (generator_version "10.0")
+  (uuid "4a0b7c2e-1111-4222-8333-944455556666") (paper "A4")
+  (title_block (title "Widget"))
+  (lib_symbols))
+"""
+E2E_BOARD = """(kicad_pcb (version 20260206) (generator "pcbnew") (general (thickness 1.6))
+  (layers (0 "F.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user)
+    (1 "F.Mask" user) (3 "B.Mask" user) (13 "F.Paste" user) (15 "B.Paste" user)
+    (5 "F.SilkS" user) (7 "B.SilkS" user) (35 "F.Fab" user) (37 "B.Fab" user))
+  (net 0 "") (net 1 "GND")
+  (gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))
+  (segment (start 5 15) (end 35 15) (width 0.25) (layer "F.Cu") (net 1)))
+"""
+
+
+@pytest.mark.skipif(
+    shutil.which("kicad-cli") is None or shutil.which("pdftoppm") is None,
+    reason="no kicad-cli (KiCad 10) or poppler on the path",
+)
+def test_export_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every export runs and every file lands; small renders and PNGs keep
+    it quick."""
+    monkeypatch.setattr(review_evidence, "RENDER_SIZE", ("120", "80"))
+    monkeypatch.setattr(review_evidence, "PNG_DPI", "20")
+    (tmp_path / "W.kicad_sch").write_text(E2E_SCHEMATIC, encoding="utf-8")
+    (tmp_path / "W.kicad_pcb").write_text(E2E_BOARD, encoding="utf-8")
+    (tmp_path / "W.kicad_pro").write_text('{"meta": {"filename": "W.kicad_pro"}}', encoding="utf-8")
+    out = tmp_path / "out"
+    assert export(Project(tmp_path, "W"), out) == []
+    copper = ["F.Cu", "B.Cu"]
+    expected = [
+        "erc.json", "netlist.net", "bom.csv", "drc.json", "drc-parity.json",
+        "sch/W.pdf", "pcb/positions.csv", "png/render-top.png", "png/render-bottom.png",
+        *SUMMARIZED,
+        *(f"pcb/{layer}.svg" for layer in (*copper, *PLOT_LAYERS)),
+        *(f"png/{'_'.join(group)}.png" for group in (*((c,) for c in copper), *PNG_GROUPS)),
+    ]  # fmt: skip
+    assert [f for f in expected if not (out / f).is_file()] == []
+    assert list((out / "pcb" / "drill").iterdir())
+    assert "segments: 1; length per layer (mm): F.Cu 30" in (out / "board.md").read_text()
+    assert (out / "erc.md").read_text().startswith("# ERC summary: erc.json")
