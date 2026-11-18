@@ -10,9 +10,11 @@ Qty 0 in the house BOM, and a fitted part with no LCSC number a warning
 unless the board requires LCSC numbers.  Decided, in the flag day:
 KiCad 10 design variants, an optional `variants` list per board, with a
 BOM, CPL, IPC-2581 and ODB++ per variant and the Gerbers and fab
-documents shared; a variant that overrides a part's Footprint field
-is refused.  Deferred: the fab notes and the no-extra-cost via rules.
-Open: a variant whose Gerbers differ from the others'.
+documents shared; a Gerber zip per variant when the variants'
+silkscreens differ; a variant that differs in copper, mask, paste,
+outline or drill, or that overrides a part's Footprint field, refused.
+Deferred: the fab notes and the no-extra-cost via rules.  Nothing is
+open.
 
 ## Names
 
@@ -115,7 +117,9 @@ it after REV; the others are built once and shared:
 
 | File | Built |
 |---|---|
-| `NAME-REV-gerbers-jlcpcb.zip`, `-gerber-map.txt`, `-stackup.txt`, `-fab-notes.txt` | once |
+| `NAME-REV-gerbers-jlcpcb.zip` | once, when every variant's Gerbers are the same |
+| `NAME-REV-VARIANT-gerbers-jlcpcb.zip` | per variant, in its place, when the silkscreens differ |
+| `NAME-REV-gerber-map.txt`, `-stackup.txt`, `-fab-notes.txt` | once |
 | `NAME-REV-VARIANT-bom.csv` | per variant |
 | `NAME-REV-VARIANT-jlcpcb-bom.csv`, `NAME-REV-VARIANT-jlcpcb-cpl.csv` | per variant |
 | `NAME-REV-VARIANT-odb.tgz`, `NAME-REV-VARIANT-ipc2581.zip` | per variant |
@@ -263,13 +267,40 @@ in the path writes one file, named with `${VARIANT}` literally):
   `populate="false"`, `.no_pop`).
 - The schematic and board PDFs, in the source tgz.
 
-Built once, shared by the variants: the Gerbers, drill, Gerber job and
-map, `stackup.txt`, `fab-notes.txt`, and the source tgz.  The Gerbers
-are exported with the first listed variant; each other variant's are
-exported to the scratch directory and compared, less their date
-lines.  A difference is refused, naming the variant and the layer: text
-on a Gerber layer can differ by variant (`${VARIANT}`, a variant field
-shown on the silkscreen).
+Built once, shared by the variants: the Gerber map, `stackup.txt`,
+`fab-notes.txt` and the source tgz.  They depend on the files' names,
+the stackup, the Gerber job's design rules and the drill, which do not
+differ by variant.  With a zip per variant, the map's title names the
+files in each `NAME-REV-VARIANT-gerbers-jlcpcb.zip`.
+
+The Gerbers and drill of every variant are exported, each with
+`--variant`, and compared layer by layer, less their date and comment
+lines:
+
+- All the same: one Gerber zip, `NAME-REV-gerbers-jlcpcb.zip`, as
+  without variants.
+- Different only in F.Silkscreen, B.Silkscreen or User.Drawings: a
+  Gerber zip per variant, `NAME-REV-VARIANT-gerbers-jlcpcb.zip`, and no
+  shared one.  Each holds that variant's Gerbers, the drill, the Gerber
+  job file, `README.txt` (the map), `stackup.txt` and `fab-notes.txt`.
+  The release names the layers that differ on stderr.  Silkscreen text
+  can differ by variant: `${VARIANT}`, `${VARIANT_DESC}`, or a variant
+  field shown on the silkscreen.
+- Different in copper, F.Mask, B.Mask, F.Paste, B.Paste, Edge.Cuts or
+  the drill: refused, naming the variant and the layer.  A variant does
+  not change the bare board's electrical or mechanical content.
+
+In KiCad 10.0.8, a part DNP in a variant changes none of these layers:
+its pads keep their copper, mask and paste, so one stencil serves every
+variant.  Only F.Fab and B.Fab, not in the Gerber zip, show a variant's
+values and, with `--crossout-DNP-footprints-on-fab-layers`, its DNP
+parts.  So text is the only way a variant's Gerbers differ, and text
+on copper or mask is refused.
+
+With a Gerber zip per variant, each is a separate bare-board order: a
+fab makes, panels and charges for each silkscreen apart.  The board
+PDF is per variant already; the tag and the production directory are
+one per release, as without differing Gerbers.
 
 Checks per variant, beyond the core's:
 
@@ -373,8 +404,9 @@ Then one PR, breaking, merged as one:
 7. `[board.fab]` required.
 8. The house BOM; JLCPCB's files take its name; the Gerber zip's name.
 9. Design variants: the `variants` key and its name checks; the
-   per-variant exports and files; the shared Gerbers compared across
-   variants; the per-variant cross-checks.
+   per-variant exports and files; the Gerbers compared across
+   variants, a zip per variant when only silkscreen differs; the
+   per-variant cross-checks.
 10. User.Drawings in the Gerbers, the map and the board PDF; the
     documents in the Gerber zip.
 11. Refuse a board without a matching stackup table.
@@ -411,9 +443,18 @@ rules.
   `kind = "panel"` board later).
 - Variants: a board with a `variants` key builds no default variant; a
   build of the base design needs a variant of its own in KiCad.
-- Variants: the shared Gerbers refuse a board whose silkscreen names
-  its variant, a common build marking; the owner moves it to a label or
-  a Fab layer.  A Gerber zip per variant is not foreclosed.
+- Variants: a silkscreen marking per variant splits one bare board into
+  as many orders as variants, each with its own setup charge and
+  minimum quantity; a label or a Fab-layer marking keeps one order.  The
+  release says so on stderr, not as an error.
+- Variants: a Gerber zip per variant makes uploading the wrong one to
+  the fab a new mistake; the zip carries the variant in its name only.
+- Variants: comparing every variant's Gerbers costs a Gerber and drill
+  export per variant, a few seconds each.
+- Variants: the allowed layers rest on KiCad 10.0.8 not changing paste
+  or mask for a DNP part; a later KiCad that removes a DNP part's paste
+  turns every variant with DNP parts into a refusal, found by the first
+  release on it.
 - Variants: a footprint swap per variant (a different package in one
   land pattern) is refused; serving it later needs the board's
   footprint checked against each variant's.
