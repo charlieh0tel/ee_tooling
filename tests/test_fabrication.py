@@ -6,6 +6,7 @@ import pytest
 
 from ee_tooling.fab_release import Board, Release
 from ee_tooling.fabrication import (
+    Fab,
     GerberFile,
     Impedance,
     Minimums,
@@ -25,6 +26,8 @@ from ee_tooling.profiles.jlcpcb import Jlcpcb
 from ee_tooling.sexpr import parse
 
 LAYERS = ["F.Cu", "In1.Cu", "B.Cu", "F.Mask", "F.Silkscreen", "Edge.Cuts"]
+# A board's [board.fab].
+FAB = Fab(3, "FR-4", 170.0, "100% netlist test per IPC-9252")
 
 
 def attribute(path: str, function: str, polarity: str = "Positive") -> dict[str, str]:
@@ -104,7 +107,7 @@ def test_gerbers_zip_holds_the_map(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(Release, "kicad", kicad)
     work = tmp_path / "work"
     work.mkdir()
-    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb")
+    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb", FAB)
     out = tmp_path / "b-1-jlcpcb.zip"
     files = Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(
         out, "b 1", Jlcpcb.gerbers
@@ -209,7 +212,7 @@ def test_stackup_document() -> None:
 def test_release_fabrication_without_stackup(tmp_path: Path) -> None:
     """The documents of a board with no stackup, which the release refuses
     before it writes them."""
-    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb")
+    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb", FAB)
     (tmp_path / "hw").mkdir()
     (tmp_path / "hw/b.kicad_pro").write_text(json.dumps(PROJECT))
     (tmp_path / "gerbers").mkdir()
@@ -228,6 +231,7 @@ def test_release_fabrication_without_stackup(tmp_path: Path) -> None:
         Minimums(0.127, 0.1, 0.25),
         "b-1-stackup.txt",
         "b-1-gerber-map.txt",
+        FAB,
     )
 
 
@@ -247,7 +251,9 @@ def test_ounces(thickness: float, text: str) -> None:
 
 def notes_lines(found: Stackup | None, impedance: list[Impedance]) -> dict[str, str]:
     """The notes' items, by their heading."""
-    text = notes("b 1: notes", found, 1.6, FILES, impedance, Minimums(0.2, 0.15, None), "s", "m")
+    text = notes(
+        "b 1: notes", found, 1.6, FILES, impedance, Minimums(0.2, 0.15, None), "s", "m", FAB
+    )
     assert text.startswith("b 1: notes\nUnless otherwise specified.\n\n1.  STANDARD:")
     items = [line.split(None, 1)[1] for line in text.splitlines()[3:]]
     return dict(item.split(": ", 1) for item in items)
@@ -255,8 +261,8 @@ def notes_lines(found: Stackup | None, impedance: list[Impedance]) -> dict[str, 
 
 def test_notes_from_stackup() -> None:
     n = notes_lines(stackup(parse(PCB)), impedances(PROJECT))
-    assert n["STANDARD"].startswith("build and inspect to IPC-6012 and IPC-A-600, class 2")
-    assert n["BASE MATERIAL"] == "2116, 1080, FR4; Tg [TBD: Tg, deg C]."
+    assert n["STANDARD"] == "build and inspect to IPC-6012 and IPC-A-600, class 3."
+    assert n["BASE MATERIAL"] == "FR-4; Tg 170 deg C minimum."
     assert n["LAYERS"] == "3 copper, L1 (top) to L3 (bottom), per m."
     assert n["THICKNESS"] == "finished board 1.4452 mm, per s."
     assert n["COPPER"] == (
@@ -267,12 +273,12 @@ def test_notes_from_stackup() -> None:
     assert n["SILKSCREEN"].startswith("top, white;")
     assert n["IMPEDANCE CONTROL"].startswith("yes, per s;")
     assert n["MINIMUM FEATURES"] == ("track 0.2 mm, space 0.15 mm, finished drill [TBD: drill].")
-    assert n["ELECTRICAL TEST"].startswith("[TBD: electrical test")
+    assert n["ELECTRICAL TEST"] == "100% netlist test per IPC-9252."
 
 
 def test_notes_without_stackup() -> None:
     n = notes_lines(None, [])
-    assert n["BASE MATERIAL"].startswith("[TBD: base material")
+    assert n["BASE MATERIAL"] == "FR-4; Tg 170 deg C minimum."
     assert n["THICKNESS"] == "finished board 1.6 mm (KiCad's board thickness setting; no stackup)."
     assert n["COPPER"].startswith("finished weights [TBD: copper weights")
     assert n["FINISH"] == "[TBD: surface finish]."
@@ -289,5 +295,5 @@ def test_notes_colors_by_side() -> None:
         )
     )
     files = [*FILES, GerberFile("b-B_Mask.gbs", ("SolderMask", "Bot"), "Negative", "B.Mask")]
-    text = notes("t", found, None, files, [], Minimums(None, None, None), "s", "m")
+    text = notes("t", found, None, files, [], Minimums(None, None, None), "s", "m", FAB)
     assert "over bare copper; top green; bottom black." in text

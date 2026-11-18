@@ -14,6 +14,14 @@ from typing import Any
 
 from ee_tooling.profiles.profile import GerberOptions, Part, Placement
 
+# The house [board.fab] values adopt writes for a new board: IPC class 2,
+# FR-4 of Tg 150 deg C or more, and a full netlist test.
+FAB_DEFAULTS = {
+    "ipc_class": 2,
+    "base_material": "FR-4",
+    "tg": 150,
+    "electrical_test": "100% netlist test per IPC-9252",
+}
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
 
@@ -114,6 +122,7 @@ class Jlcpcb:
 
     def __init__(self, corrections: Corrections) -> None:
         self.corrections = corrections
+        self.fab_defaults: dict[str, Any] = dict(FAB_DEFAULTS)
 
     @classmethod
     def builtin(cls) -> "Jlcpcb":

@@ -47,6 +47,7 @@ class Profile[Options](Protocol):
     name: str  # fab.toml's profile value; names its files
     gerbers: GerberOptions  # its Gerber and drill export
     distributor: tuple[str, str] | None  # IPC-2581: the part-number field, the distributor
+    fab_defaults: dict[str, Any]  # the [board.fab] values adopt writes for a new board
 
     def options(self, table: dict[str, Any]) -> Options:
         """A board's [board.<name>] table, checked; ValueError naming a bad

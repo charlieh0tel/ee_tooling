@@ -380,16 +380,22 @@ TRACK_RULE = "MinLineWidth"
 OUNCE_UM = 34.79
 # Copper weights are given to the nearest this many ounces.
 OUNCE_STEP = 0.5
-# Defaults the board cannot give: the IPC-6012 class.
-IPC_CLASS = 2
-# Values the board cannot give, for the owner to fill in.
-TG = TBD.format("Tg, deg C")
-ELECTRICAL_TEST = TBD.format("electrical test, e.g. 100% netlist test per IPC-9252")
-BASE_MATERIAL = TBD.format("base material, e.g. FR-4")
+# The IPC-A-600 / IPC-6012 classes.
+IPC_CLASSES = (1, 2, 3)
 # The stackup types whose color the notes give.
 MASK_TYPES = {"top": "Top Solder Mask", "bottom": "Bottom Solder Mask"}
 SILK_TYPES = {"top": "Top Silk Screen", "bottom": "Bottom Silk Screen"}
 DIELECTRICS = ("core", "prepreg")
+
+
+@dataclass(frozen=True)
+class Fab:
+    """A board's [board.fab] in fab.toml: what the board cannot say."""
+
+    ipc_class: int  # IPC-A-600 / IPC-6012 class, one of IPC_CLASSES
+    base_material: str
+    tg: float  # deg C, minimum
+    electrical_test: str
 
 
 @dataclass(frozen=True)
@@ -449,14 +455,14 @@ def notes(
     least: Minimums,
     stackup_name: str,
     map_name: str,
+    fab: Fab,
 ) -> str:
-    """Fabrication notes: generic, filled from the board where it says,
-    [TBD: ...] where it cannot."""
+    """Fabrication notes: generic, filled from the board where it says and
+    from fab, [TBD: ...] where neither can."""
     copper = [f for f in files if f.function[:1] == ("Copper",)]
     if found is None:
         finished = f"{mm(thickness)} mm (KiCad's board thickness setting; no stackup)"
         weights = TBD.format("copper weights; the board has no stackup")
-        material = BASE_MATERIAL
         finish = TBD.format("surface finish")
     else:
         finished = f"{mm(found.thickness)} mm, per {stackup_name}"
@@ -466,8 +472,6 @@ def notes(
             else f"L{n} {TBD.format('weight')}"
             for n, x in enumerate((x for x in found.layers if x.type == COPPER), 1)
         )
-        materials = dict.fromkeys(x.material for x in found.layers if x.type in DIELECTRICS)
-        material = ", ".join(m for m in materials if m) or BASE_MATERIAL
         finish = found.settings.get("copper_finish", "None")
         finish = TBD.format("surface finish") if finish == "None" else finish
     impedance_line = (
@@ -476,9 +480,8 @@ def notes(
         else "no."
     )
     items = [
-        f"STANDARD: build and inspect to IPC-6012 and IPC-A-600, class {IPC_CLASS}"
-        " (default; confirm).",
-        f"BASE MATERIAL: {material}; Tg {TG}.",
+        f"STANDARD: build and inspect to IPC-6012 and IPC-A-600, class {fab.ipc_class}.",
+        f"BASE MATERIAL: {fab.base_material}; Tg {fab.tg:g} deg C minimum.",
         f"LAYERS: {len(copper)} copper, L1 (top) to L{len(copper)} (bottom), per {map_name}.",
         f"THICKNESS: finished board {finished}.",
         f"COPPER: finished weights {weights}.",
@@ -491,7 +494,7 @@ def notes(
         f"MINIMUM FEATURES: track {length(least.track, 'track')},"
         f" space {length(least.space, 'space')},"
         f" finished drill {length(least.drill, 'drill')}.",
-        f"ELECTRICAL TEST: {ELECTRICAL_TEST}.",
+        f"ELECTRICAL TEST: {fab.electrical_test}.",
         "DRILLING: drill file sizes are finished hole sizes; plated and non-plated holes"
         " are in separate files.",
         "GERBER FILES: do not modify the supplied files without the owner's approval.",

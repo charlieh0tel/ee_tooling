@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from test_fabrication import FAB
 
 from ee_tooling.fab_release import Board, Release
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options, jlcpcb_bom, jlcpcb_cpl
@@ -91,7 +92,7 @@ def test_bom_groups_as_kicad_cli(tmp_path: Path, demo: str) -> None:
         [r["Comment"], r["Designator"], r["Footprint"].split(":", 1)[-1], r["LCSC Part #"]]
         for r in csv.DictReader(io.StringIO(grouped.read_text()))
     ]
-    board = Board(sch.stem, Path("."), Path("production"), (), "jlcpcb")
+    board = Board(sch.stem, Path("."), Path("production"), (), "jlcpcb", FAB)
     rows, _, _ = jlcpcb_bom(Release(sch.parent, board, tmp_path).parts())
     assert len(rows) > 1
     assert rows == kicad

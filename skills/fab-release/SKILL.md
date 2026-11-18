@@ -33,13 +33,22 @@ production = "production"          # where YYYYMMDD-REV/ goes
 sources = ["docs"]                 # added to the source tgz; optional, default []
 profile = "jlcpcb"                 # the fab: jlcpcb
 
+[board.fab]                        # every key required
+ipc_class = 2                      # IPC-A-600 / IPC-6012 class: 1, 2 or 3
+base_material = "FR-4"
+tg = 150                           # deg C, minimum
+electrical_test = "100% netlist test per IPC-9252"
+
 [board.jlcpcb]                     # the profile's options, optional (jlcpcb.md)
 require_lcsc = true
 ```
 
-Every key but `sources` and the profile's table is required.  A key it
-does not know, at any level, is an error naming it; the only table
-allowed is the one named by `profile`.  Paths are from the repository root.
+Every key but `sources` and the profile's table is required.
+`[board.fab]` says what the fab is to build to that the board cannot
+say; the fabrication notes take it.  `adopt` writes the profile's house
+values, never `fab-release`: check them.  A key it
+does not know, at any level, is an error naming it; the only tables
+allowed are `fab` and the one named by `profile`.  Paths are from the repository root.
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  There is no `copper` key: the copper layers, top to
 bottom, are the stackup's.  Each `sources` path is inside the repository: one that
@@ -99,7 +108,7 @@ only when the owner says to.
 | `NAME-REV-jlcpcb.zip` | the PCB order: Gerbers (each copper layer, mask, paste, silk, Edge.Cuts) and Excellon drill in mm, in the profile's options (`jlcpcb.md`); `README.txt`, the Gerber map |
 | `NAME-REV-gerber-map.txt` | the Gerber map, as in the zip: each file's name, KiCad layer, function (copper L1 top to Ln bottom, mask, paste, silkscreen, outline, plated and non-plated drill), side and polarity, from KiCad's Gerber job file and the drill files' X2 comments |
 | `NAME-REV-stackup.txt` | the board's stackup (Board Setup, Physical Stackup): each layer's and dielectric sublayer's type, material, thickness, Er, loss tangent, color and Gerber; total thickness and the board's thickness setting; copper finish, impedance-controlled dielectric, edge connector, castellated pads, edge plating; then the impedance requirements, from net classes whose names say impedance (`[TBD: ...]` for a name not `<ohms>Z_DIFF[_<INTERFACE>]` or `<ohms>Z_SE`). |
-| `NAME-REV-fab-notes.txt` | numbered fabrication notes: generic (IPC-6012 and IPC-A-600 class 2 by default, plating, LPI mask per IPC-SM-840, finished hole sizes, Gerbers not to be modified, no added tooling holes or marking), filled from the board: layer count, finished thickness, copper weights, base material, finish and mask and silk colors from the stackup; impedance control from the net classes; minimum track and space from KiCad's Gerber job file, minimum drill from the drill files.  `[TBD: ...]` marks what the board cannot say (Tg, electrical test, and anything the stackup lacks): fill it in before sending the notes |
+| `NAME-REV-fab-notes.txt` | numbered fabrication notes: generic (IPC-6012 and IPC-A-600, plating, LPI mask per IPC-SM-840, finished hole sizes, Gerbers not to be modified, no added tooling holes or marking), filled from `[board.fab]`: the IPC class, base material, minimum Tg and electrical test; from the board: layer count, finished thickness, copper weights, finish and mask and silk colors from the stackup; impedance control from the net classes; minimum track and space from KiCad's Gerber job file, minimum drill from the drill files.  `[TBD: ...]` marks what neither can say (anything the stackup lacks): fill it in before sending the notes |
 | `NAME-REV-odb.tgz` | ODB++ job (one `odb/` directory: `matrix/`, `steps/`, ...), mm, 6 decimals: for the record and for ODB++ tools such as `tools/odb_current`; not the order's upload |
 | `NAME-REV-ipc2581.zip` | IPC-2581 revision C, mm, 6 decimals: a zip of one XML file, `NAME-REV-ipc2581.xml`; its BOM from MPN, Manufacturer and the profile's distributor field: for the record and for IPC-2581 tools; not the order's upload |
 | `NAME-REV-bom.csv`, `NAME-REV-cpl.csv` | the profile's assembly BOM and placement (`jlcpcb.md`) |

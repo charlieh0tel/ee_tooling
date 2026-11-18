@@ -12,16 +12,19 @@ import argparse
 import importlib.resources
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
-from ee_tooling.fab_release import CONFIG, GONE_KEYS, string, strings
+from ee_tooling.fab_release import CONFIG, FAB, GONE_KEYS, string, strings
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
+from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.jlcpcb import Jlcpcb
 
 # This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
@@ -45,6 +48,10 @@ OLD_CONFIG = Path("jlcpcb.toml")
 OLD_KEYS = ("name", "directory", "production", "sources")
 OLD_SKILL = Path(".claude/skills/jlcpcb-release")
 RENAMED = (("jlcpcb-release", "fab-release"), (str(OLD_CONFIG), CONFIG))
+# A line of fab.toml that starts a [[board]], and one that starts its
+# [board.fab].
+BOARD_HEADER = re.compile(r"^[ \t]*\[\[[ \t]*board[ \t]*\]\][ \t]*(#.*)?$", re.M)
+FAB_HEADER = re.compile(rf"^[ \t]*\[[ \t]*board[ \t]*\.[ \t]*{FAB}[ \t]*\][ \t]*(#.*)?$", re.M)
 
 
 class Owner(Enum):
@@ -99,7 +106,17 @@ class Rename:
     names: tuple[tuple[str, str], ...]  # old, new
 
 
-Step = File | Command | Remove | Rename
+@dataclass(frozen=True)
+class Edit:
+    """A project file ee_tooling adds to, its own text kept, from the
+    repository root."""
+
+    path: Path
+    text: str  # the file, edited
+    why: str  # what was added
+
+
+Step = File | Command | Remove | Rename | Edit
 
 
 @dataclass(frozen=True)
@@ -143,8 +160,27 @@ def toml_string(text: str) -> str:
     return json.dumps(text)
 
 
+def toml_value(value: object) -> str:
+    """A string, number or boolean, as TOML writes it."""
+    match value:
+        case bool():
+            return "true" if value else "false"
+        case int() | float():
+            return str(value)
+        case str():
+            return toml_string(value)
+    raise TypeError(f"{value!r} is not a string, number or boolean")
+
+
+def fab_lines(defaults: dict[str, Any], keys: Iterable[str]) -> list[str]:
+    """[board.fab]'s keys, each with its house value."""
+    return [f"{k} = {toml_value(defaults[k])}" for k in keys]
+
+
 def board_lines(name: str, directory: str, production: str, sources: list[str]) -> list[str]:
-    """A [[board]] of fab.toml, with adopt's profile."""
+    """A [[board]] of fab.toml, with adopt's profile and its house
+    [board.fab] values."""
+    defaults = PROFILES[PROFILE]().fab_defaults
     return [
         "",
         "[[board]]",
@@ -153,7 +189,59 @@ def board_lines(name: str, directory: str, production: str, sources: list[str]) 
         f"production = {toml_string(production)}",
         f"sources = [{', '.join(toml_string(s) for s in sources)}]",
         f"profile = {toml_string(PROFILE)}",
+        "",
+        f"[board.{FAB}]",
+        *fab_lines(defaults, defaults),
     ]
+
+
+def fab_added(text: str) -> tuple[str, list[str]] | None:
+    """fab.toml's text with the [board.fab] keys each board lacks added,
+    with its profile's house values, its comments kept, and what was added;
+    None if none lacks one.  A board whose profile is not known is left to
+    fab-release.  ValueError if the text cannot be edited so: a fab given
+    other than as a [board.fab] table, or a [[board]] not found by its
+    header."""
+    config = tomllib.loads(text)
+    boards = config.get("board", [])
+    if not isinstance(boards, list) or not all(isinstance(b, dict) for b in boards):
+        return None
+    # Each board's missing keys, and its house values.
+    missing: list[tuple[list[str], dict[str, Any]]] = []
+    for b in boards:
+        found = b.get(FAB, {})
+        if not isinstance(found, dict):
+            raise ValueError(f"[[board]] {b.get('name')!r}: {FAB!r} is not a table")
+        defaults = PROFILES[b["profile"]]().fab_defaults if b.get("profile") in PROFILES else {}
+        missing.append(([k for k in defaults if k not in found], defaults))
+    if not any(keys for keys, _ in missing):
+        return None
+    headers = list(BOARD_HEADER.finditer(text))
+    if len(headers) != len(boards):
+        raise ValueError(f"{len(boards)} boards, {len(headers)} [[board]] headers")
+    ends = [h.start() for h in headers[1:]] + [len(text)]
+    added = []
+    for b, header, end, (keys, defaults) in reversed(
+        list(zip(boards, headers, ends, missing, strict=True))
+    ):
+        if not keys:
+            continue
+        lines = "\n".join(fab_lines(defaults, keys))
+        table = FAB_HEADER.search(text, header.end(), end)
+        if table is not None:
+            text = f"{text[: table.end()]}\n{lines}{text[table.end() :]}"
+        elif FAB in b:
+            raise ValueError(f"[[board]] {b.get('name')!r}: {FAB!r} is not a [board.{FAB}] table")
+        else:
+            at = header.start() + len(text[header.start() : end].rstrip())
+            text = f"{text[:at]}\n\n[board.{FAB}]\n{lines}{text[at:]}"
+        added.append(f"[[board]] {b.get('name')!r}: {', '.join(keys)}")
+    after = tomllib.loads(text).get("board", [])
+    if any(
+        k not in b.get(FAB, {}) for b, (keys, _) in zip(after, missing, strict=True) for k in keys
+    ):
+        raise ValueError("the keys added are not where they belong")
+    return text, list(reversed(added))
 
 
 def productions(layout: Layout) -> list[Path]:
@@ -199,7 +287,7 @@ def fab_config(layout: Layout) -> str | None:
     lines = [
         "# The boards fab-release builds; the first is the default.  Paths are",
         "# from the repository root.  Written by ee-tooling-adopt: check each",
-        "# board's production directory and add its sources.",
+        "# board's production directory and [board.fab], and add its sources.",
     ]
     for project in found:
         # One board owns production/; several each get their own directory.
@@ -220,7 +308,8 @@ def migrated_config(text: str) -> str:
     old = tomllib.loads(text)
     lines = [
         "# The boards fab-release builds; the first is the default.  Paths are",
-        f"# from the repository root.  Migrated from {OLD_CONFIG} by ee-tooling-adopt.",
+        f"# from the repository root.  Migrated from {OLD_CONFIG} by ee-tooling-adopt:",
+        "# check each board's [board.fab].",
     ]
     for key in sorted(set(old) - {"board"}):
         print(f"{OLD_CONFIG}: {key!r} not carried over to {CONFIG}", file=sys.stderr)
@@ -245,11 +334,20 @@ def migrated_config(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def migrations(layout: Layout) -> list[Remove | Rename]:
-    """What moves the project files ee_tooling renamed to their new names;
-    a file's new text is among files()."""
+def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
+    """What moves the project files ee_tooling renamed to their new names
+    (a file's new text is among files()), and adds the keys fab.toml
+    lacks.  ValueError naming what cannot be done."""
     root = layout.root
-    out: list[Remove | Rename] = []
+    out: list[Remove | Rename | Edit] = []
+    if (root / CONFIG).exists():
+        try:
+            edited = fab_added((root / CONFIG).read_text())
+        except ValueError as e:  # tomllib.TOMLDecodeError among them
+            raise ValueError(f"{CONFIG}: {e}; add each [board.{FAB}] key by hand") from e
+        if edited is not None:
+            text, added = edited
+            out.append(Edit(Path(CONFIG), text, f"[board.{FAB}] keys added: {'; '.join(added)}"))
     for old, new in ((OLD_CONFIG, Path(CONFIG)), (OLD_SKILL, SKILL.parent)):
         if not (root / old).exists():
             continue
@@ -368,6 +466,8 @@ def describe(step: Step, root: Path) -> str:
             return f"run {' '.join(step.args)}{where}"
         case Remove():
             return f"remove {step.path.as_posix()} (project; {step.why})"
+        case Edit():
+            return f"update {step.path.as_posix()} (project; {step.why})"
         case Rename():
             names = ", ".join(f"{old} -> {new}" for old, new in step.names)
             return (
@@ -390,6 +490,8 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                 run(step.args, root / step.directory)
             case Remove():
                 (root / step.path).unlink()
+            case Edit():
+                (root / step.path).write_text(step.text)
             case Rename():
                 (root / step.source).rename(root / step.target)
                 for f in sorted((root / step.target).rglob("*.md")):
@@ -409,7 +511,7 @@ def stale(layout: Layout) -> list[Path]:
     """The managed files that differ from what would be written, and the
     project files still to be migrated."""
     managed = [f.path for f in files(layout) if f.owner is Owner.MANAGED and f.action(layout.root)]
-    renamed = [s.path if isinstance(s, Remove) else s.source for s in migrations(layout)]
+    renamed = [s.source if isinstance(s, Rename) else s.path for s in migrations(layout)]
     return [*managed, *renamed]
 
 

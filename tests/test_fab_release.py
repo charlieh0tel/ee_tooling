@@ -12,6 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from test_fabrication import FAB
 from test_profiles_jlcpcb import CORRECTIONS
 
 from ee_tooling.fab_release import (
@@ -24,6 +25,7 @@ from ee_tooling.fab_release import (
     revision,
     tag_plan,
 )
+from ee_tooling.fabrication import Fab
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import GerberOptions
 
@@ -35,11 +37,23 @@ production = "production"
 sources = ["hardware/main/main.kicad_sym", "docs"]
 profile = "jlcpcb"
 
+[board.fab]
+ipc_class = 2
+base_material = "FR-4"
+tg = 150
+electrical_test = "100% netlist test per IPC-9252"
+
 [[board]]
 name = "jig"
 directory = "hardware/jig"
 production = "production/jig"
 profile = "jlcpcb"
+
+[board.fab]
+ipc_class = 2
+base_material = "FR-4"
+tg = 150
+electrical_test = "100% netlist test per IPC-9252"
 """
 
 
@@ -51,15 +65,22 @@ def test_config_boards_in_order() -> None:
     assert main.sch == Path("hardware/main/main.kicad_sch")
     assert boards["jig"].sources == ()
     assert main.profile == "jlcpcb"
+    assert main.fab == Fab(2, "FR-4", 150.0, "100% netlist test per IPC-9252")
 
 
+# A board's [board.fab] as an inline table, so keys can follow it.
+FAB_TABLE = (
+    'fab = { ipc_class = 2, base_material = "FR-4", tg = 150,'
+    ' electrical_test = "100% netlist test per IPC-9252" }'
+)
 # A board with every key, for the config's error tests.
-BOARD = """\
+BOARD = f"""\
 [[board]]
 name = "b"
 directory = "hw"
 production = "production"
 profile = "jlcpcb"
+{FAB_TABLE}
 """
 
 
@@ -68,10 +89,10 @@ def test_config_without_boards() -> None:
         load_config("")
 
 
-@pytest.mark.parametrize("key", ["name", "directory", "production", "profile"])
+@pytest.mark.parametrize("key", ["name", "directory", "production", "profile", "fab"])
 def test_config_missing_key(key: str) -> None:
     text = "".join(line + "\n" for line in BOARD.splitlines() if not line.startswith(key))
-    with pytest.raises(ValueError, match=f"no '{key}'$"):
+    with pytest.raises(ValueError, match=f"no '{key}'$|no \\[board.{key}\\]$"):
         load_config(text)
 
 
@@ -141,6 +162,40 @@ def test_config_sources_inside() -> None:
     assert load_config(text)["b"].sources == (Path("docs/../lib"), Path("docs"), Path("..lib"))
 
 
+def fab_table(**changes: object) -> str:
+    """BOARD with its [board.fab] changed: a key set, or with None, removed."""
+    table = {"ipc_class": 2, "base_material": '"FR-4"', "tg": 150, "electrical_test": '"x"'}
+    table.update(changes)
+    keys = ", ".join(f"{k} = {v}" for k, v in table.items() if v is not None)
+    return BOARD.replace(FAB_TABLE, f"fab = {{ {keys} }}")
+
+
+@pytest.mark.parametrize(
+    ("changes", "error"),
+    [
+        ({"tg": None}, "no 'tg'"),
+        ({"tg": None, "ipc_class": None}, "no 'ipc_class', 'tg'"),
+        ({"colour": '"red"'}, "unknown key 'colour'"),
+        ({"ipc_class": 4}, "'ipc_class' is not one of 1, 2, 3"),
+        ({"ipc_class": '"2"'}, "'ipc_class' is not one of 1, 2, 3"),
+        ({"ipc_class": "true"}, "'ipc_class' is not one of 1, 2, 3"),
+        ({"tg": 0}, "'tg' is not a temperature, deg C"),
+        ({"tg": '"150"'}, "'tg' is not a temperature, deg C"),
+        ({"base_material": '" "'}, "'base_material' is not a string, or is empty"),
+        ({"electrical_test": 1}, "'electrical_test' is not a string, or is empty"),
+    ],
+)
+def test_config_fab_refused(changes: dict[str, object], error: str) -> None:
+    with pytest.raises(ValueError, match=rf"^\[\[board\]\] 'b': \[board.fab\]: {error}$"):
+        load_config(fab_table(**changes))
+
+
+def test_config_fab_values() -> None:
+    assert load_config(fab_table(tg=135.5, ipc_class=3))["b"].fab == Fab(3, "FR-4", 135.5, "x")
+    with pytest.raises(ValueError, match=r"^\[\[board\]\] 'b': 'fab' is not a table$"):
+        load_config(BOARD.replace(FAB_TABLE, "fab = 1"))
+
+
 def test_config_board_without_name() -> None:
     with pytest.raises(ValueError, match=r"^\[\[board\]\] 1: no 'name'$"):
         load_config(BOARD.replace('name = "b"\n', ""))
@@ -170,7 +225,7 @@ def test_revision() -> None:
 
 
 def test_board_is_frozen() -> None:
-    b = Board("x", Path("d"), Path("p"), (), "jlcpcb")
+    b = Board("x", Path("d"), Path("p"), (), "jlcpcb", FAB)
     with pytest.raises(AttributeError):
         b.name = "y"  # type: ignore[misc]
 
@@ -230,7 +285,7 @@ def gerber_calls(
             (out / name).write_text(text)
 
     monkeypatch.setattr(Release, "kicad", kicad)
-    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb")
+    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb", FAB)
     work = tmp_path / str(options)
     work.mkdir()
     Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(work / "b.zip", "b 1", options)
@@ -454,6 +509,12 @@ directory = "hw"
 production = "production"
 sources = ["docs"]
 profile = "jlcpcb"
+
+[board.fab]
+ipc_class = 2
+base_material = "FR-4"
+tg = 150
+electrical_test = "100% netlist test per IPC-9252"
 """,
     "hw/b.kicad_pcb": """\
 (kicad_pcb (version 20250114) (general (thickness 1.6))
@@ -737,8 +798,8 @@ Net class     Ohms  Kind          Track mm  Pair width mm  Pair gap mm
 b 1: fabrication notes
 Unless otherwise specified.
 
-1.  STANDARD: build and inspect to IPC-6012 and IPC-A-600, class 2 (default; confirm).
-2.  BASE MATERIAL: FR4; Tg [TBD: Tg, deg C].
+1.  STANDARD: build and inspect to IPC-6012 and IPC-A-600, class 2.
+2.  BASE MATERIAL: FR-4; Tg 150 deg C minimum.
 3.  LAYERS: 3 copper, L1 (top) to L3 (bottom), per b-1-gerber-map.txt.
 4.  THICKNESS: finished board 1.5075 mm, per b-1-stackup.txt.
 5.  COPPER: finished weights L1 35 um (1 oz), L2 17.5 um (0.5 oz), L3 35 um (1 oz).
@@ -749,7 +810,7 @@ Unless otherwise specified.
 10. IMPEDANCE CONTROL: yes, per b-1-stackup.txt; the fab may adjust trace widths to meet the \
 impedances.
 11. MINIMUM FEATURES: track 0.15 mm, space 0.2 mm, finished drill 0.3 mm.
-12. ELECTRICAL TEST: [TBD: electrical test, e.g. 100% netlist test per IPC-9252].
+12. ELECTRICAL TEST: 100% netlist test per IPC-9252.
 13. DRILLING: drill file sizes are finished hole sizes; plated and non-plated holes are in \
 separate files.
 14. GERBER FILES: do not modify the supplied files without the owner's approval.

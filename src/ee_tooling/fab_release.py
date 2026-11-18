@@ -7,8 +7,8 @@ the board's production directory, YYYYMMDD-REV/, with:
   NAME-REV-gerber-map.txt  what each file in the Gerber zip is
   NAME-REV-stackup.txt  the board's stackup, each layer's Gerber, and its
                         impedance requirements
-  NAME-REV-fab-notes.txt  fabrication notes, filled from the board where it
-                        says, [TBD: ...] where it cannot
+  NAME-REV-fab-notes.txt  fabrication notes, filled from the board and its
+                        [board.fab], [TBD: ...] where neither says
   NAME-REV-odb.tgz      ODB++ job, for the record and ODB++ tools
   NAME-REV-ipc2581.zip  IPC-2581 revision C, for the record and IPC-2581 tools
   NAME-REV-bom.csv      BOM in JLCPCB's columns, for assembly
@@ -37,12 +37,14 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from ee_tooling.fabrication import (
+    IPC_CLASSES,
+    Fab,
     GerberFile,
     board_thickness,
     copper_layers,
@@ -70,6 +72,8 @@ STRING_KEYS: dict[str, str | None] = {
     "profile": None,
 }
 LIST_KEYS: dict[str, list[str] | None] = {"sources": []}
+# A [[board]]'s table of what its fab is to build to, every key required.
+FAB = "fab"
 # Keys fab.toml no longer has, with why: present, each is an error.
 GONE_KEYS = {"copper": "the copper layers come from the board's stackup"}
 # The Gerber map's name in the Gerber zip.
@@ -125,6 +129,7 @@ class Board:
     production: Path  # where its YYYYMMDD-REV/ releases go, from the repository root
     sources: tuple[Path, ...]  # in the source tgz after the project's files, from the root
     profile: str  # its fab's, a key of PROFILES
+    fab: Fab  # [board.fab]
     options: dict[str, Any] = field(default_factory=dict)  # [board.<profile>], unchecked
 
     @property
@@ -170,6 +175,30 @@ def strings(where: str, table: dict[str, Any], key: str, default: list[str] | No
     return found
 
 
+def fab(where: str, table: object) -> Fab:
+    """A board's [board.fab], every key required; ValueError naming a bad
+    key."""
+    if table is None:
+        raise ValueError(f"{where}: no [board.{FAB}]")
+    if not isinstance(table, dict):
+        raise ValueError(f"{where}: {FAB!r} is not a table")
+    where = f"{where}: [board.{FAB}]"
+    keys = [f.name for f in fields(Fab)]
+    if unknown := sorted(set(table) - set(keys)):
+        raise ValueError(f"{where}: unknown key {', '.join(repr(k) for k in unknown)}")
+    if missing := [k for k in keys if k not in table]:
+        raise ValueError(f"{where}: no {', '.join(repr(k) for k in missing)}")
+    ipc_class, tg = table["ipc_class"], table["tg"]
+    if type(ipc_class) is not int or ipc_class not in IPC_CLASSES:
+        raise ValueError(f"{where}: 'ipc_class' is not one of {', '.join(map(str, IPC_CLASSES))}")
+    if type(tg) not in (int, float) or tg <= 0:
+        raise ValueError(f"{where}: 'tg' is not a temperature, deg C")
+    for key in ("base_material", "electrical_test"):
+        if not isinstance(table[key], str) or not table[key].strip():
+            raise ValueError(f"{where}: {key!r} is not a string, or is empty")
+    return Fab(ipc_class, table["base_material"], float(tg), table["electrical_test"])
+
+
 def board(table: dict[str, Any], number: int) -> Board:
     """A [[board]], the number-th; ValueError naming a bad key."""
     where = f"[[board]] {number}"
@@ -180,7 +209,8 @@ def board(table: dict[str, Any], number: int) -> Board:
             raise ValueError(f"{where}: {key!r} is gone: {why}")
     # Beside its own keys, a board has a table of its profile's options.
     options = table.get("profile")
-    if unknown := sorted(set(table) - set(STRING_KEYS) - set(LIST_KEYS) - {options}):
+    known = {*STRING_KEYS, *LIST_KEYS, FAB, options}
+    if unknown := sorted(set(table) - known):
         raise ValueError(f"{where}: unknown key {', '.join(repr(k) for k in unknown)}")
     text = {k: string(where, table, k, d) for k, d in STRING_KEYS.items()}
     lists = {k: strings(where, table, k, d) for k, d in LIST_KEYS.items()}
@@ -199,6 +229,7 @@ def board(table: dict[str, Any], number: int) -> Board:
         production=Path(text["production"]),
         sources=tuple(Path(s) for s in lists["sources"]),
         profile=text["profile"],
+        fab=fab(where, table.get(FAB)),
         options=table.get(text["profile"], {}),
     )
 
@@ -390,6 +421,7 @@ class Release:
                 minimums(self.work / GERBERS),
                 stackup_name,
                 f"{base}-{GERBER_MAP}",
+                self.board.fab,
             )
         )
 

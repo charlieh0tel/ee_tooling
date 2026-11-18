@@ -41,7 +41,7 @@ missing, then the project's.
 | `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
-| `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb` |
+| `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb`, with the profile's house `[board.fab]` values |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
 
 It finds the KiCad projects (`*.kicad_pro`) under `hardware/`, skipping
@@ -58,7 +58,8 @@ time `adopt` changes files the project owns:
 
 - `jlcpcb.toml`, with no `fab.toml`: `fab.toml` is written from its
   boards, each key kept and `profile = "jlcpcb"` added, and
-  `jlcpcb.toml` is removed.  `copper` is dropped: the copper layers are
+  `jlcpcb.toml` is removed.  Each board gets the profile's house
+  `[board.fab]` values.  `copper` is dropped: the copper layers are
   the stackup's.  Its comments are not carried over, nor a
   key `fab.toml` does not have, each named on stderr.  A `jlcpcb.toml`
   that does not parse, or lacks a key, stops `adopt`, naming it.
@@ -67,6 +68,12 @@ time `adopt` changes files the project owns:
   renamed `fab-release` and `fab.toml`.
 - With both the old and the new there, the old is left as it is, named
   on stderr.
+- `fab.toml` with a board lacking a `[board.fab]` key: each key it
+  lacks is added, with its profile's house value, under the board's
+  `[board.fab]` (added after the board's other lines if it has none);
+  the rest of the file, comments too, is kept.  `--check` fails until
+  then.  A `fab` given otherwise (an inline table, dotted keys) stops
+  `adopt`, naming it: add the keys by hand.
 
 The `AGENTS.md` section imports `docs/kicad-style.md`, says how the
 submodule and venv are kept, and says: before writing new tooling in
@@ -93,8 +100,8 @@ What it runs, each only when needed:
 
 - After a migration, check `fab.toml` and the moved skill, and look for
   `jlcpcb-release` and `jlcpcb.toml` elsewhere in the repository.
-- `fab.toml`: each board's production directory, `sources` and profile
-  (`skills/fab-release/SKILL.md` gives the keys).
+- `fab.toml`: each board's production directory, `sources`, profile and
+  `[board.fab]` values (`skills/fab-release/SKILL.md` gives the keys).
 - Each board's stackup, in Board Setup, Physical Stackup: the release
   takes the copper layers from it, and refuses a board without one.
 - The skill's ordering checklist and part corrections.

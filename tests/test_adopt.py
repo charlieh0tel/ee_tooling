@@ -9,6 +9,7 @@ from ee_tooling.adopt import (
     AGENTS_BEGIN,
     AGENTS_END,
     Command,
+    Edit,
     File,
     Layout,
     Owner,
@@ -17,6 +18,7 @@ from ee_tooling.adopt import (
     Step,
     agents_text,
     apply,
+    fab_added,
     fab_config,
     locate,
     plan,
@@ -447,3 +449,108 @@ def test_projects_skip_production_and_hidden(tmp_path: Path) -> None:
         '[[board]]\nname = "main"\nproduction = "hardware/releases"\n'
     )
     assert projects(layout) == [tmp_path / "hardware/main/main.kicad_pro"]
+
+
+# A fab.toml from before [board.fab]: comments, a board without it and
+# one with part of it.
+NO_FAB = """\
+# my boards
+[[board]]
+name = "main"  # the main board
+directory = "hardware/main"
+production = "production/main"
+profile = "jlcpcb"
+
+[board.jlcpcb]
+require_lcsc = true
+
+[[board]]
+name = "jig"
+directory = "hardware/jig"
+production = "production/jig"
+profile = "jlcpcb"
+
+[board.fab]  # ours
+tg = 170
+"""
+
+
+def test_fab_added_keeps_the_text() -> None:
+    """The keys each board lacks, with the house values, where they belong;
+    every other line kept."""
+    edited = fab_added(NO_FAB)
+    assert edited is not None
+    text, added = edited
+    assert added == [
+        "[[board]] 'main': ipc_class, base_material, tg, electrical_test",
+        "[[board]] 'jig': ipc_class, base_material, electrical_test",
+    ]
+    assert text == NO_FAB.replace(
+        "require_lcsc = true\n",
+        'require_lcsc = true\n\n[board.fab]\nipc_class = 2\nbase_material = "FR-4"\ntg = 150\n'
+        'electrical_test = "100% netlist test per IPC-9252"\n',
+    ).replace(
+        "[board.fab]  # ours\n",
+        '[board.fab]  # ours\nipc_class = 2\nbase_material = "FR-4"\n'
+        'electrical_test = "100% netlist test per IPC-9252"\n',
+    )
+    boards = load_config(text)
+    assert boards["jig"].fab.tg == 170
+    assert boards["main"].options == {"require_lcsc": True}
+    assert fab_added(text) is None
+
+
+def test_fab_added_at_the_end() -> None:
+    text, _ = fab_added('[[board]]\nname = "b"\nprofile = "jlcpcb"\n\n\n') or ("", [])
+    assert text.endswith(
+        '\n\n[board.fab]\nipc_class = 2\nbase_material = "FR-4"\ntg = 150\n'
+        'electrical_test = "100% netlist test per IPC-9252"\n\n\n'
+    )
+
+
+def test_fab_added_leaves_an_unknown_profile() -> None:
+    assert fab_added('[[board]]\nname = "b"\nprofile = "pcbway"\n') is None
+
+
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        (
+            '[[board]]\nname = "b"\nprofile = "jlcpcb"\nfab = { tg = 150 }\n',
+            r"not a \[board.fab\]",
+        ),
+        ('[[board]]\nname = "b"\nprofile = "jlcpcb"\nfab.tg = 150\n', r"not a \[board.fab\]"),
+        ('board = [{ name = "b", profile = "jlcpcb" }]\n', r"1 boards, 0 \[\[board\]\] headers"),
+        ('[[board]]\nname = "b"\nprofile = "jlcpcb"\nfab = 1\n', "'fab' is not a table"),
+    ],
+)
+def test_fab_added_refused(text: str, error: str) -> None:
+    with pytest.raises(ValueError, match=error):
+        fab_added(text)
+
+
+def test_adopt_adds_fab_keys(tmp_path: Path) -> None:
+    """--check fails on a missing [board.fab] key; --yes adds it; then
+    there is nothing to do."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / "fab.toml").write_text(NO_FAB)
+    assert Path("fab.toml") in stale(layout)
+    steps = [s for s in plan(layout) if isinstance(s, Edit)]
+    assert [(s.path, s.why) for s in steps] == [
+        (
+            Path("fab.toml"),
+            "[board.fab] keys added: [[board]] 'main': ipc_class, base_material, tg,"
+            " electrical_test; [[board]] 'jig': ipc_class, base_material, electrical_test",
+        )
+    ]
+    apply(tmp_path, steps, lambda *_: None)
+    assert "# the main board" in (tmp_path / "fab.toml").read_text()
+    assert Path("fab.toml") not in stale(layout)
+    assert not [s for s in plan(layout) if isinstance(s, Edit)]
+
+
+def test_adopt_stops_on_fab_it_cannot_add(tmp_path: Path) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "fab.toml").write_text('[[board]]\nname = "b"\nprofile = "jlcpcb"\nfab.tg = 1\n')
+    with pytest.raises(ValueError, match=r"^fab.toml: .*; add each \[board.fab\] key by hand$"):
+        stale(layout)

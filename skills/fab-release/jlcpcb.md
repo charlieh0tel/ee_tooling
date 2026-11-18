@@ -13,6 +13,10 @@ require_lcsc = true    # default false
   naming each, before anything is written.  Without it, such a part is a
   warning naming it.
 
+`adopt` writes its house `[board.fab]` values: IPC class 2, FR-4, Tg
+150 deg C, a 100% netlist test per IPC-9252.  Check them against the
+order's options (material, Tg) before ordering.
+
 ## Its files
 
 | File | Use |
