@@ -75,7 +75,9 @@ not in another repository (a submodule, a clone): it writes that file,
 keeps the link, and says so on stderr (`AGENTS.md` as a link to
 `CLAUDE.md`, say).  Any other link (a managed hook or the workflow,
 which `adopt` writes whole, a file it creates, removes or renames, a
-link leaving the repository or into another repository) stops it,
+link leaving the repository or into another repository, a linked
+`hardware/.venv`, `pyproject.toml` or `uv.lock` the uv steps would
+write or clear) stops it,
 naming the link, before anything is done (`--check` too): replace the
 link with what it links to, or remove it.
 

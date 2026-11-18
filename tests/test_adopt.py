@@ -1829,3 +1829,16 @@ def test_board_directory_not_the_repositorys_refused(
             run(layout)
     assert not (tmp_path / "other/main.kicad_dru").exists()
     assert not (tmp_path / "board/hardware/lib/demo/main.kicad_dru").exists()
+
+
+def test_venv_through_a_link_refused(tmp_path: Path) -> None:
+    """uv venv --clear would empty a linked .venv's target: refused, the
+    target kept."""
+    layout = repository(tmp_path / "board", "main")
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+    link(tmp_path / "board/hardware/.venv", target)
+    with pytest.raises(ValueError, match=r"^hardware/\.venv is a symbolic link"):
+        plan(layout)
+    assert (target / "pyvenv.cfg").exists()

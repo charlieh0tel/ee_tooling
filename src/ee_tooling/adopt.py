@@ -135,6 +135,7 @@ class Command:
 
     args: tuple[str, ...]
     directory: Path = Path()
+    writes: tuple[Path, ...] = ()  # what it writes or clears, from the root: no link allowed
 
 
 @dataclass(frozen=True)
@@ -868,7 +869,7 @@ def refuse_links(root: Path, steps: Sequence[Step]) -> None:
                 inside = [] if source.is_symlink() else sorted(source.rglob("*.md"))
                 paths = [step.source, step.target, *(p.relative_to(root) for p in inside)]
             case Command():
-                paths = []
+                paths = list(step.writes)
         for p in paths:
             link = link_on_the_way(root, p)
             if link is not None:
@@ -887,7 +888,6 @@ def plan(layout: Layout) -> list[Step]:
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
     steps += [Remove(p, LEFTOVER_WHY) for p in leftovers(root)]
-    refuse_links(root, steps)
     # git's and git-lfs's set-up first: .gitattributes routes files to Git
     # LFS already, and a uv step that fails must not leave them unset.
     if git(root, "config", "core.hooksPath") != HOOKS_PATH:
@@ -910,13 +910,19 @@ def plan(layout: Layout) -> list[Step]:
             Command(
                 ("uv", "venv", *clear, "--system-site-packages", "--python", SYSTEM_PYTHON),
                 hardware,
+                (hardware / ".venv",),
             )
         )
     if not uses_ee_tooling(root / hardware / "pyproject.toml"):
         editable = f"./{submodule.relative_to(hardware).as_posix()}"
         steps.append(
-            Command(("uv", "add", "--dev", "--editable", "--no-workspace", editable), hardware)
+            Command(
+                ("uv", "add", "--dev", "--editable", "--no-workspace", editable),
+                hardware,
+                tuple(hardware / n for n in ("pyproject.toml", "uv.lock", ".venv")),
+            )
         )
+    refuse_links(root, steps)
     return steps
 
 
