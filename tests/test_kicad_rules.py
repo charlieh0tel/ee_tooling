@@ -234,3 +234,36 @@ def test_copied_message() -> None:
         "hw/b.kicad_dru: 2 rules below ee_tooling's end marker copy the profile's and win over"
         " them:\n  A\n  B\nremove these rules from below the end marker in hw/b.kicad_dru"
     )
+
+
+def test_new_keys_in_sorted_place() -> None:
+    """A key added to a sorted object goes where KiCad's save puts it; an
+    unsorted object gets it at the end; an existing key keeps its place."""
+    project = {
+        "board": {"design_settings": {"rules": {"min_clearance": 0.05, "min_via_diameter": 0.5}}},
+        "erc": {"rule_severities": {"zz_last": "error", "aa_first": "ignore"}},
+        "meta": {"filename": "x.kicad_pro"},
+        "schematic": {"page_layout_descr_file": ""},
+    }
+    out, _ = raised(
+        project, {"board": {"design_settings": {"rules": {"min_hole_clearance": 0.25}}}}
+    )
+    assert list(out["board"]["design_settings"]["rules"]) == [
+        "min_clearance",
+        "min_hole_clearance",
+        "min_via_diameter",
+    ]
+    house = {
+        "erc": {"rule_severities": {"mm_middle": "error"}},
+        "schematic": {"connection_grid_size": 50.0},
+    }
+    out, _ = erc_set(out, house)
+    assert list(out["erc"]["rule_severities"]) == ["zz_last", "aa_first", "mm_middle"]
+    assert list(out["schematic"]) == ["connection_grid_size", "page_layout_descr_file"]
+    out, _ = raised(out, {"board": {"design_settings": {"rules": {"min_via_diameter": 0.6}}}})
+    assert list(out["board"]["design_settings"]["rules"]) == [
+        "min_clearance",
+        "min_hole_clearance",
+        "min_via_diameter",
+    ]
+    assert list(out) == ["board", "erc", "meta", "schematic"]

@@ -59,6 +59,10 @@ overwrites the change.
    the board has it; and `schematic.connection_grid_size` set to the
    file's (Formatting, Connection grid).
 
+A key added to a `.kicad_pro` object whose keys are in sorted order, as
+KiCad saves them, goes in its sorted place, so KiCad's next save does
+not reorder the file; in an object not in that order it goes last.
+
 `fab-release` runs DRC on a scratch copy of the project (its
 `.kicad_pcb`, `.kicad_sch` and `.kicad_prl` copied, every other entry
 of its directory linked, at its own path from the

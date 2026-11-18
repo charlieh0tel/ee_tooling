@@ -101,6 +101,18 @@ def board_setup(rules: Rules) -> dict[str, Any]:
     return found
 
 
+def put(table: dict[str, Any], key: str, value: object) -> None:
+    """table[key] = value, a new key in sorted place when table's keys are
+    sorted, as KiCad writes a .kicad_pro's: so KiCad's next save does not
+    reorder it.  An existing key keeps its place."""
+    if key in table or list(table) != sorted(table):
+        table[key] = value
+        return
+    items = sorted([*table.items(), (key, value)], key=lambda item: item[0])
+    table.clear()
+    table.update(items)
+
+
 def raised(project: dict[str, Any], least: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """The project with each number in least raised to at least least's
     value, never lowered (a missing one set), and what was raised, as
@@ -113,12 +125,12 @@ def raised(project: dict[str, Any], least: dict[str, Any]) -> tuple[dict[str, An
             path = f"{where}{key}"
             if isinstance(value, dict):
                 if not isinstance(have.get(key), dict):
-                    have[key] = {}
+                    put(have, key, {})
                 walk(have[key], value, f"{path}.")
                 continue
             old = have.get(key)
             if not isinstance(old, int | float) or isinstance(old, bool) or old < value:
-                have[key] = value
+                put(have, key, value)
                 changes.append(f"{path}: {'none' if old is None else old} -> {value}")
 
     walk(out, least, "")
@@ -171,7 +183,7 @@ def erc_set(project: dict[str, Any], house: dict[str, Any]) -> tuple[dict[str, A
             path = f"{where}{key}"
             if isinstance(value, dict):
                 if not isinstance(have.get(key), dict):
-                    have[key] = {}
+                    put(have, key, {})
                 walk(have[key], value, f"{path}.")
                 continue
             old = have.get(key)
@@ -180,7 +192,7 @@ def erc_set(project: dict[str, Any], house: dict[str, Any]) -> tuple[dict[str, A
                     continue
             elif old == value:
                 continue
-            have[key] = value
+            put(have, key, value)
             changes.append(f"{path}: {'none' if old is None else old} -> {value}")
 
     walk(out, house, "")
