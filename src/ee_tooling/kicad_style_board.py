@@ -94,7 +94,10 @@ def arc(start: Point, middle: Point, end: Point) -> list[Point]:
     sweep = (a1 - a0) % math.tau
     if (am - a0) % math.tau > sweep:  # the middle is on the other way round
         sweep -= math.tau
-    return circle((ux, uy), math.dist((ux, uy), start), a0, sweep)
+    # The stored ends, not the computed ones, so the arc meets its neighbors
+    # exactly; a gap of rounding error miscounts on_board's ray crossings.
+    points = circle((ux, uy), math.dist((ux, uy), start), a0, sweep)
+    return [start, *points[1:-1], end]
 
 
 def segments(shape: Expression) -> list[Segment]:

@@ -204,6 +204,31 @@ def test_rounded_corners() -> None:
     assert not on_board((0.2, 0.2), [s for e in edges for s in segments(parse(e))])
 
 
+def test_off_board_level_with_an_arc_end() -> None:
+    # A ray from a point level with a corner arc's end crosses at that end
+    # only if the arc ends exactly where the next edge starts.
+    x0, y0, x1, y1, r = 81, 86, 119, 114, 3
+    s = math.sqrt(0.5) * r
+    edges = [
+        line((x0 + r, y0), (x1 - r, y0)),
+        line((x1, y0 + r), (x1, y1 - r)),
+        line((x1 - r, y1), (x0 + r, y1)),
+        line((x0, y1 - r), (x0, y0 + r)),
+        f"(gr_arc (start {x0} {y0 + r}) (mid {x0 + r - s} {y0 + r - s}) (end {x0 + r} {y0})"
+        ' (layer "Edge.Cuts"))',
+        f"(gr_arc (start {x1 - r} {y0}) (mid {x1 - r + s} {y0 + r - s}) (end {x1} {y0 + r})"
+        ' (layer "Edge.Cuts"))',
+        f"(gr_arc (start {x1} {y1 - r}) (mid {x1 - r + s} {y1 - r + s}) (end {x1 - r} {y1})"
+        ' (layer "Edge.Cuts"))',
+        f"(gr_arc (start {x0 + r} {y1}) (mid {x0 + r - s} {y1 - r + s}) (end {x0} {y1 - r})"
+        ' (layer "Edge.Cuts"))',
+    ]
+    outline = [s for e in edges for s in segments(parse(e))]
+    assert not on_board((76, 114), outline)
+    assert not on_board((76, 86), outline)
+    assert on_board((100, 100), outline)
+
+
 def test_keepout_only_locked() -> None:
     keepout = zone(10, 10, 20, 20, extra="(keepout (tracks not_allowed))")
     assert problems(EDGE, zone(-2, -2, 52, 32), keepout) == []
@@ -238,8 +263,8 @@ def test_not_a_board(text: str, message: str) -> None:
 )
 def test_arc(start: Point, middle: Point, end: Point) -> None:
     points = arc(start, middle, end)
-    assert points[0] == pytest.approx(start)
-    assert points[-1] == pytest.approx(end)
+    assert points[0] == start
+    assert points[-1] == end
     assert all(math.hypot(*p) == pytest.approx(1.0) for p in points)
     nearest_middle = min(math.dist(p, middle) for p in points)
     assert nearest_middle < 0.25
