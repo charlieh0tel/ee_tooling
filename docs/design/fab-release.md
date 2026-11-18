@@ -98,7 +98,12 @@ electrical_test = "100% netlist test per IPC-9252"
 - Config, `Board`, `--date`, `--force`, `--allow-dirty`, `--retag`, and
   the release's tag (`NAME-YYYYMMDD-REV`).
 - Checks, before anything is written: ERC; DRC with schematic parity
-  and the profile's rules (below); committed sources and libraries (each
+  and the profile's rules (below); committed sources and libraries (all
+  it reads: `fab.toml`, the board's directory, its sheets, `sources`,
+  the libraries, the ee_tooling checkout when the repository holds it;
+  links checked as themselves and as their targets, one out of the
+  repository refused; an ignored file it reads uncommitted; literal
+  pathspecs; each
   path the project's library tables and 3D models name inside the
   repository, a submodule's with `git status --ignore-submodules=none`,
   which reports a submodule's modified or untracked content and new
@@ -522,50 +527,54 @@ Breaking changes:
 9. A part DNP in the schematic and fitted on the board, or the reverse,
    or whose Value or footprint differs between them, is refused for the
    default build as for a variant's.
-10. Two boards' production directories the same, or one inside the
+10. The uncommitted-sources check covers `fab.toml`, the ee_tooling
+    submodule, every submodule at any depth whatever its `ignore`
+    setting, and a file the release reads that git ignores; an input that
+    is a link out of the repository is refused.
+11. Two boards' production directories the same, or one inside the
     other, are an error naming both; `--force` stops on a release
     directory holding a file not the board's (`NAME-REV-*`).
-11. A `production` outside the repository, or the same as or holding a
+12. A `production` outside the repository, or the same as or holding a
     board's `directory` or a `sources` path, is an error.
-12. A production directory that a link leads out of the repository, or
+13. A production directory that a link leads out of the repository, or
     two production paths that a link makes one directory, are an error; a
     library path through a link out of the repository, under
     `${KICADn_TEMPLATE_DIR}`, in `$(NAME)` form or under `~` is refused.
-13. A title-block rev (or `--date`) that makes the release directory more
+14. A title-block rev (or `--date`) that makes the release directory more
     than one path component, or the tag not a git tag name (`Rev A`), is
     refused before anything runs.
-14. A title-block rev using a text variable the project does not define
+15. A title-block rev using a text variable the project does not define
     is refused.
-15. A board with no stackup is refused (now a warning).
-16. A board without a stackup table on User.Drawings matching its stackup
+16. A board with no stackup is refused (now a warning).
+17. A board without a stackup table on User.Drawings matching its stackup
     is refused.
-17. DRC runs with the profile's current rules: a board clean today may
+18. DRC runs with the profile's current rules: a board clean today may
     not be.
-18. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+19. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-19. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-20. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+20. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+21. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-21. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+22. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-22. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+23. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-23. `adopt --yes` sets the board's ERC severities and connection grid.
-24. `adopt` and `adopt --check` require git-lfs.
-25. `adopt --check` fails on a plain blob of an LFS-tracked type at
+24. `adopt --yes` sets the board's ERC severities and connection grid.
+25. `adopt` and `adopt --check` require git-lfs.
+26. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-26. `adopt --yes` writes a managed section of `.gitattributes` and
+27. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-27. A push without git-lfs is refused.
-28. The release refuses a board whose inputs hold an unfetched LFS
+28. A push without git-lfs is refused.
+29. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-29. A board repository's host must support Git LFS: a push to one that
+30. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".

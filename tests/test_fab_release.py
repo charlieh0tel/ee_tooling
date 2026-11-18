@@ -2732,3 +2732,132 @@ def test_located_production_errors(tmp_path: Path) -> None:
         "[[board]] 'b' and 'c': production 'out/b' and 'out/b' are the same directory,"
         " or one holds the other"
     ]
+
+
+def rebuild_refused(monkeypatch: pytest.MonkeyPatch, match: str) -> None:
+    """A rebuild of the fixture's release (--force) refused as uncommitted,
+    the status naming match."""
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    with pytest.raises(
+        SystemExit, match=rf"uncommitted changes in the release's sources:\n(.*\n)*.*{match}"
+    ):
+        main()
+
+
+def test_uncommitted_fab_toml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "fab.toml").write_text((root / "fab.toml").read_text().replace("tg = 150", "tg = 170"))
+    rebuild_refused(monkeypatch, "fab.toml")
+
+
+def test_uncommitted_ee_tooling_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ee_tooling checkout the release runs from, a submodule of the
+    board repository: a change in it (a parts.toml correction) refused."""
+    root, _ = release(tmp_path, monkeypatch)
+    submodule = library_submodule(tmp_path, root)
+    monkeypatch.setattr(fab_release, "CHECKOUT", submodule)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    (submodule / "parts.toml").write_text("[rotation]\n")
+    rebuild_refused(monkeypatch, "libs/shared")
+
+
+def test_uncommitted_source_in_a_submodule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source inside a submodule: its change, as the submodule's."""
+    root, _ = release(tmp_path, monkeypatch)
+    submodule = library_submodule(tmp_path, root)
+    (root / "hw/fp-lib-table").write_text("(fp_lib_table)\n")
+    (root / "fab.toml").write_text(
+        (root / "fab.toml")
+        .read_text()
+        .replace('sources = ["docs"]', 'sources = ["libs/shared/x.pretty"]')
+    )
+    git(root, "commit", "-q", "-am", "source in a submodule")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    (submodule / "x.pretty/R.kicad_mod").write_text("(footprint R2)\n")
+    rebuild_refused(monkeypatch, "libs/shared")
+
+
+def test_uncommitted_through_a_link(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source that is a link inside the repository: its target's change
+    refused; a link out of the repository refused as such."""
+    monkeypatch.setitem(FIXTURE, "shared/notes.txt", "notes\n")
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "docs/linked").symlink_to(root / "shared")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "link")
+    (root / "fab.toml").write_text(
+        (root / "fab.toml").read_text().replace('sources = ["docs"]', 'sources = ["docs/linked"]')
+    )
+    git(root, "commit", "-q", "-am", "linked source")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    (root / "shared/notes.txt").write_text("changed\n")
+    rebuild_refused(monkeypatch, "shared/notes.txt")
+    git(root, "checkout", "--", "shared")
+    (root / "docs/linked").unlink()
+    (root / "docs/linked").symlink_to(tmp_path)
+    git(root, "commit", "-q", "-am", "out")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    with pytest.raises(SystemExit, match=r"^docs/linked leads out of the repository \(a link\)"):
+        main()
+
+
+def test_ignored_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A file the release reads that git ignores: as untracked."""
+    monkeypatch.setitem(FIXTURE, ".gitignore", "secret.txt\n")
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "docs/secret.txt").write_text("not committed\n")
+    rebuild_refused(monkeypatch, "!! docs/secret.txt")
+
+
+def test_uncommitted_nested_submodule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A library submodule's own submodule, its .gitmodules ignore = all:
+    a change in it refused."""
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    (inner / "a.kicad_mod").write_text("(footprint A)\n")
+    git(inner, "init", "-q")
+    git(inner, "add", ".")
+    git(inner, "commit", "-q", "-m", "inner")
+    root, _ = release(tmp_path, monkeypatch)
+    lib = tmp_path / "lib"
+    (lib / "x.pretty").mkdir(parents=True)
+    (lib / "x.pretty/R.kicad_mod").write_text("(footprint R)\n")
+    git(lib, "init", "-q")
+    git(lib, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(inner), "inner")
+    git(lib, "config", "-f", ".gitmodules", "submodule.inner.ignore", "all")
+    git(lib, "add", ".")
+    git(lib, "commit", "-q", "-m", "lib")
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "libs/shared")
+    git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "-q",
+        "--init",
+        "--recursive",
+    )
+    (root / "hw/fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "x")(uri "${KIPRJMOD}/../libs/shared/x.pretty")))\n'
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "library")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    (root / "libs/shared/inner/a.kicad_mod").write_text("(footprint B)\n")
+    rebuild_refused(monkeypatch, "libs/shared/inner")
+
+
+def test_production_is_a_literal_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """production = "*": the check leaves out the directory named *, not
+    everything."""
+    toml = FIXTURE["fab.toml"].replace('production = "production"', 'production = "*"')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    root, _ = release(tmp_path, monkeypatch)
+    assert (root / "*/20261118-1/b-1-bom.csv").exists()
+    (root / "docs/notes.txt").write_text("changed\n")
+    rebuild_refused(monkeypatch, "docs/notes.txt")

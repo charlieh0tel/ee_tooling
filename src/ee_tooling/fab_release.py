@@ -88,6 +88,8 @@ from ee_tooling.sexpr import Atom, Expression, Item, ParseError, child, children
 from ee_tooling.stackup_table import layer_names
 
 CONFIG = "fab.toml"
+# This ee_tooling's checkout: src/ee_tooling/fab_release.py's grandparent.
+CHECKOUT = Path(__file__).resolve().parents[2]
 # fab.toml's top-level keys.
 TOP_KEYS = ("board",)
 # A [[board]]'s keys whose values are a string, then those that are a list
@@ -1024,17 +1026,6 @@ class Release:
         """The repository's submodules, at any depth (submodules())."""
         return submodules(self.root)
 
-    def library_paths(self, inside: Iterable[Path]) -> list[Path]:
-        """The paths whose changes git status reports for the libraries
-        inside the repository: each library's submodule if it is in one
-        (git status names a submodule, never a path inside it), else
-        itself."""
-        submodules = self.submodules()
-        out: dict[Path, None] = {}
-        for p in inside:
-            out[next((s for s in submodules if p.is_relative_to(s)), p)] = None
-        return list(out)
-
     def check(
         self,
         allow_dirty: bool,
@@ -1066,20 +1057,73 @@ class Release:
             str(self.drc_project(rules)),
         ).returncode:
             sys.exit(f"DRC is not clean, with {self.board.profile}'s rules:\n{report(drc)}")
-        # Every board's production directory left out: a release's own
-        # output, which may be in the board's directory, is not a source.
-        paths = [
-            str(b.directory),
-            *(str(s) for s in b.sources),
-            *(str(p) for p in self.library_paths(libraries)),
-            *(f":(exclude){p}" for p in productions),
-        ]
-        # A submodule's changes, its new commits, modified or untracked
-        # content, whatever its ignore setting in .gitmodules.
-        status = self.git("status", "--porcelain", "--ignore-submodules=none", "--", *paths).strip()
+        status = self.uncommitted(productions, libraries)
         if status and not allow_dirty:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
         return self.git("rev-parse", "--short", "HEAD").strip() + ("-dirty" if status else "")
+
+    def inputs_read(self, extra: Iterable[Path]) -> list[Path]:
+        """Every path the release reads, from the root: fab.toml, the
+        project's files and sources (Board.source_paths), extra (its
+        libraries and sheets), and the ee_tooling checkout it runs from
+        when the repository holds it (its parts.toml, its rules)."""
+        paths = [Path(CONFIG), *self.board.source_paths(self.root), *extra]
+        checkout = located(self.root, CHECKOUT)
+        if checkout is not None and checkout != Path("."):
+            paths.append(checkout)
+        return list(dict.fromkeys(normal(p) for p in paths))
+
+    def uncommitted(self, productions: Iterable[Path], extra: Iterable[Path]) -> str:
+        """git status of what the release reads (inputs_read, and the
+        board's directory), every production directory left out: each
+        path as written and with its links followed, a link out of the
+        repository refused; a path in a submodule as the submodule (git
+        status names a submodule, never a path inside it); every submodule
+        among them, at any depth, by its own git status, whatever its or
+        its parent's ignore setting; and a file the release reads that git
+        ignores, as untracked.  Literal pathspecs: no name is a pattern."""
+        reads = self.inputs_read(extra)
+        modules = submodules(self.root)
+        paths: dict[Path, None] = {}
+        for p in [self.board.directory, *reads]:
+            target = located(self.root, p)
+            if target is None:
+                sys.exit(f"{p} leads out of the repository (a link): the release reads it")
+            for q in (normal(p), target):
+                paths[
+                    repository_of(q, modules) if repository_of(q, modules) != Path(".") else q
+                ] = None
+        excluded = [f":(exclude,literal){p}" for p in productions]
+        literal = [f":(literal){p}" for p in paths]
+        lines = self.git(
+            "status", "--porcelain", "--ignore-submodules=none", "--", *literal, *excluded
+        ).splitlines()
+        ignored = self.git(
+            "status",
+            "--porcelain",
+            "--ignored",
+            "--ignore-submodules=none",
+            "--",
+            *(f":(literal){p}" for p in reads if p not in modules),
+            *excluded,
+        ).splitlines()
+        lines += [line for line in ignored if line.startswith("!! ")]
+        # A submodule's own status, its submodules' too, whatever their
+        # ignore settings: the superproject's may not show a nested one.
+        for m in modules:
+            if any(m == p or m.is_relative_to(p) for p in paths):
+                r = subprocess.run(
+                    ["git", "status", "--porcelain", "--ignore-submodules=none"],
+                    cwd=self.root / m,
+                    env=environment(),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if r.returncode != 0:
+                    sys.exit(f"git status in {m} failed ({r.returncode}):\n{r.stderr}")
+                lines += [f"{line[:3]}{m}/{line[3:]}" for line in r.stdout.splitlines()]
+        return "\n".join(dict.fromkeys(lines))
 
     def tagged(self, name: str) -> str | None:
         """The full hash of the commit tag `name` is on, or None."""
