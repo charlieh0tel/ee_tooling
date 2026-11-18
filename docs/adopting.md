@@ -226,7 +226,11 @@ examines HEAD's tree alone: history and uncommitted files pass, and it
 needs no Git LFS object fetched and no filter set, so CI checks out
 without `lfs: true`.  A repository with no commit passes.  The hooks
 `git lfs fsck` installs where there is no `pre-push` go to a scratch
-directory, not `.githooks`.
+directory, not `.githooks`.  Without `--yes`, `adopt` changes nothing in
+`.git/config` either: git-lfs's `ls-files` and `fsck` set
+`lfs.repositoryformatversion` there when it is unset, and `adopt` runs
+them with `GIT_CONFIG` naming a scratch copy of it, which takes the
+write.  `--yes`'s `git lfs install` and `git lfs pull` set it.
 
 A repository whose files of these types were committed before the
 section, or from a machine without git-lfs's filters, holds them as

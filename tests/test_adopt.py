@@ -1511,3 +1511,23 @@ def test_managed_hook_not_executable_in_git(tmp_path: Path) -> None:
     ).stdout
     assert staged.startswith("100755 ")
     assert stale(layout) == []
+
+
+@needs_lfs
+def test_dry_run_and_check_leave_git_config(tmp_path: Path) -> None:
+    """git lfs ls-files (the plan) and git lfs fsck (--check) would set
+    lfs.repositoryformatversion in .git/config: neither does here, and
+    they still read the repository's settings."""
+    layout = repository(tmp_path, "main")
+    git("-C", str(tmp_path), "config", "core.hooksPath", ".githooks")
+    (tmp_path / ".gitattributes").write_text(GITATTRIBUTES)
+    (tmp_path / "a.zip").write_text("PK")
+    commit(tmp_path, "board", ".")
+    config = (tmp_path / ".git/config").read_bytes()
+    plan(layout)
+    stale(layout)
+    report = plain_blobs(tmp_path)
+    assert report is not None
+    assert '"a.zip"' in report
+    assert (tmp_path / ".git/config").read_bytes() == config
+    assert not (tmp_path / ".githooks").exists()

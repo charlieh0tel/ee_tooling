@@ -121,6 +121,13 @@ tests in `tests/test_adopt.py`, `tests/test_fab_release.py`):
   `pull` and `install --local --skip-repo` write none.  With
   `git -c core.hooksPath=DIR`, `fsck` writes them into DIR, so `--check`
   runs it with a scratch directory there.
+- `git lfs ls-files`, `fsck`, `pull` and `install --local --skip-repo`
+  set `lfs.repositoryformatversion = 0` in `.git/config` when it is unset
+  (`version` does not); `-c lfs.repositoryformatversion=0`, or the key
+  in the global config, does not stop it.  It is written through `git
+  config`: with `GIT_CONFIG` naming another file (git-config(1)) that
+  file takes the write, and git-lfs reads its settings, `core.hooksPath`
+  among them, from it rather than from `-c`.
 - `git add --renormalize .` stages every tracked file's changes, not
   only the renormalized ones; untracked files are left.  With the
   filters set, `git add` of a plain blob shown ` M` stores it as a

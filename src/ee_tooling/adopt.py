@@ -221,11 +221,36 @@ def lfs_missing() -> str | None:
     )
 
 
+def git_lfs(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """git lfs args, in root, leaving the repository's hooks and config as
+    they are.  git-lfs sets lfs.repositoryformatversion in .git/config when
+    it is unset, through `git config`, which reads and writes the file
+    GIT_CONFIG names instead (git-config(1)): here a scratch copy of the
+    repository's config, so git-lfs reads its settings and its write is
+    dropped.  With no pre-push in core.hooksPath, git-lfs's fsck installs its
+    four hooks there (.githooks, before --yes writes the managed one): here
+    a scratch directory."""
+    with tempfile.TemporaryDirectory() as scratch:
+        config = Path(scratch, "config")
+        local = git(root, "rev-parse", "--git-path", "config")
+        config.write_bytes((root / local).read_bytes() if local else b"")
+        # git-lfs reads core.hooksPath from that file, not from -c.
+        git(root, "config", "--file", str(config), "core.hooksPath", str(Path(scratch, "hooks")))
+        return subprocess.run(
+            ["git", "lfs", *args],
+            cwd=root,
+            env={**environment(), "GIT_CONFIG": str(config)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+
 def lfs_unfetched(root: Path) -> bool:
     """Whether a file Git LFS tracks at HEAD is a pointer in the work tree
     (git lfs ls-files marks it -, a fetched one *)."""
     return any(
-        line.split(" ", 2)[1:2] == ["-"] for line in git(root, "lfs", "ls-files").splitlines()
+        line.split(" ", 2)[1:2] == ["-"] for line in git_lfs(root, "ls-files").stdout.splitlines()
     )
 
 
@@ -235,18 +260,7 @@ def plain_blobs(root: Path) -> str | None:
     HEAD."""
     if not git(root, "rev-parse", "--verify", "-q", "HEAD"):
         return None
-    # With no pre-push in core.hooksPath, fsck installs git-lfs's four hooks
-    # there (.githooks, before --yes writes the managed one): into a scratch
-    # directory instead.
-    with tempfile.TemporaryDirectory() as hooks:
-        r = subprocess.run(
-            ["git", "-c", f"core.hooksPath={hooks}", "lfs", "fsck", "--pointers", "HEAD"],
-            cwd=root,
-            env=environment(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    r = git_lfs(root, "fsck", "--pointers", "HEAD")
     return None if r.returncode == 0 else f"{r.stdout}{r.stderr}".strip()
 
 
