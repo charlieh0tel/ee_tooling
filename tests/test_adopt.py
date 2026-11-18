@@ -22,6 +22,7 @@ from ee_tooling.adopt import (
     apply,
     fab_added,
     fab_config,
+    has_comment,
     locate,
     plan,
     projects,
@@ -345,6 +346,7 @@ def test_migrate_several_boards(tmp_path: Path, capsys: pytest.CaptureFixture[st
         ),
     ]
     err = capsys.readouterr().err
+    assert err.count("jlcpcb.toml: its comments not carried over to fab.toml\n") == 1
     assert "'colour' not carried over to fab.toml\n" in err
     assert (
         "[[board]] 'jig': 'copper' not carried over to fab.toml: the copper layers come from"
@@ -731,3 +733,27 @@ def test_check_says_what_each_awaits(
     assert f"to be updated: hardware/main/main.kicad_dru{run}" in err
     assert f"to be updated: hardware/main/main.kicad_pro{run}" in err
     assert "out of date" not in err
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("# mine\n", True),
+        ('name = "b"  # the board\n', True),
+        ('name = "a#b"\n', False),
+        ("name = 'a#b'\n", False),
+        ('name = "a\\"#b"\n', False),
+        ('[[board]]\nname = "b"\n', False),
+    ],
+)
+def test_has_comment(text: str, found: bool) -> None:
+    assert has_comment(text) is found
+
+
+def test_migrate_without_comments_says_nothing_of_them(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "jlcpcb.toml").write_text(OLD_CONFIG.replace("# my boards\n", ""))
+    plan(layout)
+    assert "comments" not in capsys.readouterr().err

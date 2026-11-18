@@ -72,8 +72,9 @@ time `adopt` changes files the project owns:
   boards, each key kept and `profile = "jlcpcb"` added, and
   `jlcpcb.toml` is removed.  Each board gets the profile's house
   `[board.fab]` values.  `copper` is dropped: the copper layers are
-  the stackup's.  Its comments are not carried over, nor a
-  key `fab.toml` does not have, each named on stderr.  A `jlcpcb.toml`
+  the stackup's.  Its comments are not carried over, said once on
+  stderr if it has any; nor is a key `fab.toml` does not have, each
+  named on stderr.  A `jlcpcb.toml`
   that does not parse, or lacks a key, stops `adopt`, naming it.
 - `.claude/skills/jlcpcb-release/`, with no `.claude/skills/fab-release/`:
   moved there, and `jlcpcb-release` and `jlcpcb.toml` in its `.md` files

@@ -61,6 +61,8 @@ RENAMED = (("jlcpcb-release", "fab-release"), (str(OLD_CONFIG), CONFIG))
 # A line of fab.toml that starts a [[board]], and one that starts its
 # [board.fab].
 BOARD_HEADER = re.compile(r"^[ \t]*\[\[[ \t]*board[ \t]*\]\][ \t]*(#.*)?$", re.M)
+# A TOML one-line string, basic or literal.
+TOML_STRING = re.compile(r""""(?:[^"\\]|\\.)*"|'[^']*'""")
 FAB_HEADER = re.compile(rf"^[ \t]*\[[ \t]*board[ \t]*\.[ \t]*{FAB}[ \t]*\][ \t]*(#.*)?$", re.M)
 
 
@@ -311,6 +313,11 @@ def fab_config(layout: Layout) -> str | None:
     return "\n".join(lines) + "\n"
 
 
+def has_comment(text: str) -> bool:
+    """Whether TOML text has a comment: a # outside a one-line string."""
+    return any("#" in TOML_STRING.sub("", line) for line in text.splitlines())
+
+
 def migrated_config(text: str) -> str:
     """fab.toml from jlcpcb.toml's text: its boards, each with adopt's
     profile.  Its comments are not carried over, nor its keys fab.toml does
@@ -321,6 +328,8 @@ def migrated_config(text: str) -> str:
         f"# from the repository root.  Migrated from {OLD_CONFIG} by ee-tooling-adopt:",
         "# check each board's [board.fab].",
     ]
+    if has_comment(text):
+        print(f"{OLD_CONFIG}: its comments not carried over to {CONFIG}", file=sys.stderr)
     for key in sorted(set(old) - {"board"}):
         print(f"{OLD_CONFIG}: {key!r} not carried over to {CONFIG}", file=sys.stderr)
     boards = old.get("board", [])
