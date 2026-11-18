@@ -28,6 +28,7 @@ import csv
 import datetime
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -188,6 +189,9 @@ def board(table: dict[str, Any], number: int) -> Board:
         )
     if not isinstance(table.get(text["profile"], {}), dict):
         raise ValueError(f"{where}: {text['profile']!r} is not a table")
+    for source in lists["sources"]:
+        if os.path.isabs(source) or os.path.normpath(source).split(os.sep)[0] == os.pardir:
+            raise ValueError(f"{where}: source {source!r} is outside the repository")
     return Board(
         name=name,
         directory=Path(text["directory"]),

@@ -42,9 +42,24 @@ Every key but `sources` and the profile's table is required.  A key it
 does not know, at any level, is an error naming it; the only table
 allowed is the one named by `profile`.  Paths are from the repository root.
 `adopt` writes `production` for a lone board and `production/<name>` for
-each of several.  The source tgz holds the project's `.kicad_pcb`,
-`.kicad_sch`, `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`,
-`fp-lib-table` and `sym-lib-table` that exist, then `sources`.
+each of several.  Each `sources` path is inside the repository: one that
+is absolute or leads out of it (`..`) is an error naming it.
+
+## The source tgz
+
+`NAME-REV-source.tgz` holds the project's `.kicad_pcb`, `.kicad_sch`,
+`.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
+`sym-lib-table` that exist (directories whole), then `sources`, then
+the schematic and board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty`
+if built from uncommitted sources, and when it was built).
+
+It leaves out every library outside the repository: a sibling clone
+named by a relative path (`${KIPRJMOD}/../lib`) in a library table or a
+3D model path.  The board file embeds each footprint and the schematic
+each symbol, so the archive rebuilds the board and its outputs; the 3D
+models of parts from such a library are missing from it.  A library the
+archive must hold goes inside the repository (a submodule) and in
+`sources`.
 
 It stops unless ERC is clean, DRC (with schematic parity) is clean,
 the board's directory and `sources` have no uncommitted changes

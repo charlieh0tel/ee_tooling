@@ -90,6 +90,13 @@ def test_config_missing_key(key: str) -> None:
         (BOARD.replace('"hw"', "1"), r"'directory' is not a string$"),
         (BOARD.replace('["F.Cu", "B.Cu"]', '"F.Cu"'), r"'copper' is not a list of strings$"),
         (f"{BOARD}sources = [1]\n", r"'sources' is not a list of strings$"),
+        *(
+            (
+                f'{BOARD}sources = ["{x}"]\n',
+                rf"^\[\[board\]\] 'b': source '{x}' is outside the repository$",
+            )
+            for x in ("/home/lib", "..", "../lib", "docs/../../lib")
+        ),
         (BOARD + BOARD, r"^\[\[board\]\] 'b' is there twice$"),
         ('board = "b"\n', r"no \[\[board\]\]"),
         ('board = ["b"]\n', r"no \[\[board\]\]"),
@@ -127,6 +134,12 @@ def test_profile_options_refused(table: str, error: str) -> None:
 def test_profile_options_default() -> None:
     boards = load_config(BOARD)
     assert profile_options(boards, {"jlcpcb": Jlcpcb(CORRECTIONS)}) == {"b": Options()}
+
+
+def test_config_sources_inside() -> None:
+    """A path that only passes through .. stays inside."""
+    text = f'{BOARD}sources = ["docs/../lib", "./docs", "..lib"]\n'
+    assert load_config(text)["b"].sources == (Path("docs/../lib"), Path("docs"), Path("..lib"))
 
 
 def test_config_board_without_name() -> None:
