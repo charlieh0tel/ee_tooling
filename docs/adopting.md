@@ -121,7 +121,7 @@ What it runs, each only when needed:
   on its checkout.
 - The attribution job fails on any commit already in the history that
   credits an AI assistant.
-- Commit the result.
+- Commit the result, `hardware/uv.lock` with it.
 
 ## Hook
 
@@ -141,4 +141,11 @@ git submodule update --remote hardware/ee_tooling
 hardware/ee_tooling/adopt --yes
 ```
 
-and commit the new pointer with any files it rewrote.
+and commit the new pointer with any files it rewrote, and with
+`hardware/uv.lock` if it changed.  `hardware/uv.lock` records the
+submodule's version and dependencies, so a bump that changes either
+changes it: the first `uv run` in `hardware/` after the bump rewrites
+it (`uv lock --check` there says whether it is current).  `adopt --yes`
+does not: its `uv add` runs only when `hardware/pyproject.toml` lacks
+ee_tooling.  `fab-release` refuses an uncommitted `uv.lock` in a board's
+directory or `sources` (the repository-root layout, `directory = "."`).
