@@ -105,6 +105,16 @@ variants.
   anywhere else (copper, mask, paste, Edge.Cuts, the drill, the job
   file): refused, naming the variant and the layer.  The drill export
   takes no variant.
+- `${VARIANT}` and `${VARIANT_DESC}` take each variant's value in
+  `kicad-cli`'s exports (10.0.8) only when the board's own top-level
+  `(variants (variant (name ...)) ...)` names the variant; with the
+  variants only in the `.kicad_pro` (where KiCad's GUI keeps them),
+  every variant's Gerbers get the same text.  So a release with
+  `variants` warns, naming the layers and texts, when such a text is on
+  a layer it exports (copper, mask, paste, silkscreen, Edge.Cuts,
+  User.Drawings, Fab) and the board's list lacks a listed variant: add
+  the variants to the board's list (pcbnew's `AddVariant`, then save).
+  A warning only: the release is made as without it.
 - Built once: the Gerber map (its title naming each zip), the stackup,
   the fabrication notes and the source tgz.
 

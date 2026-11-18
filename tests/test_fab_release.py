@@ -39,13 +39,14 @@ from ee_tooling.fab_release import (
     tag_plan,
     tag_refused,
     variant_names,
+    variant_text_warning,
 )
 from ee_tooling.fabrication import Fab, GerberFile, stackup
 from ee_tooling.kicad_rules import board_setup, install, installed
 from ee_tooling.kicad_style_stackup import HEADER
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
-from ee_tooling.sexpr import parse, quote
+from ee_tooling.sexpr import Expression, parse, quote
 from ee_tooling.stackup_table import layer_names, stackup_rows
 
 CONFIG = """
@@ -2341,3 +2342,101 @@ def test_release_git_ignores_a_callers_repository(
     assert release.run("git", "rev-parse", "--absolute-git-dir").stdout.strip() == str(
         board / ".git"
     )
+
+
+# A board's text with each variant's variable, and the (layers ...) names
+# KiCad 10 writes for it.
+VARIANT_LAYERS = (
+    '(layers (0 "F.Cu" signal) (2 "B.Cu" signal) (5 "F.SilkS" user "F.Silkscreen")'
+    ' (17 "Dwgs.User" user "User.Drawings") (19 "Cmts.User" user "User.Comments")'
+    ' (31 "F.Fab" user))'
+)
+VARIANT_TEXT = '(gr_text "rev ${VARIANT}" (at 1 1) (layer "F.SilkS") (uuid "t"))'
+BOARD_LIST = '(variants (variant (name "lite")) (variant (name "full")))'
+
+
+def variant_board(*items: str) -> Expression:
+    return parse(f"(kicad_pcb {VARIANT_LAYERS} {' '.join(items)})")
+
+
+SHOWN = ["F.Cu", "B.Cu", "F.Silkscreen", "User.Drawings", "F.Fab"]
+
+
+@pytest.mark.parametrize(
+    ("listed", "items", "warned"),
+    [
+        (("lite", "full"), (VARIANT_TEXT,), True),
+        (("lite", "full"), (VARIANT_TEXT.replace("${VARIANT}", "${VARIANT_DESC}"),), True),
+        (("lite", "full"), (VARIANT_TEXT, '(variants (variant (name "lite")))'), True),
+        (("lite", "full"), (VARIANT_TEXT, BOARD_LIST), False),
+        ((), (VARIANT_TEXT,), False),
+        (("lite", "full"), (VARIANT_TEXT.replace("${VARIANT}", "A"),), False),
+        (("lite", "full"), (VARIANT_TEXT.replace("F.SilkS", "Cmts.User"),), False),
+        (
+            ("lite", "full"),
+            (
+                '(footprint "R" (layer "F.Cu") (property "Value" "${VARIANT}" (at 0 0)'
+                ' (layer "F.Fab") (uuid "p")))',
+            ),
+            True,
+        ),
+        (
+            ("lite", "full"),
+            (
+                '(footprint "R" (layer "F.Cu") (property "Value" "${VARIANT}" (at 0 0)'
+                ' (layer "F.Fab") (hide yes) (uuid "p")))',
+            ),
+            False,
+        ),
+        (
+            ("lite", "full"),
+            ('(table (layer "Dwgs.User") (cells (table_cell "${VARIANT}" (uuid "c"))))',),
+            True,
+        ),
+    ],
+)
+def test_variant_text_warning(
+    listed: tuple[str, ...], items: tuple[str, ...], warned: bool
+) -> None:
+    """Text with a variant's variable on a layer the release exports, and the
+    board's own list lacking a listed variant: warned; otherwise not."""
+    found = variant_text_warning(listed, variant_board(*items), SHOWN)
+    assert (found is not None) is warned
+
+
+def test_variant_text_warning_names_the_layers_texts_and_the_fix() -> None:
+    pcb = variant_board(
+        VARIANT_TEXT,
+        VARIANT_TEXT.replace("F.SilkS", "Dwgs.User"),
+        '(variants (variant (name "lite")))',
+    )
+    assert variant_text_warning(("lite", "full"), pcb, SHOWN) == (
+        "text 'rev ${VARIANT}' on F.Silkscreen, User.Drawings will be the same on every"
+        " variant's Gerbers: the board's own variants list lacks full (kicad-cli then gives the"
+        " variables one value): add the variants to the board's list (pcbnew's AddVariant, then"
+        " save)"
+    )
+
+
+def test_variant_text_default_layer_names() -> None:
+    """A board with no (layers ...) names: KiCad's default names."""
+    pcb = parse(f"(kicad_pcb {VARIANT_TEXT})")
+    assert variant_text_warning(("lite",), pcb, SHOWN) is not None
+
+
+@pytest.mark.parametrize(("where", "warned"), [("project", True), ("board", False)])
+def test_release_warns_on_variant_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    where: str,
+    warned: bool,
+) -> None:
+    """Variants in the .kicad_pro only and ${VARIANT} on the silkscreen:
+    the release warns, and is made as without the text."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace("(kicad_pcb ", f"(kicad_pcb {VARIANT_TEXT}\n", 1)
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    root, _ = variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, where=where)
+    err = capsys.readouterr().err
+    assert ("warning: b.kicad_pcb: text 'rev ${VARIANT}' on F.Silkscreen" in err) is warned
+    assert (root / "production/20261118-1/b-1-lite-bom.csv").exists()

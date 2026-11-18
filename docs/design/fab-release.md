@@ -668,8 +668,12 @@ rules.
   (KiCad's GUI), `kicad-cli pcb export gerbers --variant X` (10.0.8)
   honors the footprints' overrides but gave the default variant's
   `${VARIANT}` silkscreen text, the same for every variant, on a scratch
-  board; with the board's own `(variants)` list, each variant's.  A
-  per-variant silkscreen marking needs checking on such a board.
+  board; with the board's own `(variants)` list, each variant's, and
+  `${VARIANT_DESC}` likewise (each variant's `(description ...)`).  The
+  release warns, in a build with `variants`, when the board shows text
+  with `${VARIANT}` or `${VARIANT_DESC}` on a layer it exports and its
+  own list lacks a listed variant, naming the layers and the texts and
+  the fix (pcbnew's `AddVariant`, then save); it changes nothing else.
 - Variants: one tag for all of a release's variants: a variant added at
   the same revision later is a new release, a new date directory and a
   new tag, with every variant rebuilt.

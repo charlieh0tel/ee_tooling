@@ -83,7 +83,8 @@ from ee_tooling.profiles.profile import (
     write_csv,
 )
 from ee_tooling.project_libraries import libraries
-from ee_tooling.sexpr import Expression, Item, ParseError, child, parse
+from ee_tooling.sexpr import Atom, Expression, Item, ParseError, child, children, parse
+from ee_tooling.stackup_table import layer_names
 
 CONFIG = "fab.toml"
 # fab.toml's top-level keys.
@@ -513,6 +514,75 @@ def project_variants(
         *(v for sheet in schematic for v in variant_names(sheet)),
     ]
     return list(dict.fromkeys(names))
+
+
+# The text variables a variant gives its own value (KiCad 10.0.8).
+VARIANT_VARIABLES = ("${VARIANT}", "${VARIANT_DESC}")
+# KiCad's default user names of the layers whose file (canonical) names
+# differ, for a board whose (layers ...) gives none.
+DEFAULT_LAYER_NAMES = {
+    "F.SilkS": "F.Silkscreen",
+    "B.SilkS": "B.Silkscreen",
+    "Dwgs.User": "User.Drawings",
+    "Cmts.User": "User.Comments",
+    "F.CrtYd": "F.Courtyard",
+    "B.CrtYd": "B.Courtyard",
+}
+
+
+def board_list_variants(pcb: Expression) -> list[str]:
+    """The names in the board's own top-level (variants (variant (name X)))
+    list, which pcbnew's AddVariant writes."""
+    return [
+        str(name[1])
+        for variants in children(pcb, "variants")
+        for variant in children(variants, "variant")
+        if (name := child(variant, "name")) is not None and len(name) > 1
+    ]
+
+
+def variant_texts(pcb: Expression) -> list[tuple[str, str]]:
+    """The board's shown texts that use a variant's variable, each with its
+    layer (its own, or the nearest enclosing item's, as a table cell's), as
+    the file names it."""
+    out: list[tuple[str, str]] = []
+    todo: list[tuple[Item, str | None]] = [(pcb, None)]
+    while todo:
+        item, layer = todo.pop()
+        if not isinstance(item, list):
+            continue
+        own = child(item, "layer")
+        here = str(own[1]) if own is not None and len(own) > 1 else layer
+        hidden = child(item, "hide") is not None or "hide" in item[1:]
+        texts = [i for i in item[1:] if isinstance(i, str) and not isinstance(i, Atom)]
+        if not hidden and here is not None:
+            out += [(here, t) for t in texts if any(v in t for v in VARIANT_VARIABLES)]
+        todo += [(i, here) for i in reversed(item[1:])]
+    return out
+
+
+def variant_text_warning(
+    listed: Sequence[str], pcb: Expression, exported: Iterable[str]
+) -> str | None:
+    """A warning when listed variants are built, the board shows a variant's
+    variable on an exported layer, and its own (variants ...) list lacks a
+    listed one: kicad-cli 10.0.8 then gives the text one value for every
+    variant."""
+    if not listed:
+        return None
+    missing = [v for v in listed if v not in board_list_variants(pcb)]
+    names = {**DEFAULT_LAYER_NAMES, **layer_names(pcb)}
+    shown = [(names.get(layer, layer), text) for layer, text in variant_texts(pcb)]
+    shown = [(layer, text) for layer, text in shown if layer in set(exported)]
+    if not missing or not shown:
+        return None
+    layers = ", ".join(dict.fromkeys(layer for layer, _ in shown))
+    texts = ", ".join(dict.fromkeys(repr(text) for _, text in shown))
+    return (
+        f"text {texts} on {layers} will be the same on every variant's Gerbers: the board's own"
+        f" variants list lacks {', '.join(missing)} (kicad-cli then gives the variables one"
+        " value): add the variants to the board's list (pcbnew's AddVariant, then save)"
+    )
 
 
 def check_variants(listed: Sequence[str], project: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -1305,6 +1375,9 @@ def main() -> None:
         sys.exit("\n".join(f"{b.name}: {e}" for e in errors))
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
+    shown = [*copper, *OTHER_LAYERS, *BOARD_PDF_LAYERS]
+    if (text := variant_text_warning(b.variants, pcb, shown)) is not None:
+        print(f"warning: {b.pcb.name}: {text}", file=sys.stderr)
     # Each build: a listed variant, or the default (None).
     builds: list[str | None] = [*b.variants] or [None]
     profile = profiles[b.profile]
