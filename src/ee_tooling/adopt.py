@@ -351,13 +351,20 @@ def productions(layout: Layout) -> list[Path]:
 
 def projects(layout: Layout) -> list[Path]:
     """The KiCad projects (*.kicad_pro) under the hardware directory, but
-    in the submodule, a production directory or a hidden directory (.git,
-    .venv, .claude's worktrees)."""
+    in the submodule, a production directory, a hidden directory (.git,
+    .venv, .claude's worktrees) or another repository (a directory with a
+    .git: a library's submodule, a clone)."""
     root = layout.root
     skip = {root / layout.submodule, *(root / p for p in productions(layout))}
     found = []
     for here, directories, names in (root / layout.hardware).walk():
-        directories[:] = [d for d in directories if not d.startswith(".") and here / d not in skip]
+        directories[:] = [
+            d
+            for d in directories
+            if not d.startswith(".")
+            and here / d not in skip
+            and not os.path.lexists(here / d / ".git")
+        ]
         found += [here / n for n in names if n.endswith(".kicad_pro")]
     return sorted(found)
 

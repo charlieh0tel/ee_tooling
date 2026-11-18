@@ -1420,3 +1420,22 @@ def test_rename_through_a_link_refused(tmp_path: Path, linked: str) -> None:
     with pytest.raises(ValueError, match=rf"^{re.escape(name)} is a symbolic link"):
         plan(layout)
     assert (outside / "SKILL.md").read_text() == "jlcpcb-release\n"
+
+
+def test_projects_skip_other_repositories(tmp_path: Path) -> None:
+    """A library's submodule (a .git file) or a clone (a .git directory)
+    under the hardware directory: its projects are not boards."""
+    layout = repository(tmp_path, "main")
+    for name, git_entry in (("lib", "file"), ("clone", "directory")):
+        demo = tmp_path / "hardware" / name / "demo"
+        demo.mkdir(parents=True)
+        (demo / "demo.kicad_pro").write_text("{}")
+        entry = tmp_path / "hardware" / name / ".git"
+        if git_entry == "file":
+            entry.write_text("gitdir: ../../.git/modules/lib\n")
+        else:
+            entry.mkdir()
+    assert projects(layout) == [tmp_path / "hardware/main/main.kicad_pro"]
+    config = fab_config(layout)
+    assert config is not None
+    assert "demo" not in config

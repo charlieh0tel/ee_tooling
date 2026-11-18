@@ -89,10 +89,12 @@ from below the end marker, keeping the board's own.
 
 It finds the KiCad projects (`*.kicad_pro`) under `hardware/`, skipping
 the submodule, every directory whose name starts with `.` (`.git`,
-`.venv`, `.claude/`'s worktrees) and every production directory
+`.venv`, `.claude/`'s worktrees), every production directory
 (`production/`, and each `production` that `jlcpcb.toml` or `fab.toml`
-names), so a project file in a release or a worktree is not taken for a
-board.
+names) and every other repository (a directory holding a `.git` file or
+directory: a library's submodule, a clone), so a project file in a
+release, a worktree or a library is not taken for a board, and `adopt`
+edits no other repository's `.kicad_dru` or `.kicad_pro`.
 
 ## Migration
 

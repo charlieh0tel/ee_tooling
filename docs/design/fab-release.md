@@ -464,8 +464,10 @@ become groups chosen per board, and whether a value the board and
   directory (`production/`, which `adopt` assigns, and each `production`
   an existing `jlcpcb.toml` or `fab.toml` names) and every directory
   whose name starts with `.` (`.venv`, `.git`, `.claude/`, whose
-  worktrees hold copies of the board's project).  So a project file in
-  a release, or in a worktree, is not taken for a board.  It matters
+  worktrees hold copies of the board's project), and every other
+  repository (a directory holding a `.git`: a library's submodule, a
+  clone).  So a project file in a release, a worktree or a library is
+  not taken for a board.  It matters
   most with the KiCad project at the repository root (a supported
   layout: `docs/adopting.md`, `test_root_layout`), where the hardware
   directory is the root.
