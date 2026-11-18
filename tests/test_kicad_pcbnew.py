@@ -43,6 +43,7 @@ def test_missing_too_old(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
 
 def test_missing_new_enough(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     fake_python(monkeypatch, tmp_path, "echo 3 12")
+    assert kicad_pcbnew.unsupported() is None
     assert "make the venv with uv venv --system-site-packages" in kicad_pcbnew.missing()
 
 
@@ -51,4 +52,5 @@ def test_missing_no_system_python(
 ) -> None:
     monkeypatch.setattr(kicad_pcbnew, "SYSTEM_PYTHON", str(tmp_path / "none"))
     assert "there is no" in kicad_pcbnew.missing()
+    assert "cannot run here" in kicad_pcbnew.missing()
     assert "none" in capsys.readouterr().err

@@ -2,7 +2,8 @@
 
 stitch and placement-score import pcbnew; missing() says why they cannot.
 They need a system Python of MIN_PYTHON or later: ee_tooling cannot run
-on an older one, and no other Python has pcbnew.
+on an older one, and no other Python has pcbnew.  unsupported() says why
+the system Python cannot, for adopt too.
 """
 
 import subprocess
@@ -33,17 +34,24 @@ def system_python() -> tuple[int, int] | None:
     return major, minor
 
 
-def missing() -> str:
-    """Why pcbnew is not importable, and what to do."""
+def unsupported() -> str | None:
+    """Why the system Python cannot run what imports pcbnew; None if it can."""
     found = system_python()
     if found is None:
-        return f"pcbnew is not importable, and there is no {SYSTEM_PYTHON} (docs/stitch.md)"
+        return f"there is no {SYSTEM_PYTHON}"
     if found < MIN_PYTHON:
         return (
-            f"pcbnew is not importable: KiCad's pcbnew is in the system Python only,"
-            f" {SYSTEM_PYTHON} is {version(found)}, and ee_tooling needs"
-            f" {version(MIN_PYTHON)} or later, so this cannot run here (docs/stitch.md)"
+            f"KiCad's pcbnew is in the system Python only, {SYSTEM_PYTHON} is"
+            f" {version(found)}, and ee_tooling needs {version(MIN_PYTHON)} or later"
         )
+    return None
+
+
+def missing() -> str:
+    """Why pcbnew is not importable, and what to do."""
+    reason = unsupported()
+    if reason is not None:
+        return f"pcbnew is not importable: {reason}, so this cannot run here (docs/stitch.md)"
     return (
         "pcbnew is not importable: make the venv with"
         f" uv venv --system-site-packages --python {SYSTEM_PYTHON}"
