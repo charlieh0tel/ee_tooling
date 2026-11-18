@@ -2,8 +2,9 @@
 
 Reads fab.toml at the root of the git repository it is run in, and writes
 the board's production directory, YYYYMMDD-REV/, with:
-  NAME-REV-gerbers-jlcpcb.zip  Gerbers and drill files, for the PCB order,
-                        and README.txt, the Gerber map (NAME-REV-gerbers.zip
+  NAME-REV-gerbers-jlcpcb.zip  Gerbers (User.Drawings too) and drill files,
+                        for the PCB order, README.txt, the Gerber map, and
+                        stackup.txt and fab-notes.txt (NAME-REV-gerbers.zip
                         for a profile with kicad-cli's own Gerber options)
   NAME-REV-gerber-map.txt  what each file in the Gerber zip is
   NAME-REV-stackup.txt  the board's stackup, each layer's Gerber, and its
@@ -99,7 +100,8 @@ VARIANT_NAME = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._-]*")
 # The Gerber X2 file functions a variant's Gerbers may differ in: the
 # silkscreens and User.Drawings (kicad-cli's "Other,User").
 VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
-# The Gerber map's name in the Gerber zip.
+# The Gerber map's name in the Gerber zip; the stackup and the fabrication
+# notes are there by their names after NAME-REV-.
 GERBER_README = "README.txt"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
 GERBERS = "gerbers"
@@ -118,7 +120,10 @@ OTHER_LAYERS = (
     "F.Silkscreen",
     "B.Silkscreen",
     "Edge.Cuts",
+    "User.Drawings",
 )
+# The board PDF's layers after the copper, one page each.
+BOARD_PDF_LAYERS = ("F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab", "User.Drawings")
 
 # The BOM export's fields: ${DNP} is kicad-cli's, "DNP" for a part not
 # fitted, "" for one fitted, under the header DNP.
@@ -789,7 +794,7 @@ class Release:
                 "pdf",
                 "--mode-multipage",
                 "--layers",
-                ",".join([*self.copper, "F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab"]),
+                ",".join([*self.copper, *BOARD_PDF_LAYERS]),
                 "--common-layers",
                 "Edge.Cuts",
                 *variant_flag(v),
@@ -947,13 +952,18 @@ def main() -> None:
             else f"{label}: the files in each of {', '.join(named)}"
         )
         map_text = gerber_map(title, files)
-        for v in builds if split else builds[:1]:
-            write_gerber_zip(dest / zips[v], directories[v], {GERBER_README: map_text})
-        (dest / f"{base}-{GERBER_MAP}").write_text(map_text)
         stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
         stackup_text, notes_text = r.fabrication(
             label, pcb, files, directories[builds[0]], stackup_name, map_name
         )
+        # In the zip, the notes name the documents by their names there.
+        _, zip_notes = r.fabrication(
+            label, pcb, files, directories[builds[0]], STACKUP, GERBER_README
+        )
+        documents = {GERBER_README: map_text, STACKUP: stackup_text, NOTES: zip_notes}
+        for v in builds if split else builds[:1]:
+            write_gerber_zip(dest / zips[v], directories[v], documents)
+        (dest / map_name).write_text(map_text)
         (dest / stackup_name).write_text(stackup_text)
         (dest / f"{base}-{NOTES}").write_text(notes_text)
         for v in builds:

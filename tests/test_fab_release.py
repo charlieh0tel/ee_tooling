@@ -488,6 +488,11 @@ FAKE_GERBERS = {
                     "FileFunction": "Legend,Top",
                     "FilePolarity": "Positive",
                 },
+                {
+                    "Path": "b-User_Drawings.gbr",
+                    "FileFunction": "Other,User",
+                    "FilePolarity": "Positive",
+                },
                 {"Path": "b-Edge_Cuts.gm1", "FileFunction": "Profile,NP"},
             ],
             "DesignRules": [{"Layers": "Outer", "PadToPad": 0.2, "MinLineWidth": 0.15}],
@@ -499,6 +504,7 @@ FAKE_GERBERS = {
     "b-F_Mask.gts": "G04 F.Mask*\n",
     "b-B_Mask.gbs": "G04 B.Mask*\n",
     "b-F_Silkscreen.gto": "G04 F.Silkscreen*\n",
+    "b-User_Drawings.gbr": "G04 User.Drawings*\n",
     "b-Edge_Cuts.gm1": "G04 Edge.Cuts*\n",
 }
 FAKE_DRILL = {
@@ -704,7 +710,8 @@ RELEASE_CALLS = [
         "export",
         "gerbers",
         "--layers",
-        "F.Cu,In1.Cu,B.Cu,F.Mask,B.Mask,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,Edge.Cuts",
+        "F.Cu,In1.Cu,B.Cu,F.Mask,B.Mask,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,Edge.Cuts,"
+        "User.Drawings",
         "--no-x2",
         "--subtract-soldermask",
         "--check-zones",
@@ -776,7 +783,7 @@ RELEASE_CALLS = [
         "pdf",
         "--mode-multipage",
         "--layers",
-        "F.Cu,In1.Cu,B.Cu,F.Silkscreen,B.Silkscreen,F.Fab,B.Fab",
+        "F.Cu,In1.Cu,B.Cu,F.Silkscreen,B.Silkscreen,F.Fab,B.Fab,User.Drawings",
         "--common-layers",
         "Edge.Cuts",
         "-o",
@@ -833,18 +840,19 @@ b 1: the files in b-1-gerbers-jlcpcb.zip
 Gerber RS-274X, mm, 4.6 format; Excellon drill, mm, decimal; finished hole sizes.
 Copper layers L1 (top) to Ln (bottom).
 
-File                Layer         Function                            Side    Polarity
-------------------  ------------  ----------------------------------  ------  --------
-b-F_Cu.gtl          F.Cu          copper L1                           top     positive
-b-In1_Cu.g1         In1.Cu        copper L2                           inner   positive
-b-B_Cu.gbl          B.Cu          copper L3                           bottom  positive
-b-F_Mask.gts        F.Mask        solder mask                         top     negative
-b-B_Mask.gbs        B.Mask        solder mask                         bottom  negative
-b-F_Silkscreen.gto  F.Silkscreen  silkscreen                          top     positive
-b-Edge_Cuts.gm1     Edge.Cuts     board outline                       -       -
-b-NPTH.drl          -             drill, non-plated (NPTH), L1 to L3  -       -
-b-PTH.drl           -             drill, plated (PTH), L1 to L3       -       -
-b-job.gbrjob        -             Gerber job file (JSON)              -       -
+File                 Layer          Function                            Side    Polarity
+-------------------  -------------  ----------------------------------  ------  --------
+b-F_Cu.gtl           F.Cu           copper L1                           top     positive
+b-In1_Cu.g1          In1.Cu         copper L2                           inner   positive
+b-B_Cu.gbl           B.Cu           copper L3                           bottom  positive
+b-F_Mask.gts         F.Mask         solder mask                         top     negative
+b-B_Mask.gbs         B.Mask         solder mask                         bottom  negative
+b-F_Silkscreen.gto   F.Silkscreen   silkscreen                          top     positive
+b-User_Drawings.gbr  User.Drawings  drawings                            -       positive
+b-Edge_Cuts.gm1      Edge.Cuts      board outline                       -       -
+b-NPTH.drl           -              drill, non-plated (NPTH), L1 to L3  -       -
+b-PTH.drl            -              drill, plated (PTH), L1 to L3       -       -
+b-job.gbrjob         -              Gerber job file (JSON)              -       -
 """,
     "b-1-stackup.txt": """\
 b 1: stackup
@@ -932,6 +940,10 @@ def test_release_files(
         assert {i.filename: z.read(i).decode() for i in z.infolist()} == {
             **dict(sorted({**FAKE_GERBERS, **FAKE_DRILL}.items())),
             "README.txt": RELEASE_TEXT["b-1-gerber-map.txt"],
+            "stackup.txt": RELEASE_TEXT["b-1-stackup.txt"],
+            "fab-notes.txt": RELEASE_TEXT["b-1-fab-notes.txt"]
+            .replace("per b-1-gerber-map.txt", "per README.txt")
+            .replace("per b-1-stackup.txt", "per stackup.txt"),
         }
     with tarfile.open(dest / "b-1-source.tgz") as t:
         tgz = {m.name: t.extractfile(m) for m in t.getmembers() if m.isfile()}
@@ -1365,6 +1377,7 @@ def test_release_variants_silkscreen(
         with zipfile.ZipFile(dest / f"b-1-{name}-gerbers-jlcpcb.zip") as z:
             assert z.read("b-F_Silkscreen.gto").decode() == gerber["b-F_Silkscreen.gto"]
             assert z.read("README.txt").decode() == text
+            assert {"stackup.txt", "fab-notes.txt"} <= set(z.namelist())
     assert capsys.readouterr().err == (
         "variants lite, full: the Gerbers differ in F.Silkscreen: a Gerber zip per variant,"
         " each a bare-board order of its own\n"

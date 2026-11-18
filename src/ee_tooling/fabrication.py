@@ -29,13 +29,15 @@ GERBER_JOB_SUFFIX = ".gbrjob"
 DRILL_SUFFIX = ".drl"
 # An Excellon file's X2 file function comment, e.g. "Plated,1,2,PTH".
 DRILL_FUNCTION = re.compile(r"^; #@! TF\.FileFunction,(.*)$", re.M)
-# The words for a Gerber X2 file function's type and side.
+# The words for a Gerber X2 file function's type and side; KiCad gives
+# User.Drawings the type Other.
 FUNCTIONS = {
     "Copper": "copper",
     "SolderMask": "solder mask",
     "SolderPaste": "solder paste",
     "Legend": "silkscreen",
     "Profile": "board outline",
+    "Other": "drawings",
     "Plated": "drill, plated",
     "NonPlated": "drill, non-plated",
 }
