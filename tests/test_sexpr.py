@@ -13,6 +13,7 @@ from ee_tooling.sexpr import (
     library_symbol,
     number,
     parse,
+    spans,
     write,
 )
 
@@ -113,6 +114,19 @@ def test_write_bool() -> None:
 def test_parse_errors(text: str, message: str) -> None:
     with pytest.raises(ParseError, match=message):
         parse(text)
+
+
+def test_spans() -> None:
+    """Each list directly in the expression, a parenthesis in a string or
+    after an escaped quote not counted."""
+    text = '(top a (b "x)" (c)) "s" (d "q\\" (") \n\t(e))\n'
+    found = spans(text)
+    assert [text[a:b] for a, b in found] == ['(b "x)" (c))', '(d "q\\" (")', "(e)"]
+    assert len(found) == len([i for i in parse(text) if isinstance(i, list)])
+
+
+def test_spans_none() -> None:
+    assert spans("(top a b)") == []
 
 
 def test_number() -> None:

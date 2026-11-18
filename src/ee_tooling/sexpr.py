@@ -3,7 +3,8 @@
 A parsed expression is a list whose items are lists, `Atom`s (unquoted:
 keywords, numbers, yes/no) or `str`s (quoted).  Numbers stay atoms, as
 written; `number` reads one.  `write` lays an expression out much as
-KiCad does, though not byte for byte.
+KiCad does, though not byte for byte; `spans` locates each list in a
+file's text, so one can be replaced and the rest kept byte for byte.
 """
 
 import functools
@@ -74,6 +75,25 @@ def parse(text: str) -> Expression:
     if len(top) != 1 or not isinstance(top[0], list):
         raise ParseError(f"{len(top)} items at the top level, not one expression")
     return top[0]
+
+
+def spans(text: str) -> list[tuple[int, int]]:
+    """Where each list directly in the one expression text holds is: the
+    offset of its "(" and the offset just past its ")".  For text that
+    parses, so that it can be edited in place."""
+    out = []
+    depth = 0
+    start = 0
+    for m in TOKEN.finditer(text):
+        if m[1]:
+            depth += 1
+            if depth == 2:
+                start = m.start(1)
+        elif m[2]:
+            if depth == 2:
+                out.append((start, m.end(2)))
+            depth -= 1
+    return out
 
 
 def quote(text: str) -> str:
