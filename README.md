@@ -63,3 +63,12 @@ needs a venv made with `uv venv --system-site-packages --python
 installs KiCad and its demos from the `kicad/kicad-10.0-releases` PPA
 and poppler, fails if the KiCad installed is not 10, makes such a
 venv, and fails if any of those tests is skipped.
+
+Every test's git runs in its own repositories (`tests/conftest.py`):
+the variables naming a repository (`git rev-parse --local-env-vars`:
+`GIT_DIR`, `GIT_INDEX_FILE`, ...) are removed, the global config is an
+empty file, the system config is not read, and no repository is found
+above pytest's temporary directory.  So the suite run from a hook or
+`git rebase -x` leaves the repository alone
+(`tests/test_git_isolation.py`).  Tests that need git-lfs are skipped
+without it; CI's `kicad` job fails if they are.

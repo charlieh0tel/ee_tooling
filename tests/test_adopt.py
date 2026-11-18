@@ -52,18 +52,6 @@ def supported(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(adopt, "unsupported", lambda: None)
 
 
-@pytest.fixture(autouse=True)
-def git_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty global git config, and no system one: neither the machine's
-    nor the user's (git-lfs's filters among them) is read, and none is
-    written.  Returns the global config's path."""
-    path = tmp_path_factory.mktemp("home") / "gitconfig"
-    path.touch()
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    return path
-
-
 # The tests that run git-lfs; CI's kicad job has it and fails if they skip.
 needs_lfs = pytest.mark.skipif(shutil.which("git-lfs") is None, reason="no git-lfs on the path")
 
