@@ -44,6 +44,7 @@ from ee_tooling.kicad_style_stackup import (
     rows,
     tables,
 )
+from ee_tooling.placement import Box
 from ee_tooling.sexpr import (
     Atom,
     Expression,
@@ -216,6 +217,11 @@ def column_widths(texts: list[list[str]]) -> list[float]:
     ]
 
 
+def row_heights(texts: list[list[str]]) -> list[float]:
+    """Each row's height, the header first."""
+    return [HEADER_HEIGHT] + [ROW_HEIGHT] * (len(texts) - 1)
+
+
 def node(keyword: str, *items: Item) -> Expression:
     return [Atom(keyword), *items]
 
@@ -250,7 +256,7 @@ def build(texts: list[list[str]], origin: Point, old: Expression | None) -> Expr
     """A stackup table of texts, the header first, its top left corner at
     origin.  An old table's uuids, lock, border and separators are kept."""
     widths = column_widths(texts)
-    heights = [HEADER_HEIGHT] + [ROW_HEIGHT] * (len(texts) - 1)
+    heights = row_heights(texts)
     xs = [origin[0] + sum(widths[:n]) for n in range(len(widths) + 1)]
     ys = [origin[1] + sum(heights[:n]) for n in range(len(heights) + 1)]
     old_cells = children(child(old, "cells") or [], "table_cell") if old is not None else []
@@ -300,12 +306,21 @@ def origin(table: Expression) -> Point:
     return float(str(start[1])), float(str(start[2]))
 
 
-def beside(board: Expression) -> Point:
-    """GAP right of the board outline's top right corner."""
+def outline_box(board: Expression) -> Box | None:
+    """The board outline's (Edge.Cuts) extent; None if it has none."""
     points = [p for s in edge(board) for p in s]
     if not points:
+        return None
+    xs, ys = [x for x, _ in points], [y for _, y in points]
+    return Box(min(xs), min(ys), max(xs), max(ys))
+
+
+def beside(board: Expression) -> Point:
+    """GAP right of the board outline's top right corner."""
+    outline = outline_box(board)
+    if outline is None:
         raise TableError("no board outline (Edge.Cuts) to put the stackup table beside: give --at")
-    return max(x for x, _ in points) + GAP, min(y for _, y in points)
+    return outline.right + GAP, outline.top
 
 
 def refresh(text: str, board: Expression, at: Point | None = None) -> Result:
