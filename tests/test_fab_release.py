@@ -321,7 +321,7 @@ def gerber_calls(
     b = Board("b", Path("hw"), Path("production"), (), "jlcpcb", FAB)
     work = tmp_path / str(options)
     work.mkdir()
-    Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(work / "b.zip", "b 1", options)
+    Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).export_gerbers(work / "g", options)
     return [[a.replace(str(work), "WORK") for a in c] for c in calls]
 
 

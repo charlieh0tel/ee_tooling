@@ -322,6 +322,15 @@ def gerber_zip(base: str, profile: Profile[Any]) -> str:
     return f"{base}-gerbers{suffix}.zip"
 
 
+def write_gerber_zip(out: Path, directory: Path, documents: dict[str, str]) -> None:
+    """The Gerber zip: the files in directory, then documents, by name."""
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(directory.iterdir()):
+            z.write(f, f.name)
+        for name, text in documents.items():
+            z.writestr(name, text)
+
+
 def revision(pcb_text: str) -> str | None:
     m = re.search(r'\(title_block\s.*?\(rev "([^"]+)"\)', pcb_text, re.S)
     return m.group(1) if m else None
@@ -414,11 +423,10 @@ class Release:
         if r.returncode != 0:
             sys.exit(f"git tag {name} failed:\n{r.stdout}{r.stderr}")
 
-    def gerbers(self, out: Path, title: str, options: GerberOptions) -> list[GerberFile]:
-        """The Gerber zip, with the Gerber map titled title; return its files."""
+    def export_gerbers(self, directory: Path, options: GerberOptions) -> list[GerberFile]:
+        """The Gerbers and drill, exported into directory; return its files."""
         b = self.board
-        g = self.work / GERBERS
-        g.mkdir()
+        directory.mkdir()
         self.kicad(
             "pcb",
             "export",
@@ -430,7 +438,7 @@ class Release:
             *([] if options.protel_extensions else ["--no-protel-ext"]),
             "--check-zones",
             "-o",
-            str(g),
+            str(directory),
             self.path(b.pcb),
         )
         self.kicad(
@@ -449,26 +457,26 @@ class Release:
             "--drill-origin",
             "absolute",
             "-o",
-            f"{g}/",
+            f"{directory}/",
             self.path(b.pcb),
         )
         try:
-            files = gerber_files(g, b.name, self.layers)
-            text = gerber_map(title, files)
+            return gerber_files(directory, b.name, self.layers)
         except (ValueError, KeyError, IndexError) as e:
             sys.exit(f"no Gerber map: {e}")
-        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in sorted(g.iterdir()):
-                z.write(f, f.name)
-            z.writestr(GERBER_README, text)
-        return files
 
     def fabrication(
-        self, dest: Path, base: str, label: str, pcb: Expression, files: list[GerberFile]
-    ) -> None:
-        """The stackup and the fabrication notes, NAME-REV being base and
-        "NAME REV" label, from the board, its project's net classes and the
-        Gerber directory."""
+        self,
+        label: str,
+        pcb: Expression,
+        files: list[GerberFile],
+        directory: Path,
+        stackup_name: str,
+        map_name: str,
+    ) -> tuple[str, str]:
+        """The stackup and the fabrication notes, "NAME REV" being label,
+        from the board, its project's net classes and the Gerber directory;
+        the notes name the stackup and the Gerber map as given."""
         project = self.root / self.board.project
         try:
             settings = json.loads(project.read_text())
@@ -477,22 +485,19 @@ class Release:
         found = stackup(pcb)
         thickness = board_thickness(pcb)
         impedance = impedances(settings)
-        stackup_name = f"{base}-{STACKUP}"
-        (dest / stackup_name).write_text(
-            stackup_document(f"{label}: stackup", found, thickness, files, impedance)
-        )
-        (dest / f"{base}-{NOTES}").write_text(
+        return (
+            stackup_document(f"{label}: stackup", found, thickness, files, impedance),
             notes(
                 f"{label}: fabrication notes",
                 found,
                 thickness,
                 files,
                 impedance,
-                minimums(self.work / GERBERS),
+                minimums(directory),
                 stackup_name,
-                f"{base}-{GERBER_MAP}",
+                map_name,
                 self.board.fab,
-            )
+            ),
         )
 
     def ipc2581(self, out: Path, distributor: tuple[str, str] | None) -> None:
@@ -710,9 +715,17 @@ def main() -> None:
         label = f"{b.name} {rev}"
         gerbers = gerber_zip(base, profile)
         title = f"{label}: the files in {gerbers}"
-        files = r.gerbers(dest / gerbers, title, profile.gerbers)
-        (dest / f"{base}-{GERBER_MAP}").write_text(gerber_map(title, files))
-        r.fabrication(dest, base, label, pcb, files)
+        directory = r.work / GERBERS
+        files = r.export_gerbers(directory, profile.gerbers)
+        map_text = gerber_map(title, files)
+        write_gerber_zip(dest / gerbers, directory, {GERBER_README: map_text})
+        (dest / f"{base}-{GERBER_MAP}").write_text(map_text)
+        stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
+        stackup_text, notes_text = r.fabrication(
+            label, pcb, files, directory, stackup_name, map_name
+        )
+        (dest / stackup_name).write_text(stackup_text)
+        (dest / f"{base}-{NOTES}").write_text(notes_text)
         r.odb(dest / f"{base}-odb.tgz")
         r.ipc2581(dest / f"{base}-ipc2581.zip", profile.distributor)
         write_csv(dest / f"{base}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))

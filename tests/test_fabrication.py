@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.fab_release import Board, Release
+from ee_tooling.fab_release import Board, Release, write_gerber_zip
 from ee_tooling.fabrication import (
     Fab,
     GerberFile,
@@ -109,9 +109,10 @@ def test_gerbers_zip_holds_the_map(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     work.mkdir()
     b = Board("b", Path("hw"), Path("production"), (), "jlcpcb", FAB)
     out = tmp_path / "b-1-gerbers-jlcpcb.zip"
-    files = Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(
-        out, "b 1", Jlcpcb.gerbers
+    files = Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).export_gerbers(
+        work / "gerbers", Jlcpcb.gerbers
     )
+    write_gerber_zip(out, work / "gerbers", {"README.txt": gerber_map("b 1", files)})
     with zipfile.ZipFile(out) as z:
         assert z.read("README.txt").decode() == gerber_map("b 1", files)
         assert "b-PTH.drl" in z.namelist()
@@ -218,11 +219,11 @@ def test_release_fabrication_without_stackup(tmp_path: Path) -> None:
     (tmp_path / "gerbers").mkdir()
     write_gerbers(tmp_path / "gerbers")
     pcb = parse("(kicad_pcb (general (thickness 1.6)))")
-    Release(tmp_path, b, tmp_path).fabrication(tmp_path, "b-1", "b 1", pcb, FILES)
-    assert (tmp_path / "b-1-stackup.txt").read_text() == stackup_document(
-        "b 1: stackup", None, 1.6, FILES, impedances(PROJECT)
+    stackup_text, notes_text = Release(tmp_path, b, tmp_path).fabrication(
+        "b 1", pcb, FILES, tmp_path / "gerbers", "b-1-stackup.txt", "b-1-gerber-map.txt"
     )
-    assert (tmp_path / "b-1-fab-notes.txt").read_text() == notes(
+    assert stackup_text == stackup_document("b 1: stackup", None, 1.6, FILES, impedances(PROJECT))
+    assert notes_text == notes(
         "b 1: fabrication notes",
         None,
         1.6,
