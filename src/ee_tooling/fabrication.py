@@ -247,6 +247,11 @@ def stackup(pcb: Expression) -> Stackup | None:
     return Stackup(tuple(layers), settings)
 
 
+def copper_layers(found: Stackup) -> tuple[str, ...]:
+    """The stackup's copper layers, top to bottom."""
+    return tuple(x.name for x in found.layers if x.type == COPPER)
+
+
 def board_thickness(pcb: Expression) -> float | None:
     """The board's (general (thickness)), mm."""
     general = child(pcb, "general")

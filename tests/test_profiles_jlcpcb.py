@@ -91,7 +91,7 @@ def test_bom_groups_as_kicad_cli(tmp_path: Path, demo: str) -> None:
         [r["Comment"], r["Designator"], r["Footprint"].split(":", 1)[-1], r["LCSC Part #"]]
         for r in csv.DictReader(io.StringIO(grouped.read_text()))
     ]
-    board = Board(sch.stem, Path("."), (), Path("production"), (), "jlcpcb")
+    board = Board(sch.stem, Path("."), Path("production"), (), "jlcpcb")
     rows, _, _ = jlcpcb_bom(Release(sch.parent, board, tmp_path).parts())
     assert len(rows) > 1
     assert rows == kicad

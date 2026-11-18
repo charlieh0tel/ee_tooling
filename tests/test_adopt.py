@@ -17,7 +17,6 @@ from ee_tooling.adopt import (
     Step,
     agents_text,
     apply,
-    copper_layers,
     fab_config,
     locate,
     plan,
@@ -68,14 +67,6 @@ def written(steps: Sequence[Step]) -> dict[str, Owner]:
     return {s.path.as_posix(): s.owner for s in steps if isinstance(s, File)}
 
 
-def test_copper_layers_top_to_bottom() -> None:
-    assert copper_layers(PCB) == ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
-
-
-def test_copper_layers_none() -> None:
-    assert copper_layers('(kicad_pcb (net 0 ""))') == []
-
-
 def test_agents_new() -> None:
     text = agents_text(None, "## ee_tooling\n")
     assert text == f"{AGENTS_BEGIN}\n## ee_tooling\n{AGENTS_END}\n"
@@ -102,9 +93,8 @@ def test_fab_config(tmp_path: Path) -> None:
     config = fab_config(layout)
     assert config is not None
     assert '[[board]]\nname = "jig"\ndirectory = "hardware/jig"\n' in config
-    assert (
-        'copper = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]\nproduction = "production/jig"\n' in config
-    )
+    assert 'directory = "hardware/jig"\nproduction = "production/jig"\n' in config
+    assert "copper" not in config
     assert 'production = "production/main"' in config
     assert config.count('profile = "jlcpcb"\n') == 2
     assert list(load_config(config)) == ["jig", "main"]
@@ -348,7 +338,12 @@ def test_migrate_several_boards(tmp_path: Path, capsys: pytest.CaptureFixture[st
             (("jlcpcb-release", "fab-release"), ("jlcpcb.toml", "fab.toml")),
         ),
     ]
-    assert "'colour' not carried over to fab.toml" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "'colour' not carried over to fab.toml\n" in err
+    assert (
+        "[[board]] 'jig': 'copper' not carried over to fab.toml: the copper layers come from"
+        " the board's stackup\n"
+    ) in err
     assert {Path("jlcpcb.toml"), Path(".claude/skills/jlcpcb-release")} <= set(stale(layout))
     apply(tmp_path, steps, lambda *_: None)
     assert not (tmp_path / "jlcpcb.toml").exists()
@@ -359,7 +354,6 @@ def test_migrate_several_boards(tmp_path: Path, capsys: pytest.CaptureFixture[st
     assert list(boards) == ["main", "jig"]
     assert boards["main"].sources == (Path("docs"),)
     assert boards["main"].production == Path("production/main")
-    assert boards["jig"].copper == ("F.Cu", "B.Cu")
     assert {b.profile for b in boards.values()} == {"jlcpcb"}
     skill = tmp_path / ".claude/skills/fab-release"
     assert not (tmp_path / ".claude/skills/jlcpcb-release").exists()

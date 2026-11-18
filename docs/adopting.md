@@ -58,7 +58,8 @@ time `adopt` changes files the project owns:
 
 - `jlcpcb.toml`, with no `fab.toml`: `fab.toml` is written from its
   boards, each key kept and `profile = "jlcpcb"` added, and
-  `jlcpcb.toml` is removed.  Its comments are not carried over, nor a
+  `jlcpcb.toml` is removed.  `copper` is dropped: the copper layers are
+  the stackup's.  Its comments are not carried over, nor a
   key `fab.toml` does not have, each named on stderr.  A `jlcpcb.toml`
   that does not parse, or lacks a key, stops `adopt`, naming it.
 - `.claude/skills/jlcpcb-release/`, with no `.claude/skills/fab-release/`:
@@ -92,9 +93,10 @@ What it runs, each only when needed:
 
 - After a migration, check `fab.toml` and the moved skill, and look for
   `jlcpcb-release` and `jlcpcb.toml` elsewhere in the repository.
-- `fab.toml`: each board's production directory, `sources` and profile, and
-  its copper layers if the board file was missing
+- `fab.toml`: each board's production directory, `sources` and profile
   (`skills/fab-release/SKILL.md` gives the keys).
+- Each board's stackup, in Board Setup, Physical Stackup: the release
+  takes the copper layers from it, and refuses a board without one.
 - The skill's ordering checklist and part corrections.
 - Any other CI job that runs ee_tooling's tools needs `submodules: true`
   on its checkout.

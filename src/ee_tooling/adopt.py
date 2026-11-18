@@ -11,9 +11,7 @@ renamed (jlcpcb.toml, the release's skill).
 import argparse
 import importlib.resources
 import json
-import math
 import os
-import re
 import subprocess
 import sys
 import tomllib
@@ -22,7 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from ee_tooling.fab_release import CONFIG, string, strings
+from ee_tooling.fab_release import CONFIG, GONE_KEYS, string, strings
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 from ee_tooling.profiles.jlcpcb import Jlcpcb
 
@@ -41,10 +39,10 @@ SKILL = Path(".claude/skills/fab-release/SKILL.md")
 # Where adopt puts a lone board's releases, from the root.
 PRODUCTION = Path("production")
 # What ee_tooling renamed, in a board repository: the release's old config
-# and its old [[board]] keys, the old skill's directory, and the names in
+# and its old [[board]] keys fab.toml has, the old skill's directory, and the names in
 # it, old to new.
 OLD_CONFIG = Path("jlcpcb.toml")
-OLD_KEYS = ("name", "directory", "copper", "production", "sources")
+OLD_KEYS = ("name", "directory", "production", "sources")
 OLD_SKILL = Path(".claude/skills/jlcpcb-release")
 RENAMED = (("jlcpcb-release", "fab-release"), (str(OLD_CONFIG), CONFIG))
 
@@ -140,33 +138,18 @@ def locate(checkout: Path) -> Layout:
     return Layout(root, checkout.relative_to(root))
 
 
-def copper_layers(pcb_text: str) -> list[str]:
-    """A board file's copper layers, top to bottom."""
-    layers = re.search(r"^\s*\(layers\b(.*?)^\s*\)", pcb_text, re.S | re.M)
-    names = re.findall(r'^\s*\(\d+ "((?:F|B|In\d+)\.Cu)"', layers.group(1), re.M) if layers else []
-
-    def depth(name: str) -> float:
-        side = name.removesuffix(".Cu")
-        return 0 if side == "F" else math.inf if side == "B" else int(side.removeprefix("In"))
-
-    return sorted(names, key=depth)
-
-
 def toml_string(text: str) -> str:
     """text as a TOML basic string: JSON's escapes are TOML's."""
     return json.dumps(text)
 
 
-def board_lines(
-    name: str, directory: str, copper: list[str], production: str, sources: list[str]
-) -> list[str]:
+def board_lines(name: str, directory: str, production: str, sources: list[str]) -> list[str]:
     """A [[board]] of fab.toml, with adopt's profile."""
     return [
         "",
         "[[board]]",
         f"name = {toml_string(name)}",
         f"directory = {toml_string(directory)}",
-        f"copper = [{', '.join(toml_string(c) for c in copper)}]",
         f"production = {toml_string(production)}",
         f"sources = [{', '.join(toml_string(s) for s in sources)}]",
         f"profile = {toml_string(PROFILE)}",
@@ -221,15 +204,9 @@ def fab_config(layout: Layout) -> str | None:
     for project in found:
         # One board owns production/; several each get their own directory.
         production = PRODUCTION if len(found) == 1 else PRODUCTION / project.stem
-        pcb = project.with_suffix(".kicad_pcb")
-        copper = copper_layers(pcb.read_text()) if pcb.exists() else []
-        if not copper:
-            why = "no copper layers in it" if pcb.exists() else "not there"
-            print(f"{pcb.relative_to(layout.root)}: {why}; copper left empty", file=sys.stderr)
         lines += board_lines(
             project.stem,
             project.parent.relative_to(layout.root).as_posix(),
-            copper,
             production.as_posix(),
             [],
         )
@@ -255,11 +232,13 @@ def migrated_config(text: str) -> str:
         name = string(where, table, "name", None)
         where = f"[[board]] {name!r}"
         for key in sorted(set(table) - set(OLD_KEYS)):
-            print(f"{OLD_CONFIG}: {where}: {key!r} not carried over to {CONFIG}", file=sys.stderr)
+            why = f": {GONE_KEYS[key]}" if key in GONE_KEYS else ""
+            print(
+                f"{OLD_CONFIG}: {where}: {key!r} not carried over to {CONFIG}{why}", file=sys.stderr
+            )
         lines += board_lines(
             name,
             string(where, table, "directory", None),
-            strings(where, table, "copper", None),
             string(where, table, "production", None),
             strings(where, table, "sources", []),
         )

@@ -31,7 +31,6 @@ CONFIG = """
 [[board]]
 name = "main"
 directory = "hardware/main"
-copper = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
 production = "production"
 sources = ["hardware/main/main.kicad_sym", "docs"]
 profile = "jlcpcb"
@@ -39,7 +38,6 @@ profile = "jlcpcb"
 [[board]]
 name = "jig"
 directory = "hardware/jig"
-copper = ["F.Cu", "B.Cu"]
 production = "production/jig"
 profile = "jlcpcb"
 """
@@ -51,8 +49,6 @@ def test_config_boards_in_order() -> None:
     main = boards["main"]
     assert main.pcb == Path("hardware/main/main.kicad_pcb")
     assert main.sch == Path("hardware/main/main.kicad_sch")
-    assert main.layers[:4] == ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
-    assert "Edge.Cuts" in main.layers
     assert boards["jig"].sources == ()
     assert main.profile == "jlcpcb"
 
@@ -62,7 +58,6 @@ BOARD = """\
 [[board]]
 name = "b"
 directory = "hw"
-copper = ["F.Cu", "B.Cu"]
 production = "production"
 profile = "jlcpcb"
 """
@@ -73,7 +68,7 @@ def test_config_without_boards() -> None:
         load_config("")
 
 
-@pytest.mark.parametrize("key", ["name", "directory", "copper", "production", "profile"])
+@pytest.mark.parametrize("key", ["name", "directory", "production", "profile"])
 def test_config_missing_key(key: str) -> None:
     text = "".join(line + "\n" for line in BOARD.splitlines() if not line.startswith(key))
     with pytest.raises(ValueError, match=f"no '{key}'$"):
@@ -88,7 +83,11 @@ def test_config_missing_key(key: str) -> None:
         (f"{BOARD}[board.pcbway]\n", r"^\[\[board\]\] 'b': unknown key 'pcbway'$"),
         (BOARD.replace('"jlcpcb"', '"pcbway"'), r"profile 'pcbway' is not one of jlcpcb$"),
         (BOARD.replace('"hw"', "1"), r"'directory' is not a string$"),
-        (BOARD.replace('["F.Cu", "B.Cu"]', '"F.Cu"'), r"'copper' is not a list of strings$"),
+        (
+            f'{BOARD}copper = ["F.Cu"]\n',
+            r"^\[\[board\]\] 'b': 'copper' is gone: the copper layers come from the board's"
+            " stackup$",
+        ),
         (f"{BOARD}sources = [1]\n", r"'sources' is not a list of strings$"),
         *(
             (
@@ -171,7 +170,7 @@ def test_revision() -> None:
 
 
 def test_board_is_frozen() -> None:
-    b = Board("x", Path("d"), ("F.Cu",), Path("p"), (), "jlcpcb")
+    b = Board("x", Path("d"), Path("p"), (), "jlcpcb")
     with pytest.raises(AttributeError):
         b.name = "y"  # type: ignore[misc]
 
@@ -231,10 +230,10 @@ def gerber_calls(
             (out / name).write_text(text)
 
     monkeypatch.setattr(Release, "kicad", kicad)
-    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), (), "jlcpcb")
+    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb")
     work = tmp_path / str(options)
     work.mkdir()
-    Release(tmp_path, b, work).gerbers(work / "b.zip", "b 1", options)
+    Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(work / "b.zip", "b 1", options)
     return [[a.replace(str(work), "WORK") for a in c] for c in calls]
 
 
@@ -452,7 +451,6 @@ FIXTURE = {
 [[board]]
 name = "b"
 directory = "hw"
-copper = ["F.Cu", "In1.Cu", "B.Cu"]
 production = "production"
 sources = ["docs"]
 profile = "jlcpcb"
@@ -867,3 +865,25 @@ def test_release_stops_on_bad_options_before_anything(
     ):
         release(tmp_path, monkeypatch, config="[board.jlcpcb]\nx = 1\n")
     assert kicad_calls(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("stackup", "error"),
+    [
+        ("", "b.kicad_pcb has no stackup: set one in Board Setup, Physical Stackup"),
+        (
+            '(setup (stackup (layer "dielectric 1" (type "core") (thickness 1.6))))',
+            "b.kicad_pcb's stackup has no copper layer",
+        ),
+    ],
+)
+def test_release_refuses_a_board_without_copper_in_its_stackup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stackup: str, error: str
+) -> None:
+    """Before anything is checked or written."""
+    pcb = f'(kicad_pcb (general (thickness 1.6)) (title_block (rev "1")) {stackup})\n'
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    with pytest.raises(SystemExit, match=f"^{re.escape(error)}$"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+    assert not (tmp_path / "repo/production").exists()

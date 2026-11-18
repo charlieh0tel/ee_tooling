@@ -104,9 +104,11 @@ def test_gerbers_zip_holds_the_map(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(Release, "kicad", kicad)
     work = tmp_path / "work"
     work.mkdir()
-    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), (), "jlcpcb")
+    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb")
     out = tmp_path / "b-1-jlcpcb.zip"
-    files = Release(tmp_path, b, work).gerbers(out, "b 1", Jlcpcb.gerbers)
+    files = Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(
+        out, "b 1", Jlcpcb.gerbers
+    )
     with zipfile.ZipFile(out) as z:
         assert z.read("README.txt").decode() == gerber_map("b 1", files)
         assert "b-PTH.drl" in z.namelist()
@@ -204,17 +206,16 @@ def test_stackup_document() -> None:
     assert se.split()[1:] == ["50", "single-ended", "0.36", "-", "-"]
 
 
-def test_release_fabrication_warns_without_stackup(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    b = Board("b", Path("hw"), ("F.Cu", "B.Cu"), Path("production"), (), "jlcpcb")
+def test_release_fabrication_without_stackup(tmp_path: Path) -> None:
+    """The documents of a board with no stackup, which the release refuses
+    before it writes them."""
+    b = Board("b", Path("hw"), Path("production"), (), "jlcpcb")
     (tmp_path / "hw").mkdir()
     (tmp_path / "hw/b.kicad_pro").write_text(json.dumps(PROJECT))
     (tmp_path / "gerbers").mkdir()
     write_gerbers(tmp_path / "gerbers")
     pcb = parse("(kicad_pcb (general (thickness 1.6)))")
     Release(tmp_path, b, tmp_path).fabrication(tmp_path, "b-1", "b 1", pcb, FILES)
-    assert "b.kicad_pcb has no stackup" in capsys.readouterr().out
     assert (tmp_path / "b-1-stackup.txt").read_text() == stackup_document(
         "b 1: stackup", None, 1.6, FILES, impedances(PROJECT)
     )

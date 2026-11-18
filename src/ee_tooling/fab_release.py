@@ -45,6 +45,7 @@ from typing import Any
 from ee_tooling.fabrication import (
     GerberFile,
     board_thickness,
+    copper_layers,
     gerber_files,
     gerber_map,
     impedances,
@@ -68,7 +69,9 @@ STRING_KEYS: dict[str, str | None] = {
     "production": None,
     "profile": None,
 }
-LIST_KEYS: dict[str, list[str] | None] = {"copper": None, "sources": []}
+LIST_KEYS: dict[str, list[str] | None] = {"sources": []}
+# Keys fab.toml no longer has, with why: present, each is an error.
+GONE_KEYS = {"copper": "the copper layers come from the board's stackup"}
 # The Gerber map's name in the Gerber zip.
 GERBER_README = "README.txt"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
@@ -119,7 +122,6 @@ class Board:
 
     name: str  # the KiCad project
     directory: Path  # holds NAME.kicad_pcb and NAME.kicad_sch, from the repository root
-    copper: tuple[str, ...]  # copper layers, top to bottom
     production: Path  # where its YYYYMMDD-REV/ releases go, from the repository root
     sources: tuple[Path, ...]  # in the source tgz after the project's files, from the root
     profile: str  # its fab's, a key of PROFILES
@@ -136,10 +138,6 @@ class Board:
     @property
     def project(self) -> Path:
         return self.directory / f"{self.name}.kicad_pro"
-
-    @property
-    def layers(self) -> list[str]:
-        return [*self.copper, *OTHER_LAYERS]
 
     def source_paths(self, root: Path) -> list[Path]:
         """The source tgz's files and directories, from the repository root."""
@@ -177,6 +175,9 @@ def board(table: dict[str, Any], number: int) -> Board:
     where = f"[[board]] {number}"
     name = string(where, table, "name", None)
     where = f"[[board]] {name!r}"
+    for key, why in GONE_KEYS.items():
+        if key in table:
+            raise ValueError(f"{where}: {key!r} is gone: {why}")
     # Beside its own keys, a board has a table of its profile's options.
     options = table.get("profile")
     if unknown := sorted(set(table) - set(STRING_KEYS) - set(LIST_KEYS) - {options}):
@@ -195,7 +196,6 @@ def board(table: dict[str, Any], number: int) -> Board:
     return Board(
         name=name,
         directory=Path(text["directory"]),
-        copper=tuple(lists["copper"]),
         production=Path(text["production"]),
         sources=tuple(Path(s) for s in lists["sources"]),
         profile=text["profile"],
@@ -250,10 +250,16 @@ def tag_plan(dirty: bool, tagged: str | None, head: str, retag: bool) -> TagPlan
 class Release:
     """One board's release, built in a scratch directory."""
 
-    def __init__(self, root: Path, board: Board, work: Path) -> None:
+    def __init__(self, root: Path, board: Board, work: Path, copper: tuple[str, ...] = ()) -> None:
         self.root = root
         self.board = board
         self.work = work
+        self.copper = copper  # the board's copper layers, top to bottom, from its stackup
+
+    @property
+    def layers(self) -> list[str]:
+        """The layers in the Gerber zip."""
+        return [*self.copper, *OTHER_LAYERS]
 
     def run(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(args, cwd=self.root, capture_output=True, text=True, check=False)
@@ -317,7 +323,7 @@ class Release:
             "export",
             "gerbers",
             "--layers",
-            ",".join(b.layers),
+            ",".join(self.layers),
             *([] if options.x2 else ["--no-x2"]),
             *(["--subtract-soldermask"] if options.subtract_soldermask else []),
             *([] if options.protel_extensions else ["--no-protel-ext"]),
@@ -346,7 +352,7 @@ class Release:
             self.path(b.pcb),
         )
         try:
-            files = gerber_files(g, b.name, b.layers)
+            files = gerber_files(g, b.name, self.layers)
             text = gerber_map(title, files)
         except (ValueError, KeyError, IndexError) as e:
             sys.exit(f"no Gerber map: {e}")
@@ -371,8 +377,6 @@ class Release:
         thickness = board_thickness(pcb)
         impedance = impedances(settings)
         stackup_name = f"{base}-{STACKUP}"
-        if found is None:
-            print(f"warning: {self.board.pcb.name} has no stackup; see {stackup_name}")
         (dest / stackup_name).write_text(
             stackup_document(f"{label}: stackup", found, thickness, files, impedance)
         )
@@ -493,7 +497,7 @@ class Release:
             "pdf",
             "--mode-multipage",
             "--layers",
-            ",".join([*b.copper, "F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab"]),
+            ",".join([*self.copper, "F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab"]),
             "--common-layers",
             "Edge.Cuts",
             "-o",
@@ -571,9 +575,15 @@ def main() -> None:
         pcb = parse(pcb_text)
     except ParseError as e:
         sys.exit(f"{b.pcb}: {e}")
+    found = stackup(pcb)
+    if found is None:
+        sys.exit(f"{b.pcb.name} has no stackup: set one in Board Setup, Physical Stackup")
+    copper = copper_layers(found)
+    if not copper:
+        sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
     profile = profiles[b.profile]
     with tempfile.TemporaryDirectory() as tmp:
-        r = Release(root, b, Path(tmp))
+        r = Release(root, b, Path(tmp), copper)
         commit = r.check(a.allow_dirty)
         tag = f"{b.name}-{dest.name}"
         tagged = r.tagged(tag)
