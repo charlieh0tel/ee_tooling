@@ -33,6 +33,7 @@ from ee_tooling.adopt import (
     lfs_unfetched,
     locate,
     marked_text,
+    pending,
     plain_blobs,
     plan,
     projects,
@@ -1269,3 +1270,12 @@ def test_no_pull_with_nothing_to_fetch(tmp_path: Path) -> None:
     commit(tmp_path, "board", ".")
     assert not lfs_unfetched(tmp_path)
     assert LFS_PULL not in commands(plan(layout))
+
+
+def test_check_agrees_with_the_plan_before_migration(tmp_path: Path) -> None:
+    """jlcpcb.toml and no fab.toml: --check names the boards' rules files
+    the dry run would update, from the fab.toml it would write."""
+    layout = adopted(tmp_path, "main")
+    edits = {s.path for s in plan(layout) if isinstance(s, Edit)}
+    assert edits == {Path("hardware/main/main.kicad_dru"), Path("hardware/main/main.kicad_pro")}
+    assert {p for what, p in pending(layout) if what == "to be updated"} == edits

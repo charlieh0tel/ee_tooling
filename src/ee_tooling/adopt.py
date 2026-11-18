@@ -640,8 +640,7 @@ def plan(layout: Layout) -> list[Step]:
     planned = files(layout)
     steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
-    config = next((f.text for f in planned if f.path == Path(CONFIG) and f.action(root)), None)
-    steps += rules_edits(root, config if config is not None else read_config(root))
+    steps += rules_edits(root, planned_config(root, planned))
     venv = root / hardware / ".venv"
     reason = unsupported()
     if reason is not None:
@@ -734,14 +733,22 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
     that differ from what would be written ("out of date"), the project
     files still to be migrated ("to be migrated"), and the project files
     whose rules or settings are still to be installed ("to be updated")."""
-    managed = [f.path for f in files(layout) if f.owner is Owner.MANAGED and f.action(layout.root)]
+    planned = files(layout)
+    managed = [f.path for f in planned if f.owner is Owner.MANAGED and f.action(layout.root)]
     renamed = [s.source if isinstance(s, Rename) else s.path for s in migrations(layout)]
-    rules = [s.path for s in rules_edits(layout.root, read_config(layout.root))]
+    rules = [s.path for s in rules_edits(layout.root, planned_config(layout.root, planned))]
     return [
         *(("out of date", p) for p in managed),
         *(("to be migrated", p) for p in renamed),
         *(("to be updated", p) for p in rules),
     ]
+
+
+def planned_config(root: Path, planned: Iterable[File]) -> str | None:
+    """fab.toml's text as --yes leaves it: the one planned (written or
+    migrated) if any, else the one there, else None."""
+    new = next((f.text for f in planned if f.path == Path(CONFIG) and f.action(root)), None)
+    return new if new is not None else read_config(root)
 
 
 def stale(layout: Layout) -> list[Path]:

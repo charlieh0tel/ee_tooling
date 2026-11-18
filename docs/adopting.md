@@ -62,7 +62,8 @@ overwrites the change.  `--check` fails while a board's rules section
 is missing or out of date, its Board Setup is below the profile's
 minimums, or its ERC severities or connection grid differ as above.  A board whose profile is not known, or whose `.kicad_pro`
 is not there, is left, said on stderr.  The boards are `fab.toml`'s,
-or, on the run that writes it, those it is written with.
+or, before it is written or migrated, those it will be written with:
+the dry run, `--yes` and `--check` name the same files.
 
 A board whose `.kicad_dru` is a hand-made copy of ee_tooling's rules
 file, its own rules after it, keeps that copy below the end marker
