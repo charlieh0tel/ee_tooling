@@ -263,6 +263,11 @@ def test_apply_writes_files(tmp_path: Path) -> None:
     workflow = (tmp_path / ".github/workflows/ee-tooling.yml").read_text()
     assert "sh hardware/ee_tooling/.githooks/commit-msg --messages" in workflow
     assert "run: hardware/ee_tooling/adopt --check" in workflow
+    assert (
+        "git lfs version\n          || { sudo apt-get update && sudo apt-get install -y"
+        " --no-install-recommends git-lfs; }\n" in workflow
+    )
+    assert "        lfs: true" not in workflow
     agents = (tmp_path / "AGENTS.md").read_text()
     assert "\n@hardware/ee_tooling/docs/kicad-style.md\n" in agents
     assert "git submodule update --remote hardware/ee_tooling" in agents

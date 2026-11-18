@@ -48,7 +48,7 @@ missing, then the project's.
 | `.githooks/commit-msg` | managed | runs ee_tooling's commit-msg hook from the submodule |
 | `.githooks/pre-push` | managed | git-lfs's `pre-push`: uploads the pushed commits' Git LFS objects |
 | `.gitattributes` | managed section | first in the file, between `ee_tooling: begin` and `end` markers: the Git LFS patterns (below) |
-| `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` |
+| `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` (git-lfs installed first where the runner lacks it) |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
 | `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb`, with the profile's house `[board.fab]` values |
@@ -139,7 +139,20 @@ It never runs `git lfs migrate`, never renormalizes and never commits.
   release refuses a board without one matching the stackup.
 - The skill's ordering checklist and part corrections.
 - Any other CI job that runs ee_tooling's tools needs `submodules: true`
-  on its checkout.
+  on its checkout, and one that reads a file Git LFS tracks (a release,
+  a render) needs `lfs: true`.  `actions/checkout`'s `lfs` is false by
+  default: the checkout holds pointers.  Whether `lfs: true` fetches a
+  submodule's Git LFS objects is not documented.
+- git-lfs on each machine that clones, commits, pushes or runs `adopt`.
+  Without it a clone holds pointers, silently; a commit of a tracked type
+  stores a plain blob, silently (`--check` fails on it in CI); a push is
+  refused by the hook.
+- A library repository in Git LFS, as a submodule, gives its files only
+  on a machine whose own git config sets git-lfs's filters (`git lfs
+  install --skip-repo`, the user's step, or the distribution's package
+  setting them system-wide): `adopt`'s filters are this clone's alone.
+- The remote must support Git LFS: a push to one that does not is
+  refused by the hook, after git-lfs's error.
 - The attribution job fails on any commit already in the history that
   credits an AI assistant.
 - Commit the result, `hardware/uv.lock` with it.
@@ -170,6 +183,32 @@ work tree (it stages every tracked file's changes), and a commit.  It
 examines HEAD's tree alone: history and uncommitted files pass, and it
 needs no Git LFS object fetched and no filter set, so CI checks out
 without `lfs: true`.  A repository with no commit passes.
+
+A repository whose files of these types were committed before the
+section, or from a machine without git-lfs's filters, holds them as
+plain blobs, and `--check` fails until they are stored through Git
+LFS.  The first two steps on each machine, the third once:
+
+1. Install git-lfs (the distribution's `git-lfs` package).
+2. `hardware/ee_tooling/adopt --yes`: the section, the hook, the
+   filters for this clone, and `git lfs pull`.
+3. In a clean work tree: `git add --renormalize .`, commit, push.
+
+The commit stores pointers from then on; older commits keep their
+blobs, and the repository does not shrink.  Shrinking it rewrites
+history (`git lfs migrate import --everything` gives every commit a new
+hash, the commits the release tags name among them, and every
+superproject's submodule pointer to the repository then names a commit
+gone from its branch): no ee_tooling tool does it.  Each version of a
+tracked file is kept by the host, counted against its Git LFS storage;
+each clone and CI checkout with `lfs: true` downloads, counted against
+its bandwidth.
+
+The CI template's `adopted` job runs `git lfs version` and installs
+the distribution's `git-lfs` package only when that fails: GitHub's
+`ubuntu-24.04` image lists Git LFS among its tools (actions/runner-images,
+`images/ubuntu/Ubuntu2404-Readme.md`), and `ubuntu-latest` moves to newer
+images.
 
 A library repository (footprints, symbols, 3D models) does not run
 `adopt`: it copies the lines of `src/ee_tooling/templates/gitattributes`

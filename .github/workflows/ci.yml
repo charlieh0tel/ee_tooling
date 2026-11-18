@@ -18,9 +18,10 @@ jobs:
       - run: uv run mypy
   kicad:
     # The tests the other jobs skip for want of kicad-cli (KiCad 10),
-    # KiCad's pcbnew module, KiCad's demo projects and poppler; failing if
-    # any of them is skipped here.  pcbnew is the system Python's, so the
-    # venv is made on it with its site packages.
+    # KiCad's pcbnew module, KiCad's demo projects, poppler and git-lfs
+    # (the image's own); failing if any of them is skipped here.  pcbnew
+    # is the system Python's, so the venv is made on it with its site
+    # packages.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,8 +41,9 @@ jobs:
           set -o pipefail
           uv venv --system-site-packages --python /usr/bin/python3
           uv run python -c "import pcbnew; print(pcbnew.Version())"
+          git lfs version
           uv run pytest -rs | tee pytest.log
-          ! grep -E "^SKIPPED.*(kicad-cli|pcbnew|poppler|demos)" pytest.log
+          ! grep -E "^SKIPPED.*(kicad-cli|pcbnew|poppler|demos|git-lfs)" pytest.log
   attribution:
     # No commit credits an AI assistant (AGENTS.md): the commit-msg
     # hook's checks of the messages, authors and committers over the
