@@ -40,6 +40,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -425,17 +426,74 @@ def lfs_pointer(path: Path) -> bool:
     return path.read_bytes().split(b"\n", 1)[0] in LFS_VERSIONS
 
 
-def lfs_pointers(root: Path, paths: Iterable[Path]) -> list[Path]:
+def lfs_pointers(root: Path, paths: Iterable[Path], left_out: Iterable[Path] = ()) -> list[Path]:
     """The files among paths, from root, directories walked, that are Git
     LFS pointers whose files were never fetched; from root, each once (a
-    library's 3D model may also be under a source directory).  OSError if
-    one cannot be read."""
+    library's 3D model may also be under a source directory).  Not walked,
+    as the source tgz leaves them out: git's own directory and left_out
+    (the production directories).  OSError if one cannot be read."""
+    skipped = [normal(p) for p in left_out]
+
+    def kept(f: Path) -> bool:
+        rel = normal(f.relative_to(root))
+        return GIT_DIRECTORY not in rel.parts and not any(rel.is_relative_to(s) for s in skipped)
+
     out: dict[Path, None] = {}
     for p in paths:
         top = root / p
         found = sorted(f for f in top.rglob("*") if f.is_file()) if top.is_dir() else [top]
-        out.update((f.relative_to(root), None) for f in found if lfs_pointer(f))
+        out.update((f.relative_to(root), None) for f in found if kept(f) and lfs_pointer(f))
     return list(out)
+
+
+def submodules(root: Path) -> list[Path]:
+    """The repository's submodules (gitlinks) and theirs, at any depth, each
+    checked out, from root; deepest first, so the first holding a path is
+    its repository.  A failing git stops the release."""
+    out: list[Path] = []
+    todo = [Path(".")]
+    while todo:
+        here = todo.pop()
+        r = subprocess.run(
+            ["git", "ls-files", "--stage"],
+            cwd=root / here,
+            env=environment(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if r.returncode != 0:
+            sys.exit(f"git ls-files --stage in {here} failed ({r.returncode}):\n{r.stderr}")
+        for line in r.stdout.splitlines():
+            if line.startswith(GITLINK):
+                found = normal(here / line.split("\t", 1)[1])
+                out.append(found)
+                if (root / found / GIT_DIRECTORY).exists():
+                    todo.append(found)
+    return sorted(out, key=lambda p: len(p.parts), reverse=True)
+
+
+def repository_of(path: Path, modules: Sequence[Path]) -> Path:
+    """The repository a path from the root is in: its deepest submodule,
+    or the root (".")."""
+    return next((s for s in modules if normal(path).is_relative_to(s)), Path("."))
+
+
+def pointer_message(pointers: Sequence[Path], modules: Sequence[Path]) -> str:
+    """The release's refusal of pointers, each named, and the commands that
+    fetch them, one pair per repository they are in."""
+    groups: dict[Path, None] = dict.fromkeys(repository_of(p, modules) for p in pointers)
+    commands = []
+    for repo in groups:
+        git = "git" if repo == Path(".") else f"git -C {shlex.quote(str(repo))}"
+        commands.append(f"  {git} lfs install --local --skip-repo && {git} lfs pull\n")
+    return (
+        "Git LFS pointers among the release's inputs, their files never fetched"
+        " (a clone without git-lfs):\n"
+        + "".join(f"  {p}\n" for p in pointers)
+        + "install git-lfs, then, from the repository's root:\n"
+        + "".join(commands)
+    ).rstrip("\n")
 
 
 def house_bom(parts: Iterable[Part]) -> list[list[str]]:
@@ -884,9 +942,8 @@ class Release:
         return scratch
 
     def submodules(self) -> list[Path]:
-        """The repository's submodules (gitlinks), from its root."""
-        listed = self.git("ls-files", "--stage").splitlines()
-        return [Path(line.split("\t", 1)[1]) for line in listed if line.startswith(GITLINK)]
+        """The repository's submodules, at any depth (submodules())."""
+        return submodules(self.root)
 
     def library_paths(self, inside: Iterable[Path]) -> list[Path]:
         """The paths whose changes git status reports for the libraries
@@ -1309,6 +1366,15 @@ def main() -> None:
     missing = [str(s) for s in (b.pcb, b.sch, *b.sources) if not (root / s).exists()]
     if missing:
         sys.exit(f"{CONFIG} names files that are not there: {', '.join(missing)}")
+    # The files read first, then what they name: a pointer for either named
+    # as one, not as a file that does not parse.
+    modules = submodules(root)
+    try:
+        primary = [p for p in (b.pcb, b.sch, b.project) if (root / p).exists()]
+        if pointers := lfs_pointers(root, primary):
+            sys.exit(pointer_message(pointers, modules))
+    except OSError as e:
+        sys.exit(f"{e.filename}: {e.strerror}")
     pcb_text = (root / b.pcb).read_text()
     try:
         pcb = parse(pcb_text)
@@ -1346,16 +1412,11 @@ def main() -> None:
             *b.source_paths(root, sheet_paths),
             *(p for p in found_libraries.inside if (root / p).exists()),
         ]
-        pointers = lfs_pointers(root, inputs)
+        pointers = lfs_pointers(root, inputs, [x.production for x in boards.values()])
     except OSError as e:
         sys.exit(f"{e.filename}: {e.strerror}")
     if pointers:
-        sys.exit(
-            "Git LFS pointers among the release's inputs, their files never fetched"
-            " (a clone without git-lfs):\n"
-            + "".join(f"  {p}\n" for p in pointers)
-            + "install git-lfs, then run git lfs install --local --skip-repo and git lfs pull"
-        )
+        sys.exit(pointer_message(pointers, modules))
     rev = revision(pcb_text)
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")

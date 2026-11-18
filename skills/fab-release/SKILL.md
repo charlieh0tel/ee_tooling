@@ -166,13 +166,17 @@ pointer,
 anything is written.
 
 Before any of those, once for every variant, it stops on a Git LFS
-pointer among its inputs (the board's files and the source tgz's,
-directories walked): a file under
-1024 bytes whose first line is git-lfs's `version
-https://git-lfs.github.com/spec/v1`, as a clone without git-lfs leaves
-it.  It names each; `--force` and `--allow-dirty` do not pass it.  The
-fix: install git-lfs, then `git lfs install --local --skip-repo` and
-`git lfs pull`.
+pointer among its inputs: first the board, schematic and project files,
+before it reads them, then what they name and the source tgz's files,
+directories walked, but `.git` and every production directory (as the
+tgz).  A pointer is a non-empty file under 1024 bytes whose first line
+is git-lfs's `version https://git-lfs.github.com/spec/v1` (or the older
+`version https://hawser.github.com/spec/v1`), as a clone without
+git-lfs leaves it.  It names each; `--force` and `--allow-dirty` do not
+pass it.  The fix, printed for each repository the pointers are in (the
+board repository, a library's submodule): install git-lfs, then
+`git [-C SUBMODULE] lfs install --local --skip-repo` and
+`git [-C SUBMODULE] lfs pull`.
 
 ## The tag
 

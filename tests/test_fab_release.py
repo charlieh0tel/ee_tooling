@@ -30,6 +30,7 @@ from ee_tooling.fab_release import (
     load_config,
     main,
     output_clash,
+    pointer_message,
     profile_options,
     project_variants,
     release_name_problem,
@@ -1897,8 +1898,8 @@ def test_release_refuses_lfs_pointers_before_anything(
         "Git LFS pointers among the release's inputs, their files never fetched"
         " (a clone without git-lfs):\n"
         "  hw/b.kicad_pro\n"
-        "  docs/datasheets/u1.pdf\n"
-        "install git-lfs, then run git lfs install --local --skip-repo and git lfs pull"
+        "install git-lfs, then, from the repository's root:\n"
+        "  git lfs install --local --skip-repo && git lfs pull"
     )
     assert kicad_calls(tmp_path) == []
     assert old.read_text() == "kept\n"
@@ -2524,3 +2525,41 @@ def test_source_tgz_holds_each_file_once(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(files) == len(set(files))
     assert "b-1-source/hw/b.kicad_pcb" in files
     assert "b-1-source/fab.toml" in files
+
+
+@pytest.mark.parametrize("name", ["hw/b.kicad_pcb", "hw/b.kicad_sch"])
+def test_release_names_a_pointer_board_as_a_pointer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """The board or schematic a pointer: named as one, before it is parsed."""
+    monkeypatch.setitem(FIXTURE, name, POINTER)
+    with pytest.raises(SystemExit, match=rf"^Git LFS pointers among .*\n  {name}\n"):
+        release(tmp_path, monkeypatch)
+
+
+def test_pointer_check_skips_git_and_releases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sources = ["."]: an old release's archive and .git's files, pointers
+    or not, are not the release's inputs."""
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', 'sources = ["."]')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    monkeypatch.setitem(FIXTURE, "production/20261117-1/b-1-odb.tgz", POINTER)
+    root, _ = release(tmp_path, monkeypatch)
+    assert (root / "production/20261118-1/b-1-bom.csv").exists()
+
+
+def test_pointer_message_by_repository() -> None:
+    """The fetch commands for each repository the pointers are in."""
+    modules = [Path("libs/shared/sub"), Path("libs/shared")]
+    text = pointer_message(
+        [Path("docs/a.pdf"), Path("libs/shared/x.step"), Path("libs/shared/sub/y.step")],
+        modules,
+    )
+    assert text.endswith(
+        "install git-lfs, then, from the repository's root:\n"
+        "  git lfs install --local --skip-repo && git lfs pull\n"
+        "  git -C libs/shared lfs install --local --skip-repo && git -C libs/shared lfs pull\n"
+        "  git -C libs/shared/sub lfs install --local --skip-repo"
+        " && git -C libs/shared/sub lfs pull"
+    )
