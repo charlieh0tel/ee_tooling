@@ -226,9 +226,12 @@ class Profile(Protocol):
   the scratch copy, raised to at least the profile's values.
 - It never writes the board's files.  The scratch copy is each file of
   the project's directory copied and each directory linked, the
-  `.kicad_dru` and `.kicad_pro` written; `kicad-cli pcb drc` does not
-  check footprints against their libraries (10.0.8), so a library
-  outside the directory is not missed.
+  `.kicad_dru` and `.kicad_pro` written, at the directory's absolute
+  path under the scratch directory beside a link to every other entry
+  of each of its ancestors: `kicad-cli pcb drc` checks footprints
+  against their libraries (10.0.8: `lib_footprint_issues` for a library
+  not found), so a library path relative to the project
+  (`${KIPRJMOD}/../lib`) must find what it finds for the board.
 - `jlcpcb.kicad_dru` holds the limits and house sections only: the
   price section's no-extra-cost via rules are deferred, and are not in
   it.
