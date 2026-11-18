@@ -21,9 +21,15 @@ It finds the board repository as the submodule's superproject, so it
 runs from any directory, and the submodule's parent is the hardware
 tools' uv project.  Rerun with `--yes` to bring the files it manages up
 to date; `--check` fails if one is stale ("out of date: PATH"), if a
-file below is still to be migrated ("to be migrated: PATH"), or if a
+file below is still to be migrated ("to be migrated: PATH"), if a
 board's rules or settings are still to be installed ("to be updated:
-PATH").  A fresh clone needs `git submodule update --init` first.
+PATH"), or if a file of a type Git LFS tracks is a plain blob at HEAD
+(git-lfs's report, then "not stored through Git LFS": below).  A fresh
+clone needs `git submodule update --init` first.
+
+Every mode needs git-lfs (the distribution's `git-lfs` package): with
+`git lfs version` failing, `adopt` stops before anything else, saying
+so.  It installs nothing itself.
 
 The submodule's parent need not be `hardware/`.  With the submodule at
 `ee_tooling/` and the KiCad project at the repository root, the hardware
@@ -109,7 +115,17 @@ What it runs, each only when needed:
   older, or missing, `adopt` says so and makes no venv on it, and
   `uv add` makes one on a Python of uv's;
 - `uv add --dev --editable --no-workspace ./ee_tooling` in `hardware/`;
-- `git config core.hooksPath .githooks`, once per clone.
+- `git config core.hooksPath .githooks`, once per clone;
+- `git lfs install --local --skip-repo`, when `git config
+  filter.lfs.process` is unset: git-lfs's filters for this clone, in
+  `.git/config`, never `~/.gitconfig`, and no hooks (the managed
+  `pre-push` is git-lfs's);
+- `git lfs pull`, when a file Git LFS tracks is a pointer in the work
+  tree (`git lfs ls-files` marks it `-`): the clone's pointers become
+  files.  With no remote, or the remote out of reach, it fails, and
+  `adopt` says the files stay pointers until it runs.
+
+It never runs `git lfs migrate`, never renormalizes and never commits.
 
 ## What is left to do
 
@@ -145,6 +161,15 @@ The section goes first, so the project's own lines after it win, per
 attribute: `*.pdf -filter -diff -merge text` keeps a repository's PDFs
 plain, `*.png filter=lfs diff=lfs merge=lfs -text` adds a type.  A
 `.gitattributes` in a subdirectory is the project's and also wins.
+
+`--check` runs `git lfs fsck --pointers HEAD`: a file of a tracked
+type stored at HEAD as a plain blob, not a pointer, fails it, named in
+git-lfs's words ("should have been a pointer but was not"), with the
+fix: with git-lfs's filters set, `git add --renormalize .` in a clean
+work tree (it stages every tracked file's changes), and a commit.  It
+examines HEAD's tree alone: history and uncommitted files pass, and it
+needs no Git LFS object fetched and no filter set, so CI checks out
+without `lfs: true`.  A repository with no commit passes.
 
 A library repository (footprints, symbols, 3D models) does not run
 `adopt`: it copies the lines of `src/ee_tooling/templates/gitattributes`

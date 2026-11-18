@@ -3,9 +3,10 @@
 Runs from the board repository's ee_tooling submodule (its `adopt`
 script), whatever the directory.  Without --yes it prints what it would
 do; with --yes it does it; with --check it fails if a file it manages
-differs from what this ee_tooling would write.  It never overwrites a
-file the project owns once written, but to migrate one ee_tooling
-renamed (jlcpcb.toml, the release's skill).
+differs from what this ee_tooling would write, or if a file of a type Git
+LFS tracks is a plain blob at HEAD.  Every mode needs git-lfs.  It never
+overwrites a file the project owns once written, but to migrate one
+ee_tooling renamed (jlcpcb.toml, the release's skill).
 """
 
 import argparse
@@ -51,6 +52,17 @@ GITATTRIBUTES_END = "# ee_tooling: end; the project's own lines follow and win"
 # is the project's own, which adopt replaces, saying so.
 PRE_PUSH = Path(HOOKS_PATH, "pre-push")
 WRITTEN_BY_ADOPT = "(ee_tooling's docs/adopting.md)"
+# git-lfs's filters for this clone only, in .git/config, and no hooks: the
+# managed pre-push is git-lfs's.
+LFS_INSTALL = ("git", "lfs", "install", "--local", "--skip-repo")
+LFS_PULL = ("git", "lfs", "pull")
+# --check's label for the files of a type Git LFS tracks stored as plain
+# blobs at HEAD, and how to store them through Git LFS from now on.
+NOT_IN_LFS = "not stored through Git LFS"
+RENORMALIZE = (
+    "with git-lfs's filters set (adopt --yes sets them), run git add --renormalize . in a"
+    " clean work tree, and commit"
+)
 # What a hand-adopted AGENTS.md has: the house style's import line.
 STYLE = "docs/kicad-style.md"
 # The profile of each board adopt finds.
@@ -164,6 +176,41 @@ def git(directory: Path, *args: str) -> str:
     """git's output, or "" if it fails (a missing key, no superproject)."""
     r = subprocess.run(["git", *args], cwd=directory, capture_output=True, text=True, check=False)
     return r.stdout.strip()
+
+
+def lfs_missing() -> str | None:
+    """Why git-lfs cannot run here, or None if it can."""
+    r = subprocess.run(["git", "lfs", "version"], capture_output=True, text=True, check=False)
+    if r.returncode == 0:
+        return None
+    return (
+        f"git-lfs is missing (git lfs version: {r.stderr.strip() or r.returncode}); install"
+        " the distribution's git-lfs package (docs/adopting.md)"
+    )
+
+
+def lfs_unfetched(root: Path) -> bool:
+    """Whether a file Git LFS tracks at HEAD is a pointer in the work tree
+    (git lfs ls-files marks it -, a fetched one *)."""
+    return any(
+        line.split(" ", 2)[1:2] == ["-"] for line in git(root, "lfs", "ls-files").splitlines()
+    )
+
+
+def plain_blobs(root: Path) -> str | None:
+    """git lfs fsck --pointers's report of the files of a type Git LFS
+    tracks stored at HEAD as plain blobs, or None if there are none or no
+    HEAD."""
+    if not git(root, "rev-parse", "--verify", "-q", "HEAD"):
+        return None
+    r = subprocess.run(
+        ["git", "lfs", "fsck", "--pointers", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return None if r.returncode == 0 else f"{r.stdout}{r.stderr}".strip()
 
 
 def locate(checkout: Path) -> Layout:
@@ -616,6 +663,10 @@ def plan(layout: Layout) -> list[Step]:
         )
     if git(root, "config", "core.hooksPath") != HOOKS_PATH:
         steps.append(Command(("git", "config", "core.hooksPath", HOOKS_PATH)))
+    if not git(root, "config", "filter.lfs.process"):
+        steps.append(Command(LFS_INSTALL))
+    if lfs_unfetched(root):
+        steps.append(Command(LFS_PULL))
     return steps
 
 
@@ -703,6 +754,8 @@ def main() -> None:
     mode.add_argument("--check", action="store_true", help="fail if a managed file is stale")
     a = ap.parse_args()
 
+    if (why := lfs_missing()) is not None:
+        sys.exit(why)
     try:
         layout = locate(CHECKOUT)
         if a.check:
@@ -714,14 +767,24 @@ def main() -> None:
     if a.check:
         for what, p in out_of_date:
             print(f"{what}: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr)
-        sys.exit(1 if out_of_date else 0)
+        # git-lfs's own report, apart from pending()'s paths: it names the files.
+        report = plain_blobs(layout.root)
+        if report is not None:
+            print(f"{report}\n{NOT_IN_LFS}: the files above; {RENORMALIZE}", file=sys.stderr)
+        sys.exit(1 if out_of_date or report is not None else 0)
     if not steps:
         print("nothing to do")
     elif a.yes:
         try:
             apply(layout.root, steps, run_command)
         except subprocess.CalledProcessError as e:
-            sys.exit(f"{' '.join(e.cmd)} failed ({e.returncode})")
+            why = ""
+            if tuple(e.cmd) == LFS_PULL:
+                why = (
+                    "; the Git LFS files stay pointers until it runs: rerun adopt --yes with the"
+                    " remote in reach"
+                )
+            sys.exit(f"{' '.join(e.cmd)} failed ({e.returncode}){why}")
     else:
         for step in steps:
             print(describe(step, layout.root))

@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -11,6 +12,8 @@ from ee_tooling.adopt import (
     AGENTS_BEGIN,
     AGENTS_END,
     AGENTS_MARKERS,
+    LFS_INSTALL,
+    LFS_PULL,
     Command,
     Edit,
     File,
@@ -26,8 +29,11 @@ from ee_tooling.adopt import (
     fab_added,
     fab_config,
     has_comment,
+    lfs_missing,
+    lfs_unfetched,
     locate,
     marked_text,
+    plain_blobs,
     plan,
     projects,
     stale,
@@ -43,6 +49,22 @@ SUBMODULE = Path("hardware/ee_tooling")
 def supported(monkeypatch: pytest.MonkeyPatch) -> None:
     """A system Python that can run pcbnew, whatever this machine's is."""
     monkeypatch.setattr(adopt, "unsupported", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def git_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty global git config, and no system one: neither the machine's
+    nor the user's (git-lfs's filters among them) is read, and none is
+    written.  Returns the global config's path."""
+    path = tmp_path_factory.mktemp("home") / "gitconfig"
+    path.touch()
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return path
+
+
+# The tests that run git-lfs; CI's kicad job has it and fails if they skip.
+needs_lfs = pytest.mark.skipif(shutil.which("git-lfs") is None, reason="no git-lfs on the path")
 
 
 PCB = """(kicad_pcb
@@ -180,8 +202,9 @@ def test_root_layout(tmp_path: Path) -> None:
         ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
         ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
         ("git", "config", "core.hooksPath", ".githooks"),
+        LFS_INSTALL,
     ]
-    assert [s.directory for s in steps if isinstance(s, Command)] == [Path()] * 3
+    assert [s.directory for s in steps if isinstance(s, Command)] == [Path()] * 4
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
         ".githooks/pre-push": Owner.MANAGED,
@@ -209,6 +232,7 @@ def test_plan_fresh_repository(tmp_path: Path) -> None:
         ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
         ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
         ("git", "config", "core.hooksPath", ".githooks"),
+        LFS_INSTALL,
     ]
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
@@ -282,6 +306,10 @@ def test_rerun_has_nothing_to_do(tmp_path: Path) -> None:
     )
     subprocess.run(
         ["git", "-C", str(tmp_path), "config", "core.hooksPath", ".githooks"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "filter.lfs.process", "git-lfs filter-process"],
+        check=True,
     )
     assert plan(layout) == []
 
@@ -1004,3 +1032,218 @@ def test_migrate_without_comments_says_nothing_of_them(
     (tmp_path / "jlcpcb.toml").write_text(OLD_CONFIG.replace("# my boards\n", ""))
     plan(layout)
     assert "comments" not in capsys.readouterr().err
+
+
+def test_lfs_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """git on the path, git-lfs not: git's own error, and the fix."""
+    git_only = tmp_path / "bin"
+    git_only.mkdir()
+    (git_only / "git").symlink_to(shutil.which("git") or "git")
+    monkeypatch.setenv("PATH", str(git_only))
+    why = lfs_missing()
+    assert why is not None
+    assert why.startswith("git-lfs is missing (git lfs version: git: 'lfs' is not a git command.")
+    assert why.endswith("); install the distribution's git-lfs package (docs/adopting.md)")
+
+
+@pytest.mark.parametrize("mode", [[], ["--yes"], ["--check"]])
+def test_every_mode_refused_without_git_lfs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: list[str]
+) -> None:
+    """Before the repository is looked at."""
+    monkeypatch.setattr(adopt, "lfs_missing", lambda: "git-lfs is missing")
+    monkeypatch.setattr(adopt, "locate", lambda _: pytest.fail("located"))
+    monkeypatch.setattr(sys, "argv", ["ee-tooling-adopt", *mode])
+    with pytest.raises(SystemExit, match=r"^git-lfs is missing$"):
+        adopt.main()
+
+
+@needs_lfs
+def test_lfs_found() -> None:
+    assert lfs_missing() is None
+
+
+def commit(root: Path, message: str, *add: str) -> None:
+    """A commit of add, past the hooks (the submodule's commit-msg hook is
+    not there)."""
+    git("-C", str(root), "add", *add)
+    git("-C", str(root), "commit", "-q", "--no-verify", "-m", message)
+
+
+def run_git_only(args: Sequence[str], directory: Path) -> None:
+    """adopt's run_command for git's commands; uv's are not run."""
+    if args[0] == "git":
+        subprocess.run(args, cwd=directory, check=True, capture_output=True)
+
+
+def adopt_main(
+    layout: Layout,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *mode: str,
+) -> tuple[object, str]:
+    """adopt in layout's repository with mode; its exit code (sys.exit's
+    argument) and stderr."""
+    monkeypatch.setattr(adopt, "locate", lambda _: layout)
+    monkeypatch.setattr(adopt, "run_command", run_git_only)
+    monkeypatch.setattr(sys, "argv", ["ee-tooling-adopt", *mode])
+    capsys.readouterr()
+    code: object = None
+    try:
+        adopt.main()
+    except SystemExit as e:
+        code = e.code
+    return code, capsys.readouterr().err
+
+
+# Files of the types Git LFS tracks, and one it does not, by path.
+BINARIES = {
+    "production/20261118-1/main-1-gerbers-jlcpcb.zip": "PK\x03\x04 zip",
+    "docs/U1.PDF": "%PDF-1.4 datasheet",
+    "hardware/main/main.3dshapes/u1.step": "ISO-10303-21;",
+}
+
+
+@needs_lfs
+def test_lfs_migration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    git_config: Path,
+) -> None:
+    """A repository with archives, a PDF and a STEP file committed as plain
+    blobs: --check fails, --yes writes the section and sets the filters in
+    .git/config alone, --check then names each file and the fix, which
+    makes it pass."""
+    layout = repository(tmp_path, "main")
+    for name, text in BINARIES.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    commit(tmp_path, "board", ".")
+    status, err = adopt_main(layout, monkeypatch, capsys, "--check")
+    assert status == 1
+    assert "out of date: .gitattributes; run hardware/ee_tooling/adopt --yes\n" in err
+    assert "Git LFS" not in err
+    assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] is None
+    assert git_config.read_text() == ""
+    local = subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "--local", "filter.lfs.process"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert local.stdout == "git-lfs filter-process\n"
+    assert sorted(p.name for p in (tmp_path / ".githooks").iterdir()) == ["commit-msg", "pre-push"]
+    adopted = (".gitattributes", ".githooks", ".github", ".claude", "AGENTS.md", "fab.toml")
+    board = (
+        "hardware/pyproject.toml",
+        "hardware/main/main.kicad_pro",
+        "hardware/main/main.kicad_dru",
+    )
+    commit(tmp_path, "adopt", *adopted, *board)
+    porcelain = subprocess.run(
+        ["git", "-C", str(tmp_path), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert sorted(porcelain.splitlines()) == sorted(f" M {name}" for name in BINARIES)
+    status, err = adopt_main(layout, monkeypatch, capsys, "--check")
+    assert status == 1
+    assert "out of date" not in err
+    for name in BINARIES:
+        assert f'"{name}"' in err
+        assert "should have been a pointer but was not" in err
+    assert "main.kicad_pcb" not in err
+    assert err.endswith(
+        "not stored through Git LFS: the files above; with git-lfs's filters set (adopt --yes"
+        " sets them), run git add --renormalize . in a clean work tree, and commit\n"
+    )
+    git("-C", str(tmp_path), "add", "--renormalize", ".")
+    commit(tmp_path, "renormalize")
+    assert adopt_main(layout, monkeypatch, capsys, "--check") == (0, "")
+    for name, text in BINARIES.items():
+        blob = subprocess.run(
+            ["git", "-C", str(tmp_path), "show", f"HEAD:{name}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert blob.startswith("version https://git-lfs.github.com/spec/v1\n")
+        assert (tmp_path / name).read_text() == text
+    pcb = tmp_path / "hardware/main/main.kicad_pcb"
+    assert pcb.read_text() == PCB
+    assert sorted(p.name for p in (tmp_path / ".githooks").iterdir()) == ["commit-msg", "pre-push"]
+    assert git_config.read_text() == ""
+
+
+@needs_lfs
+def test_plain_blobs_none_before_a_commit(tmp_path: Path) -> None:
+    git("init", "-q", str(tmp_path))
+    assert plain_blobs(tmp_path) is None
+
+
+def lfs_clone(tmp_path: Path) -> Layout:
+    """A clone, made without git-lfs's filters, of a repository whose
+    STEP file is in Git LFS at a file:// remote."""
+    origin, source, clone = tmp_path / "origin.git", tmp_path / "source", tmp_path / "clone"
+    git("init", "-q", "--bare", str(origin))
+    repository(source, "main")
+    git("-C", str(source), "config", "--local", "filter.lfs.process", "git-lfs filter-process")
+    git("-C", str(source), "config", "--local", "filter.lfs.required", "true")
+    (source / ".gitattributes").write_text(GITATTRIBUTES)
+    (source / "hardware/main/u1.step").write_text("ISO-10303-21;")
+    commit(source, "board", ".")
+    git("-C", str(source), "remote", "add", "origin", origin.as_uri())
+    git("-C", str(source), "push", "-q", "origin", "HEAD:main")
+    git("-C", str(source), "lfs", "push", "--all", "origin")
+    git("clone", "-q", "-b", "main", origin.as_uri(), str(clone))
+    return Layout(clone, SUBMODULE)
+
+
+@needs_lfs
+def test_lfs_clone_pulled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A clone's pointers: --yes sets the filters, then pulls; no git-lfs
+    hook lands in .githooks."""
+    layout = lfs_clone(tmp_path)
+    step = layout.root / "hardware/main/u1.step"
+    assert step.read_text().startswith("version https://git-lfs.github.com/spec/v1\n")
+    assert lfs_unfetched(layout.root)
+    assert commands(plan(layout))[-2:] == [LFS_INSTALL, LFS_PULL]
+    assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] is None
+    assert step.read_text() == "ISO-10303-21;"
+    assert not lfs_unfetched(layout.root)
+    assert LFS_PULL not in commands(plan(layout))
+    assert LFS_INSTALL not in commands(plan(layout))
+    assert sorted(p.name for p in (layout.root / ".githooks").iterdir()) == [
+        "commit-msg",
+        "pre-push",
+    ]
+
+
+@needs_lfs
+def test_lfs_pull_out_of_reach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The remote gone: the files adopt wrote stay, and adopt says why the
+    pointers do."""
+    layout = lfs_clone(tmp_path)
+    git("-C", str(layout.root), "remote", "set-url", "origin", (tmp_path / "gone.git").as_uri())
+    assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] == (
+        "git lfs pull failed (2); the Git LFS files stay pointers until it runs: rerun adopt"
+        " --yes with the remote in reach"
+    )
+    assert (layout.root / ".githooks/pre-push").exists()
+
+
+@needs_lfs
+def test_no_pull_with_nothing_to_fetch(tmp_path: Path) -> None:
+    """git lfs pull fails with no remote, even with nothing to fetch: not
+    run then."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / ".gitattributes").write_text(GITATTRIBUTES)
+    commit(tmp_path, "board", ".")
+    assert not lfs_unfetched(tmp_path)
+    assert LFS_PULL not in commands(plan(layout))
