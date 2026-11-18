@@ -42,6 +42,15 @@ class Box:
     right: float
     bottom: float
 
+    def contains(self, other: "Box") -> bool:
+        """Whether other lies wholly inside it, edges included."""
+        return (
+            self.left <= other.left
+            and other.right <= self.right
+            and self.top <= other.top
+            and other.bottom <= self.bottom
+        )
+
     def overlaps(self, other: "Box") -> bool:
         """Whether they share area; touching edges do not."""
         return (

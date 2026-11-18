@@ -4,11 +4,14 @@
 stackup-table BOARD [-o OUT] [--at X,Y] [--check]: the table KiCad's
 Place > Add Stackup Table makes, on User.Drawings, from the stackup in
 Board Setup.  A board without one gets one, its top left corner at --at,
-else GAP right of the board outline's top right corner.  Each stackup
-table it has (kicad_style_stackup.tables) whose cells or layer differ
-from what the stackup gives is rewritten where it is, or at --at; one on
-another layer is moved to User.Drawings.  Only the table's text in the
-file changes; the rest is kept byte for byte.  Thicknesses are in mm.
+else at the first of the spots (spots) where it lies inside the drawing
+sheet's frame, clear of its title block and the board outline.  Each
+stackup table it has (kicad_style_stackup.tables) whose cells or layer
+differ from what the stackup gives is rewritten where it is, or at --at;
+one on another layer is moved to User.Drawings.  A table kept where it
+is, or put at --at, that leaves the frame is said on stderr.  Only the
+table's text in the file changes; the rest is kept byte for byte.
+Thicknesses are in mm.
 
 Column widths are estimated from the stroke font's advances, not
 measured as KiCad's own table sizes them, so they can differ from the
@@ -23,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
+from ee_tooling.drawing_sheet import Sheet, SheetError, custom_sheet, sheet
 from ee_tooling.fabrication import (
     COPPER,
     DIELECTRICS,
@@ -75,7 +79,8 @@ RIGHT = frozenset({THICKNESS, EPSILON_R, LOSS_TANGENT})
 # What KiCad prints for a value a layer's type has but the stackup leaves
 # unset, or a thickness its type does not have.
 NOT_SPECIFIED = "Not specified"
-# A new table's left edge this far right of the board outline, mm.
+# A new table this far from the board outline, or in from the drawing
+# sheet's frame, mm.
 GAP = 5.0
 # Each printable ASCII character's advance in KiCad 10's stroke font, in
 # EMths of the text size (measured with pcbnew's PCB_TEXT); any other
@@ -315,12 +320,64 @@ def outline_box(board: Expression) -> Box | None:
     return Box(min(xs), min(ys), max(xs), max(ys))
 
 
-def beside(board: Expression) -> Point:
-    """GAP right of the board outline's top right corner."""
-    outline = outline_box(board)
-    if outline is None:
-        raise TableError("no board outline (Edge.Cuts) to put the stackup table beside: give --at")
-    return outline.right + GAP, outline.top
+def table_box(table: Expression) -> Box:
+    """A table's extent: its cells'."""
+    corners = [
+        (float(str(c[1])), float(str(c[2])))
+        for cell_ in children(child(table, "cells") or [], "table_cell")
+        for c in (child(cell_, "start"), child(cell_, "end"))
+        if c is not None
+    ]
+    xs, ys = [x for x, _ in corners], [y for _, y in corners]
+    return Box(min(xs), min(ys), max(xs), max(ys))
+
+
+def problems(box: Box, page: Sheet, outline: Box | None) -> list[str]:
+    """Why a table there is out of place; none if it is not."""
+    out = []
+    if not page.frame.contains(box):
+        out.append(f"past the {page.paper} drawing sheet's frame")
+    if box.overlaps(page.title_block):
+        out.append("over the title block")
+    if outline is not None and box.overlaps(outline):
+        out.append("over the board outline")
+    return out
+
+
+def spots(width: float, height: float, page: Sheet, outline: Box | None) -> list[Point]:
+    """Where a new table of that size may go, in order of preference: GAP
+    right of the board outline, below, left and above it, each from its
+    top or left edge; then GAP in from the frame's top left, top right
+    and bottom left corners, and above the title block."""
+    out = []
+    if outline is not None:
+        out += [
+            (outline.right + GAP, outline.top),
+            (outline.left, outline.bottom + GAP),
+            (outline.left - GAP - width, outline.top),
+            (outline.left, outline.top - GAP - height),
+        ]
+    f = page.frame
+    out += [
+        (f.left + GAP, f.top + GAP),
+        (f.right - GAP - width, f.top + GAP),
+        (f.left + GAP, f.bottom - GAP - height),
+        (f.right - GAP - width, page.title_block.top - GAP - height),
+    ]
+    return out
+
+
+def place(texts: list[list[str]], page: Sheet, outline: Box | None) -> Point:
+    """The first spot where a new table of texts fits."""
+    width, height = sum(column_widths(texts)), sum(row_heights(texts))
+    for x, y in spots(width, height, page, outline):
+        if not problems(Box(x, y, x + width, y + height), page, outline):
+            return round(x, 4), round(y, 4)
+    raise TableError(
+        f"no room for the {width:.0f} x {height:.0f} mm stackup table inside the {page.paper}"
+        " drawing sheet's frame, clear of its title block and the board outline:"
+        " give --at, or a larger paper size"
+    )
 
 
 def refresh(text: str, board: Expression, at: Point | None = None) -> Result:
@@ -332,6 +389,8 @@ def refresh(text: str, board: Expression, at: Point | None = None) -> Result:
     texts = [list(HEADER), *stackup_rows(found, layer_names(board))]
     if at is not None:
         at = (round(at[0], 4), round(at[1], 4))
+    page = sheet(board)
+    outline = outline_box(board)
     result = Result(text)
     lists = [i for i in board if isinstance(i, list)]
     located = spans(text)
@@ -344,18 +403,26 @@ def refresh(text: str, board: Expression, at: Point | None = None) -> Result:
         layer = str((child(table, "layer") or ["", "?"])[1])
         moved = at is not None and at != corner
         if rows(table) == texts[1:] and layer == LAYER and not moved:
-            continue
-        span = located[next(n for n, i in enumerate(lists) if i is table)]
-        new = build(texts, at or corner, table)
-        edits.append((span, new))
+            new = table
+        else:
+            new = build(texts, at or corner, table)
+            span = located[next(n for n, i in enumerate(lists) if i is table)]
+            edits.append((span, new))
+            result.changes.append(f"stackup table at {where(at or corner)}: out of date")
         if layer != LAYER:
             result.notes.append(f"stackup table on {layer}: it goes on {LAYER_NAME}")
-        result.changes.append(f"stackup table at {where(at or corner)}: out of date")
+        wrong = problems(table_box(new), page, outline)
+        if wrong:
+            result.notes.append(f"stackup table at {where(at or corner)}: {', '.join(wrong)}")
     if not present:
-        corner = at or beside(board)
+        corner = at or place(texts, page, outline)
         end = located[-1][1]
-        edits.append(((end, end), build(texts, corner, None)))
+        new = build(texts, corner, None)
+        edits.append(((end, end), new))
         result.changes.append(f"stackup table at {where(corner)}: missing")
+        wrong = problems(table_box(new), page, outline)
+        if wrong:
+            result.notes.append(f"stackup table at {where(corner)}: {', '.join(wrong)}")
         if any(str(g[1]) == OLD_GROUP for g in children(board, "group")):
             result.notes.append(f"the old {OLD_GROUP} stays: delete it in KiCad")
     for (start, end), new in sorted(edits, key=lambda e: e[0], reverse=True):
@@ -378,7 +445,7 @@ def main() -> None:
         "--at",
         type=parse_point,
         metavar="X,Y",
-        help="the table's top left corner, mm (default: where it is; a new one beside the board)",
+        help="the table's top left corner, mm (default: where it is; a new one in the frame)",
     )
     ap.add_argument(
         "--check", action="store_true", help="write nothing; exit 1 if the table would change"
@@ -387,8 +454,18 @@ def main() -> None:
     try:
         text = a.board.read_bytes().decode("utf-8")
         result = refresh(text, parse(text), a.at)
-    except (OSError, UnicodeDecodeError, ParseError, TableError) as e:
+    except (OSError, UnicodeDecodeError, ParseError, TableError, SheetError) as e:
         fail(f"{a.board}: {e}")
+    project = a.board.with_suffix(".kicad_pro")
+    try:
+        own = custom_sheet(project)
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        own = ""
+        print(f"{project}: not read, so its drawing sheet is not known: {e}", file=sys.stderr)
+    if own:
+        result.notes.append(
+            f"its own drawing sheet {own} is not read: the frame is KiCad's default sheet's"
+        )
     for note in result.notes:
         print(f"{a.board}: {note}", file=sys.stderr)
     if not result.changes:

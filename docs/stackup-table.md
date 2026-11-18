@@ -19,10 +19,9 @@ place unless `-o`.
 
 - No stackup table (a table headed `Layer Name`, `Type`, `Material`,
   `Thickness`, `Color`, `Epsilon R`, `Loss Tangent`, as the checker
-  finds it): one is added, its top left corner at `--at`, else 5 mm
-  right of the board outline's (Edge.Cuts) top right corner.  A board
-  with no outline needs `--at`.  A pre-KiCad 10 table (the group
-  `group-boardStackUp`) is left in place, and said so on stderr.
+  finds it): one is added, its top left corner at `--at`, else at the
+  first spot where it fits (Placement).  A pre-KiCad 10 table (the
+  group `group-boardStackUp`) is left in place, and said so on stderr.
 - A stackup table whose cells differ from what the stackup gives, or on
   a layer other than User.Drawings: rewritten where it is, or at
   `--at`, on User.Drawings (a move is said on stderr).  Its uuids, lock,
@@ -31,6 +30,46 @@ place unless `-o`.
 
 Only the table's text in the file changes; the rest of the file is kept
 byte for byte.  A second run changes nothing.
+
+## The drawing frame
+
+The board's paper is its `(paper ...)`: a named size (A5 to A0, A to E,
+USLetter, USLegal, USLedger, GERBER), or `"User" WIDTH HEIGHT` in mm;
+`portrait` puts the shorter side across.  A board with no `(paper ...)`
+is on A4, landscape.  The page's top left corner is the board's origin.
+
+On it, KiCad's default drawing sheet has its frame (inside the border's
+2 mm ruler) 12 mm in from each edge of the paper, and its title block,
+108 x 32 mm, in the frame's bottom right corner.  These are as
+`kicad-cli` 10 plots the default sheet for each paper size
+(`src/ee_tooling/drawing_sheet.py`).
+
+A project file (`.kicad_pro`) beside the board that names its own
+drawing sheet (`.kicad_wks`) is said on stderr, and the frame is still
+taken as the default sheet's: the custom sheet is not read.
+
+## Placement
+
+A table fits where it lies wholly inside the frame, clear of the title
+block and of the board outline's (Edge.Cuts) extent.  A new table, with
+no `--at`, goes at the first of these spots where it fits:
+
+1. 5 mm right of the outline, level with its top.
+2. 5 mm below the outline, level with its left edge.
+3. 5 mm left of the outline, level with its top.
+4. 5 mm above the outline, level with its left edge.
+5. 5 mm in from the frame's top left corner.
+6. 5 mm in from the frame's top right corner.
+7. 5 mm in from the frame's bottom left corner.
+8. 5 mm above the title block, 5 mm in from the frame's right edge.
+
+A board with no outline tries 5 to 8 only.  Where none fits, nothing is
+written and it exits 2: give `--at`, or a larger paper size.
+
+A table at `--at`, or one kept where it is, is not moved to fit: where
+it leaves the frame, or lies over the title block or the outline, that
+is said on stderr, the table is still written, and the exit status is
+the same (with `--check` too).
 
 ## The table
 
@@ -53,4 +92,4 @@ thickness shown in other units in the GUI's table is rewritten in mm.
 |---|---|
 | 0 | written, or up to date |
 | 1 | `--check`, and the table is missing or would change (nothing is written) |
-| 2 | the board unreadable, no physical stackup, no outline and no `--at`, or a rotated stackup table (replace it in KiCad) |
+| 2 | the board unreadable, its paper not one KiCad 10 has, no physical stackup, no room for a new table in the frame (and no `--at`), or a rotated stackup table (replace it in KiCad) |
