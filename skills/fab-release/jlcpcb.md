@@ -11,7 +11,8 @@ require_lcsc = true    # default false
 
 - `require_lcsc`: a fitted part with no LCSC number refuses the release,
   naming each, before anything is written.  Without it, such a part is a
-  warning naming it.
+  warning naming it, on stderr (with the variant in a variant's build),
+  as is a part whose placement correction is not known yet.
 
 A fitted part in its BOM and not in KiCad's placement export (excluded
 from position files, or not on the board) refuses the release, naming

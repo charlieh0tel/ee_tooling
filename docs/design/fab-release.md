@@ -236,6 +236,10 @@ class Profile(Protocol):
         ...
         # refusals beyond the core's, before anything is written
 
+    def warnings(self, parts: list[Part], placements: list[Placement], options: Any) -> list[str]:
+        ...
+        # said on stderr, "variant X: " before each in a variant's build
+
     def outputs(self, base: str) -> list[str]:
         ...
         # the names of the files assembly writes

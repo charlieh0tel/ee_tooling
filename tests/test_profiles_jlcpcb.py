@@ -176,3 +176,13 @@ def test_options() -> None:
     profile = Jlcpcb(CORRECTIONS)
     assert profile.options({}) == Options(require_lcsc=False)
     assert profile.options({"require_lcsc": True}) == Options(require_lcsc=True)
+
+
+def test_warnings() -> None:
+    """A fitted part with no LCSC number, unless require_lcsc refuses it;
+    a part with no correction known."""
+    parts = [Part("C1", "1u", "lib:C", "C4"), Part("R1", "0R", "lib:R", "")]
+    profile = Jlcpcb(CORRECTIONS)
+    check = "check a new part (C4) in JLCPCB's placement preview: no correction known"
+    assert profile.warnings(parts, [], Options()) == ["no LCSC part number for R1", check]
+    assert profile.warnings(parts, [], Options(require_lcsc=True)) == [check]

@@ -143,6 +143,22 @@ class Jlcpcb:
             out.append(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
         return out
 
+    def warnings(
+        self, parts: list[Part], placements: list[Placement], options: Options
+    ) -> list[str]:
+        """A fitted part with no LCSC number (without require_lcsc), and a
+        part whose placement correction is not known yet."""
+        _, refs, missing = jlcpcb_bom(parts)
+        out = []
+        if missing and not options.require_lcsc:
+            out.append(f"no LCSC part number for {', '.join(missing)}")
+        out += [
+            f"check {desc} ({lcsc}) in JLCPCB's placement preview: no correction known"
+            for lcsc, desc in self.corrections.unchecked.items()
+            if lcsc in refs.values()
+        ]
+        return out
+
     def outputs(self, base: str) -> list[str]:
         """Its BOM and its CPL."""
         return [f"{base}-{self.name}-bom.csv", f"{base}-{self.name}-cpl.csv"]
@@ -159,13 +175,8 @@ class Jlcpcb:
         with its corrections; check has found each placed."""
         bom_name, cpl_name = self.outputs(base)
         bom_csv, cpl_csv = dest / bom_name, dest / cpl_name
-        bom, refs, missing = jlcpcb_bom(parts)
+        bom, refs, _ = jlcpcb_bom(parts)
         write_csv(bom_csv, BOM_HEADER, bom)
-        if missing:
-            print("warning: no LCSC part number for", ", ".join(missing))
         cpl, _ = jlcpcb_cpl(placements, refs, self.corrections)
         write_csv(cpl_csv, CPL_HEADER, cpl)
-        for lcsc, desc in self.corrections.unchecked.items():
-            if lcsc in refs.values():
-                print(f"check {desc} ({lcsc}) in JLCPCB's placement preview: no correction known")
         return [bom_csv, cpl_csv]

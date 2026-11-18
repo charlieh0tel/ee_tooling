@@ -665,6 +665,23 @@ SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
 FIXTURE["hw/b.kicad_dru"] = f"(version 1)\n{SECTION}\n{OWN_RULE}"
 
 
+# The JLCPCB profile's warnings of the fixture's parts, on stderr.
+PROFILE_WARNINGS = (
+    "warning: no LCSC part number for TP1,TP2\n"
+    "warning: check a new part (C4) in JLCPCB's placement preview: no correction known\n"
+)
+
+
+def profile_quiet(err: str) -> str:
+    """stderr without the profile's warnings of the fixture's parts, in
+    any build."""
+    return "".join(
+        line
+        for line in err.splitlines(keepends=True)
+        if "no LCSC part number for TP1,TP2" not in line and "placement preview" not in line
+    )
+
+
 def builtin_corrections(cls: type[Corrections]) -> Corrections:
     return CORRECTIONS
 
@@ -962,9 +979,9 @@ def test_release_files(
     commit = git(root, "rev-parse", "--short", "HEAD")
     dest = root / "production/20261118-1"
     files = sorted(f.name for f in dest.iterdir())
-    assert capsys.readouterr().out == (
-        "warning: no LCSC part number for TP1,TP2\n"
-        "check a new part (C4) in JLCPCB's placement preview: no correction known\n"
+    out, err = capsys.readouterr()
+    assert err == PROFILE_WARNINGS
+    assert out == (
         "tagged b-20261118-1; push it with: git push origin refs/tags/b-20261118-1\n"
         f"production/20261118-1 from {commit}:\n" + "".join(f"  {f}\n" for f in files)
     )
@@ -1414,7 +1431,7 @@ def test_release_variants(
             ),
         ]
     )
-    err = capsys.readouterr().err
+    err = profile_quiet(capsys.readouterr().err)
     assert "warning" not in err
     assert "differ" not in err
     erc, drc, bom, pos, gerbers, drill, odb, ipc, sch_pdf, pcb_pdf = RELEASE_CALLS
@@ -1475,7 +1492,7 @@ def test_release_variants_silkscreen(
             assert z.read("b-F_Silkscreen.gto").decode() == gerber["b-F_Silkscreen.gto"]
             assert z.read("README.txt").decode() == text
             assert {"stackup.txt", "fab-notes.txt"} <= set(z.namelist())
-    assert capsys.readouterr().err == (
+    assert profile_quiet(capsys.readouterr().err) == (
         "variants lite, full: the Gerbers differ in F.Silkscreen: a Gerber zip per variant,"
         " each a bare-board order of its own\n"
     )
@@ -1591,7 +1608,7 @@ def test_release_variants_from_the_board(
     the same files as from the .kicad_pro."""
     root, _ = variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, where="board")
     assert (root / "production/20261118-1/b-1-lite-bom.csv").exists()
-    assert "warning" not in capsys.readouterr().err
+    assert "warning" not in profile_quiet(capsys.readouterr().err)
 
 
 def test_release_variants_unlisted(
@@ -1603,7 +1620,7 @@ def test_release_variants_unlisted(
     assert calls == RELEASE_CALLS
     bom = root / "production/20261118-1/b-1-bom.csv"
     assert bom.read_bytes() == RELEASE_TEXT["b-1-bom.csv"].encode()
-    assert capsys.readouterr().err == (
+    assert profile_quiet(capsys.readouterr().err) == (
         "warning: the project has variants lite, full, and fab.toml lists none:"
         " the default variant is built\n"
     )
@@ -1699,7 +1716,7 @@ def test_release_warns_of_rules_not_installed(
     root, calls = release(tmp_path, monkeypatch)
     assert calls == RELEASE_CALLS
     adopt = "run ee_tooling's adopt --yes to make KiCad's DRC the release's"
-    assert capsys.readouterr().err == (
+    assert profile_quiet(capsys.readouterr().err) == (
         f"warning: b.kicad_dru: ee_tooling's jlcpcb rules missing or out of date: {adopt}\n"
         "warning: b.kicad_pro: Board Setup below jlcpcb's minimums"
         f" (board.design_settings.rules.min_clearance: 0.05 -> 0.1): {adopt}\n"
@@ -1714,7 +1731,7 @@ def test_release_adopted_has_no_rules_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     release(tmp_path, monkeypatch)
-    assert capsys.readouterr().err == ""
+    assert profile_quiet(capsys.readouterr().err) == ""
 
 
 def test_release_refuses_bad_markers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1995,7 +2012,7 @@ def test_release_warns_of_a_model_found_nowhere(
     monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
     root, _ = release(tmp_path, monkeypatch)
     assert (root / "production/20261118-1/b-1-bom.csv").exists()
-    assert capsys.readouterr().err == (
+    assert profile_quiet(capsys.readouterr().err) == (
         "warning: 3D model not found, from the project or its library: R9 (x:R): 3d/R.step"
         " (library 'x' not in fp-lib-table)\n"
     )
@@ -2265,3 +2282,18 @@ def test_release_refuses_variants_whose_files_clash(
     with pytest.raises(SystemExit, match=r"^variants a and a-jlcpcb would both write"):
         release(tmp_path, monkeypatch)
     assert not (tmp_path / "repo/production").exists()
+
+
+def test_release_warnings_name_the_variant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The profile's warnings on stderr, each build's naming its variant."""
+    variant_release(tmp_path, monkeypatch, LITE_OUTPUTS)
+    out, err = capsys.readouterr()
+    assert "warning" not in out
+    for v in ("lite", "full"):
+        assert f"warning: variant {v}: no LCSC part number for TP1,TP2\n" in err
+        assert (
+            f"warning: variant {v}: check a new part (C4) in JLCPCB's placement preview:"
+            " no correction known\n"
+        ) in err

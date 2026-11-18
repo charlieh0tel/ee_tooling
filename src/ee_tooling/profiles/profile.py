@@ -84,6 +84,12 @@ class Profile[Options](Protocol):
         """Its refusals of the release, beyond the core's; none, to go on."""
         ...
 
+    def warnings(
+        self, parts: list[Part], placements: list[Placement], options: Options
+    ) -> list[str]:
+        """What the release says on stderr of the parts, going on."""
+        ...
+
     def outputs(self, base: str) -> list[str]:
         """The names of the files assembly writes, NAME-REV being base."""
         ...

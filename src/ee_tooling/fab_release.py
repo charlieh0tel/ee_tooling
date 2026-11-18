@@ -1296,6 +1296,8 @@ def main() -> None:
                 [] if v is None else cross_checks(parts, placements, r.placements(v, True))
             )
             found_problems += profile.check(parts, placements, options[b.name])
+            for w in profile.warnings(parts, placements, options[b.name]):
+                print(f"warning: {w if v is None else f'variant {v}: {w}'}", file=sys.stderr)
             refusals += [p if v is None else f"variant {v}: {p}" for p in found_problems]
             rows[v] = (parts, placements)
         if refusals:
