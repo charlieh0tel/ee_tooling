@@ -968,6 +968,23 @@ def test_release_refused_by_its_profile_before_anything(
     assert git(tmp_path / "repo", "tag") == ""
 
 
+def test_release_refuses_a_part_not_placed_before_anything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fitted part in the BOM and not in the placement export stops the
+    release before a --force replaces the release, naming it."""
+    old = tmp_path / "repo/production/20261118-1/old.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    pos = "".join(line + "\n" for line in FAKE_POS.splitlines() if '"U2"' not in line)
+    monkeypatch.setitem(FAKE_OUTPUTS, "pcb export pos", {"": pos})
+    with pytest.raises(SystemExit, match=r"^in the BOM but not placed: U2$"):
+        release(tmp_path, monkeypatch, args=("--force",))
+    assert kicad_calls(tmp_path) == RELEASE_CALLS[:4]
+    assert sorted(p.name for p in old.parent.iterdir()) == ["old.txt"]
+    assert git(tmp_path / "repo", "tag") == ""
+
+
 def test_release_stops_on_bad_options_before_anything(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -150,7 +150,26 @@ def test_check_require_lcsc(require_lcsc: bool, lcsc: str, refusals: list[str]) 
         *(Part(r, "0R", "lib:R", lcsc) for r in ("R1", "R2")),
     ]
     parts.append(Part("R3", "0R", "lib:R", "", dnp=True))
-    assert Jlcpcb(CORRECTIONS).check(parts, [], Options(require_lcsc)) == refusals
+    placements = [place(r, 0, 0, 0) for r in ("C1", "R1", "R2")]
+    assert Jlcpcb(CORRECTIONS).check(parts, placements, Options(require_lcsc)) == refusals
+
+
+def test_check_not_placed() -> None:
+    """A fitted part in the BOM and not placed refuses the release, named;
+    a DNP part, or a placement not in the BOM, does not."""
+    parts = [
+        Part("C1", "100n", "lib:C", "C1525"),
+        Part("R2", "0R", "lib:R", ""),
+        Part("R1", "0R", "lib:R", ""),
+        Part("R3", "0R", "lib:R", "", dnp=True),
+    ]
+    profile = Jlcpcb(CORRECTIONS)
+    assert profile.check(parts, [place("C1", 0, 0, 0), place("H1", 0, 0, 0)], Options(True)) == [
+        "no LCSC part number for R2,R1 (require_lcsc)",
+        "in the BOM but not placed: R1, R2",
+    ]
+    placed = [place(r, 0, 0, 0) for r in ("C1", "R1", "R2")]
+    assert profile.check(parts, placed, Options()) == []
 
 
 def test_options() -> None:

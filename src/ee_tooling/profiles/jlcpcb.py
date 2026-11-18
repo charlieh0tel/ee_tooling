@@ -4,7 +4,6 @@ KiCad's, and its corrections to KiCad's placement, by LCSC part
 
 import importlib.resources
 import math
-import sys
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
@@ -133,12 +132,15 @@ class Jlcpcb:
         return Options(**table)
 
     def check(self, parts: list[Part], placements: list[Placement], options: Options) -> list[str]:
-        """With require_lcsc, a fitted part with no LCSC number refuses the
-        release, naming each."""
-        _, _, missing = jlcpcb_bom(parts)
+        """A part in its BOM and not placed refuses the release, naming each;
+        with require_lcsc, so does a fitted part with no LCSC number."""
+        _, refs, missing = jlcpcb_bom(parts)
+        out = []
         if options.require_lcsc and missing:
-            return [f"no LCSC part number for {', '.join(missing)} (require_lcsc)"]
-        return []
+            out.append(f"no LCSC part number for {', '.join(missing)} (require_lcsc)")
+        if unplaced := set(refs) - {p.reference for p in placements}:
+            out.append(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
+        return out
 
     def assembly(
         self,
@@ -149,18 +151,16 @@ class Jlcpcb:
         options: Options,
     ) -> list[Path]:
         """Its BOM, without not-fitted parts, and its CPL of the BOM's parts,
-        with its corrections."""
+        with its corrections; check has found each placed."""
         bom_csv = dest / f"{base}-{self.name}-bom.csv"
         cpl_csv = dest / f"{base}-{self.name}-cpl.csv"
         bom, refs, missing = jlcpcb_bom(parts)
         write_csv(bom_csv, BOM_HEADER, bom)
         if missing:
             print("warning: no LCSC part number for", ", ".join(missing))
-        cpl, placed = jlcpcb_cpl(placements, refs, self.corrections)
+        cpl, _ = jlcpcb_cpl(placements, refs, self.corrections)
         write_csv(cpl_csv, CPL_HEADER, cpl)
         for lcsc, desc in self.corrections.unchecked.items():
             if lcsc in refs.values():
                 print(f"check {desc} ({lcsc}) in JLCPCB's placement preview: no correction known")
-        if unplaced := set(refs) - placed:
-            sys.exit(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
         return [bom_csv, cpl_csv]

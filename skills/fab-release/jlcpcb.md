@@ -13,6 +13,10 @@ require_lcsc = true    # default false
   naming each, before anything is written.  Without it, such a part is a
   warning naming it.
 
+A fitted part in its BOM and not in KiCad's placement export (excluded
+from position files, or not on the board) refuses the release, naming
+each, before anything is written.
+
 `adopt` writes its house `[board.fab]` values: IPC class 2, FR-4, Tg
 130 deg C, a 100% netlist test per IPC-9252.  Check them against the
 order's options (material, Tg) before ordering.
