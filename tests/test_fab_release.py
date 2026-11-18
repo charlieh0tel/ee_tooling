@@ -1878,3 +1878,24 @@ def test_release_refuses_a_tag_on_an_earlier_commit(
     monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
     main()
     assert git(root, "rev-parse", "--short", "b-20261118-1^{commit}") == head
+
+
+def test_release_refuses_a_library_outside_the_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before anything runs, naming each path as written."""
+    monkeypatch.setitem(
+        FIXTURE,
+        "hw/fp-lib-table",
+        '(fp_lib_table (lib (name "a")(uri "${KIPRJMOD}/../../a.pretty"))'
+        ' (lib (name "s")(uri "${KICAD10_FOOTPRINT_DIR}/R.pretty")))\n',
+    )
+    with pytest.raises(SystemExit) as e:
+        release(tmp_path, monkeypatch)
+    assert str(e.value) == (
+        "b: libraries outside the repository, or under a variable not KiCad's own (its library"
+        " tables and 3D model paths, as written):\n  ${KIPRJMOD}/../../a.pretty\nput each"
+        " library in the repository (a git submodule) and name it by a ${KIPRJMOD}-relative"
+        " path (docs/kicad-style.md, Files)"
+    )
+    assert kicad_calls(tmp_path) == []

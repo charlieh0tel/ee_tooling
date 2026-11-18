@@ -101,6 +101,16 @@ electrical_test = "100% netlist test per IPC-9252"
   each symbol, so the archive rebuilds the board and its outputs; the 3D
   models of a library not in `sources`, and of KiCad's stock libraries,
   are not in it.
+- The release refuses, before anything runs, a path in the project's
+  `fp-lib-table` or `sym-lib-table`, or a footprint's 3D model path in
+  the board, that resolves outside the repository, naming each as
+  written (`project_libraries.py`).  `${KIPRJMOD}`, and a relative path,
+  are from the project's directory.  A path under one of KiCad's install
+  variables (`${KICAD10_FOOTPRINT_DIR}`, `${KICAD10_SYMBOL_DIR}`,
+  `${KICAD10_3DMODEL_DIR}`, their older versions, `${KISYS3DMOD}`) is a
+  stock library: allowed, and not in the source tgz.  Any other
+  variable (`${KICAD10_3RD_PARTY}`, a user's own) is refused: its value
+  is the user's.  An embedded model is not a path.
 
 ### JLCPCB profile (`profiles/jlcpcb.py`)
 
@@ -419,36 +429,39 @@ Breaking changes:
 5. `[board.fab]` required, with every key.
 6. A `sources` path outside the repository (absolute, or leading out
    of it with `..`) is an error naming it.
-7. A board with no stackup is refused (now a warning).
-8. A board without a stackup table on User.Drawings matching its stackup
+7. A library the board reads (a project library table's path, a 3D
+   model's) outside the repository, or under a variable not KiCad's
+   own, is refused, naming each path as written.
+8. A board with no stackup is refused (now a warning).
+9. A board without a stackup table on User.Drawings matching its stackup
    is refused.
-9. DRC runs with the profile's current rules: a board clean today may
-   not be.
-10. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+10. DRC runs with the profile's current rules: a board clean today may
+    not be.
+11. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-11. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-12. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+12. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+13. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-13. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+14. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-14. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+15. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-15. `adopt --yes` sets the board's ERC severities and connection grid.
-16. `adopt` and `adopt --check` require git-lfs.
-17. `adopt --check` fails on a plain blob of an LFS-tracked type at
+16. `adopt --yes` sets the board's ERC severities and connection grid.
+17. `adopt` and `adopt --check` require git-lfs.
+18. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-18. `adopt --yes` writes a managed section of `.gitattributes` and
+19. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-19. A push without git-lfs is refused.
-20. The release refuses a board whose inputs hold an unfetched LFS
+20. A push without git-lfs is refused.
+21. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-21. A board repository's host must support Git LFS: a push to one that
+22. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".

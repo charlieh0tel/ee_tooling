@@ -112,7 +112,12 @@ Files); a clone beside the repository is not supported.  The archive
 holds a library only when it is one of `sources`.  The board file embeds
 each footprint and the schematic each symbol, so the archive rebuilds
 the board and its outputs; the 3D models of a library not in `sources`,
-and of KiCad's stock libraries, are not in it.
+and of KiCad's stock libraries, are not in it.  The release refuses, before
+anything runs, a path in the project's `fp-lib-table` or
+`sym-lib-table`, or a footprint's 3D model path, that leads outside the
+repository or uses a variable other than `${KIPRJMOD}` and KiCad's own
+install variables (`${KICAD10_3DMODEL_DIR}` and the like, KiCad's stock
+libraries), naming each path.
 
 It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not

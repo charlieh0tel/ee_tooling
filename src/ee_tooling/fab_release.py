@@ -80,6 +80,7 @@ from ee_tooling.profiles.profile import (
     Profile,
     write_csv,
 )
+from ee_tooling.project_libraries import libraries
 from ee_tooling.sexpr import Expression, Item, ParseError, child, parse
 
 CONFIG = "fab.toml"
@@ -1027,6 +1028,23 @@ def main() -> None:
     missing = [str(s) for s in (b.pcb, b.sch, *b.sources) if not (root / s).exists()]
     if missing:
         sys.exit(f"{CONFIG} names files that are not there: {', '.join(missing)}")
+    pcb_text = (root / b.pcb).read_text()
+    try:
+        pcb = parse(pcb_text)
+    except ParseError as e:
+        sys.exit(f"{b.pcb}: {e}")
+    try:
+        found_libraries = libraries(root, b.directory, pcb)
+    except ValueError as e:
+        sys.exit(str(e))
+    if found_libraries.outside:
+        sys.exit(
+            f"{b.name}: libraries outside the repository, or under a variable not KiCad's own"
+            " (its library tables and 3D model paths, as written):\n"
+            + "".join(f"  {p}\n" for p in found_libraries.outside)
+            + "put each library in the repository (a git submodule) and name it by a"
+            " ${KIPRJMOD}-relative path (docs/kicad-style.md, Files)"
+        )
     try:
         pointers = lfs_pointers(root, b.source_paths(root))
     except OSError as e:
@@ -1038,17 +1056,12 @@ def main() -> None:
             + "".join(f"  {p}\n" for p in pointers)
             + "install git-lfs, then run git lfs install --local --skip-repo and git lfs pull"
         )
-    pcb_text = (root / b.pcb).read_text()
     rev = revision(pcb_text)
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")
     dest = root / b.production / f"{a.date}-{rev}"
     if dest.exists() and not a.force:
         sys.exit(f"{dest} exists; use --force to replace it")
-    try:
-        pcb = parse(pcb_text)
-    except ParseError as e:
-        sys.exit(f"{b.pcb}: {e}")
     found = stackup(pcb)
     if found is None:
         sys.exit(f"{b.pcb.name} has no stackup: set one in Board Setup, Physical Stackup")
