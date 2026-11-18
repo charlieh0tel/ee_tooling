@@ -17,6 +17,10 @@ the board's production directory, YYYYMMDD-REV/, with:
                         BOM and placement
   NAME-REV-source.tgz   the design files, PDFs and docs it was made from
 
+With variants (KiCad 10 design variants), the BOMs, placement, ODB++ and
+IPC-2581 are per variant, NAME-REV-VARIANT-..., as is the Gerber zip where
+the variants' silkscreens differ.
+
 NAME is the KiCad project, REV its board's title-block revision; the
 board's profile (profiles/) names the fab whose files these are.  ERC and
 DRC must be clean and the release's sources committed, unless --allow-dirty.
@@ -39,13 +43,15 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from ee_tooling.fabrication import (
+    DRILL_SUFFIX,
+    GERBER_JOB_SUFFIX,
     IPC_CLASSES,
     Fab,
     GerberFile,
@@ -59,6 +65,7 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
+from ee_tooling.kicad_style_netclass import sheets
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.profile import (
     KICAD_GERBERS,
@@ -68,7 +75,7 @@ from ee_tooling.profiles.profile import (
     Profile,
     write_csv,
 )
-from ee_tooling.sexpr import Expression, ParseError, parse
+from ee_tooling.sexpr import Expression, Item, ParseError, child, parse
 
 CONFIG = "fab.toml"
 # fab.toml's top-level keys.
@@ -81,11 +88,17 @@ STRING_KEYS: dict[str, str | None] = {
     "production": None,
     "profile": None,
 }
-LIST_KEYS: dict[str, list[str] | None] = {"sources": []}
+LIST_KEYS: dict[str, list[str] | None] = {"sources": [], "variants": []}
 # A [[board]]'s table of what its fab is to build to, every key required.
 FAB = "fab"
 # Keys fab.toml no longer has, with why: present, each is an error.
 GONE_KEYS = {"copper": "the copper layers come from the board's stackup"}
+# A design variant's name, as KiCad 10 allows it: letters, digits, ".", "_"
+# and "-", not starting with "-".
+VARIANT_NAME = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._-]*")
+# The Gerber X2 file functions a variant's Gerbers may differ in: the
+# silkscreens and User.Drawings (kicad-cli's "Other,User").
+VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
 # The Gerber map's name in the Gerber zip.
 GERBER_README = "README.txt"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
@@ -169,6 +182,7 @@ class Board:
     profile: str  # its fab's, a key of PROFILES
     fab: Fab  # [board.fab]
     options: dict[str, Any] = field(default_factory=dict)  # [board.<profile>], unchecked
+    variants: tuple[str, ...] = ()  # the design variants built, each a build; () the default
 
     @property
     def pcb(self) -> Path:
@@ -237,6 +251,22 @@ def fab(where: str, table: object) -> Fab:
     return Fab(ipc_class, table["base_material"], float(tg), table["electrical_test"])
 
 
+def variant_errors(names: Iterable[str]) -> list[str]:
+    """What is wrong with a board's variants' names: one not a KiCad name,
+    or one there twice, ignoring case as KiCad does."""
+    out = []
+    seen: set[str] = set()
+    for name in names:
+        if not VARIANT_NAME.fullmatch(name):
+            out.append(
+                f"variant {name!r} is not letters, digits, '.', '_' and '-', not starting with '-'"
+            )
+        elif name.casefold() in seen:
+            out.append(f"variant {name!r} is there twice, ignoring case")
+        seen.add(name.casefold())
+    return out
+
+
 def board(table: dict[str, Any], number: int) -> Board:
     """A [[board]], the number-th; ValueError naming a bad key."""
     where = f"[[board]] {number}"
@@ -258,6 +288,8 @@ def board(table: dict[str, Any], number: int) -> Board:
         )
     if not isinstance(table.get(text["profile"], {}), dict):
         raise ValueError(f"{where}: {text['profile']!r} is not a table")
+    for name in variant_errors(lists["variants"]):
+        raise ValueError(f"{where}: {name}")
     for source in lists["sources"]:
         if os.path.isabs(source) or os.path.normpath(source).split(os.sep)[0] == os.pardir:
             raise ValueError(f"{where}: source {source!r} is outside the repository")
@@ -269,6 +301,7 @@ def board(table: dict[str, Any], number: int) -> Board:
         profile=text["profile"],
         fab=fab(where, table.get(FAB)),
         options=table.get(text["profile"], {}),
+        variants=tuple(lists["variants"]),
     )
 
 
@@ -315,6 +348,117 @@ def house_bom(parts: Iterable[Part]) -> list[list[str]]:
     ]
 
 
+def variant_names(expression: Expression) -> list[str]:
+    """The names of the (variant (name "X") ...) lists in expression, at any
+    depth, in order, each once."""
+    out: dict[str, None] = {}
+    todo: list[Item] = [expression]
+    while todo:
+        item = todo.pop()
+        if not isinstance(item, list):
+            continue
+        if item[:1] == ["variant"] and (name := child(item, "name")) is not None and len(name) > 1:
+            out[str(name[1])] = None
+        todo += reversed(item[1:])
+    return list(out)
+
+
+def board_variants(pcb: Expression) -> list[str]:
+    """The variants the board defines, its top-level (variants (variant (name
+    "X")))."""
+    section = child(pcb, "variants")
+    return variant_names(section) if section is not None else []
+
+
+def check_variants(
+    listed: Sequence[str], board: Sequence[str], schematic: Sequence[str]
+) -> tuple[list[str], list[str]]:
+    """The errors and warnings of a board's variants: a listed variant the
+    board lacks is an error (kicad-cli exports the default for a name it
+    does not know); a project variant (the board's or the schematic's) not
+    listed is a warning."""
+    errors = []
+    for name in listed:
+        if name in board:
+            continue
+        like = [b for b in board if b.casefold() == name.casefold()]
+        hint = f" (it has {like[0]!r})" if like else ""
+        errors.append(f"variant {name!r} is not one of the board's{hint}")
+    project = list(dict.fromkeys([*board, *schematic]))
+    unlisted = [v for v in project if v.casefold() not in {n.casefold() for n in listed}]
+    warnings = []
+    if unlisted and not listed:
+        warnings.append(
+            f"the project has variants {', '.join(unlisted)}, and fab.toml lists none:"
+            " the default variant is built"
+        )
+    elif unlisted:
+        warnings.append(f"variants {', '.join(unlisted)} of the project are not built")
+    return errors, warnings
+
+
+def cross_checks(
+    parts: Iterable[Part], fitted: Iterable[Placement], placed: Iterable[Placement]
+) -> list[str]:
+    """Where a variant's schematic (its BOM's parts) and board (its
+    placements: those fitted, and all placed, DNP too) differ: a part DNP in
+    one and fitted in the other, a different Value, or a different
+    footprint (a variant's Footprint override)."""
+    on_board = {p.reference: p for p in placed}
+    fitted_refs = {p.reference for p in fitted}
+    out = []
+    for p in parts:
+        found = on_board.get(p.reference)
+        if found is None:
+            continue
+        if p.dnp and p.reference in fitted_refs:
+            out.append(f"{p.reference}: DNP in the schematic, fitted on the board")
+        elif not p.dnp and p.reference not in fitted_refs:
+            out.append(f"{p.reference}: fitted in the schematic, DNP on the board")
+        if p.value != found.value:
+            out.append(
+                f"{p.reference}: Value {p.value!r} in the schematic, {found.value!r} on the board"
+            )
+        if p.footprint.split(":", 1)[-1] != found.package:
+            out.append(
+                f"{p.reference}: Footprint {p.footprint!r} in the schematic, {found.package!r}"
+                " on the board: a variant cannot change a footprint"
+            )
+    return out
+
+
+def comparable(path: Path) -> object:
+    """A Gerber, drill or job file's content less what differs from one
+    export to the next: its comment lines (G04 and the X2 creation date in a
+    Gerber, ; in Excellon) and the job file's creation date."""
+    text = path.read_text()
+    if path.suffix == GERBER_JOB_SUFFIX:
+        job = json.loads(text)
+        job.get("Header", {}).pop("CreationDate", None)
+        return job
+    comment = (";",) if path.suffix == DRILL_SUFFIX else ("G04", "%TF.CreationDate")
+    return [line for line in text.splitlines() if not line.startswith(comment)]
+
+
+def gerber_differences(first: Path, other: Path, files: Iterable[GerberFile]) -> list[GerberFile]:
+    """The files of the Gerber directory first whose content differs in
+    other, less comments and dates; a file missing from either differs."""
+    known = {f.path: f for f in files}
+    names = sorted({p.name for p in first.iterdir()} | {p.name for p in other.iterdir()})
+    out = []
+    for name in names:
+        a, b = first / name, other / name
+        if not (a.exists() and b.exists()) or comparable(a) != comparable(b):
+            out.append(known.get(name, GerberFile(name, (), "", "")))
+    return out
+
+
+def silkscreen_only(differ: Iterable[GerberFile]) -> bool:
+    """Whether these files are all silkscreen or User.Drawings, which a
+    variant may change."""
+    return all(f.function[:1] in VARIANT_FUNCTIONS for f in differ)
+
+
 def gerber_zip(base: str, profile: Profile[Any]) -> str:
     """The Gerber zip's name: the profile's when its Gerber options are not
     kicad-cli's own."""
@@ -334,6 +478,16 @@ def write_gerber_zip(out: Path, directory: Path, documents: dict[str, str]) -> N
 def revision(pcb_text: str) -> str | None:
     m = re.search(r'\(title_block\s.*?\(rev "([^"]+)"\)', pcb_text, re.S)
     return m.group(1) if m else None
+
+
+def variant_flag(variant: str | None) -> list[str]:
+    """kicad-cli's argument for the variant; none for the default."""
+    return [] if variant is None else ["--variant", variant]
+
+
+def work_name(stem: str, variant: str | None, suffix: str) -> str:
+    """A work file's name, the variant's if any."""
+    return f"{stem}{suffix}" if variant is None else f"{stem}-{variant}{suffix}"
 
 
 class TagPlan(Enum):
@@ -423,8 +577,12 @@ class Release:
         if r.returncode != 0:
             sys.exit(f"git tag {name} failed:\n{r.stdout}{r.stderr}")
 
-    def export_gerbers(self, directory: Path, options: GerberOptions) -> list[GerberFile]:
-        """The Gerbers and drill, exported into directory; return its files."""
+    def export_gerbers(
+        self, directory: Path, options: GerberOptions, variant: str | None = None
+    ) -> list[GerberFile]:
+        """The Gerbers, of the variant if any, and the drill (kicad-cli's
+        drill export takes no variant), exported into directory; return its
+        files."""
         b = self.board
         directory.mkdir()
         self.kicad(
@@ -437,6 +595,7 @@ class Release:
             *(["--subtract-soldermask"] if options.subtract_soldermask else []),
             *([] if options.protel_extensions else ["--no-protel-ext"]),
             "--check-zones",
+            *variant_flag(variant),
             "-o",
             str(directory),
             self.path(b.pcb),
@@ -500,7 +659,9 @@ class Release:
             ),
         )
 
-    def ipc2581(self, out: Path, distributor: tuple[str, str] | None) -> None:
+    def ipc2581(
+        self, out: Path, distributor: tuple[str, str] | None, variant: str | None = None
+    ) -> None:
         """IPC-2581, its BOM with the distributor (the part-number field, the
         distributor's name), if any."""
         bom = [*IPC2581_BOM]
@@ -519,12 +680,13 @@ class Release:
             str(IPC2581_PRECISION),
             "--compress",
             *(x for pair in bom for x in pair),
+            *variant_flag(variant),
             "-o",
             str(out),
             self.path(self.board.pcb),
         )
 
-    def odb(self, out: Path) -> None:
+    def odb(self, out: Path, variant: str | None = None) -> None:
         self.kicad(
             "pcb",
             "export",
@@ -536,20 +698,23 @@ class Release:
             "--compression",
             ODB_COMPRESSION,
             "--check-zones",
+            *variant_flag(variant),
             "-o",
             str(out),
             self.path(self.board.pcb),
         )
 
-    def parts(self) -> list[Part]:
-        """The schematic's parts, DNP too, in KiCad's order of reference."""
-        raw = self.work / "bom.csv"
+    def parts(self, variant: str | None = None) -> list[Part]:
+        """The schematic's parts, of the variant if any, DNP too, in KiCad's
+        order of reference."""
+        raw = self.work / work_name("bom", variant, ".csv")
         self.kicad(
             "sch",
             "export",
             "bom",
             "--fields",
             ",".join(BOM_FIELDS),
+            *variant_flag(variant),
             "-o",
             str(raw),
             self.path(self.board.sch),
@@ -568,9 +733,10 @@ class Release:
             for r in csv.DictReader(io.StringIO(raw.read_text()))
         ]
 
-    def placements(self) -> list[Placement]:
-        """The board's fitted footprints, both sides, in KiCad's order."""
-        raw = self.work / "pos.csv"
+    def placements(self, variant: str | None = None, dnp: bool = False) -> list[Placement]:
+        """The board's fitted footprints, of the variant if any, both sides,
+        in KiCad's order; with dnp, those not fitted too."""
+        raw = self.work / work_name("pos-all" if dnp else "pos", variant, ".csv")
         self.kicad(
             "pcb",
             "export",
@@ -581,7 +747,8 @@ class Release:
             "mm",
             "--side",
             "both",
-            "--exclude-dnp",
+            *([] if dnp else ["--exclude-dnp"]),
+            *variant_flag(variant),
             "-o",
             str(raw),
             self.path(self.board.pcb),
@@ -599,26 +766,37 @@ class Release:
             for r in csv.DictReader(io.StringIO(raw.read_text()))
         ]
 
-    def source(self, out: Path, commit: str) -> None:
+    def source(self, out: Path, commit: str, variants: Sequence[str | None] = (None,)) -> None:
+        """The source tgz, with the schematic and board PDFs of each variant
+        (None: the default)."""
         b = self.board
         pdf = self.work / "pdf"
         pdf.mkdir()
-        self.kicad(
-            "sch", "export", "pdf", "-o", str(pdf / f"{b.name}-schematic.pdf"), self.path(b.sch)
-        )
-        self.kicad(
-            "pcb",
-            "export",
-            "pdf",
-            "--mode-multipage",
-            "--layers",
-            ",".join([*self.copper, "F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab"]),
-            "--common-layers",
-            "Edge.Cuts",
-            "-o",
-            str(pdf / f"{b.name}-board.pdf"),
-            self.path(b.pcb),
-        )
+        for v in variants:
+            stem = b.name if v is None else f"{b.name}-{v}"
+            self.kicad(
+                "sch",
+                "export",
+                "pdf",
+                *variant_flag(v),
+                "-o",
+                str(pdf / f"{stem}-schematic.pdf"),
+                self.path(b.sch),
+            )
+            self.kicad(
+                "pcb",
+                "export",
+                "pdf",
+                "--mode-multipage",
+                "--layers",
+                ",".join([*self.copper, "F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab"]),
+                "--common-layers",
+                "Edge.Cuts",
+                *variant_flag(v),
+                "-o",
+                str(pdf / f"{stem}-board.pdf"),
+                self.path(b.pcb),
+            )
         top = out.stem.removesuffix(".tar")
         with tarfile.open(out, "w:gz") as t:
             for s in b.source_paths(self.root):
@@ -696,6 +874,17 @@ def main() -> None:
     copper = copper_layers(found)
     if not copper:
         sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
+    try:
+        schematic = [v for sheet in sheets((root / b.sch).resolve()) for v in variant_names(sheet)]
+    except (OSError, ParseError) as e:
+        sys.exit(f"{b.sch}: {e}")
+    errors, warnings = check_variants(b.variants, board_variants(pcb), schematic)
+    if errors:
+        sys.exit("\n".join(f"{b.pcb.name}: {e}" for e in errors))
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    # Each build: a listed variant, or the default (None).
+    builds: list[str | None] = [*b.variants] or [None]
     profile = profiles[b.profile]
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp), copper)
@@ -705,34 +894,80 @@ def main() -> None:
         plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
         if plan is TagPlan.REFUSE:
             sys.exit(f"tag {tag} is on {(tagged or '')[:7]}, not {commit}; use --retag to move it")
-        parts, placements = r.parts(), r.placements()
-        if refusals := profile.check(parts, placements, options[b.name]):
+        # Each build's parts and placements, checked.
+        rows: dict[str | None, tuple[list[Part], list[Placement]]] = {}
+        refusals = []
+        for v in builds:
+            parts, placements = r.parts(v), r.placements(v)
+            found_problems = (
+                [] if v is None else cross_checks(parts, placements, r.placements(v, True))
+            )
+            found_problems += profile.check(parts, placements, options[b.name])
+            refusals += [p if v is None else f"variant {v}: {p}" for p in found_problems]
+            rows[v] = (parts, placements)
+        if refusals:
             sys.exit("\n".join(refusals))
+        # Each build's Gerbers, compared with the first's.
+        directories = {v: r.work / work_name(GERBERS, v, "") for v in builds}
+        exported = {v: r.export_gerbers(d, profile.gerbers, v) for v, d in directories.items()}
+        files = exported[builds[0]]
+        differ = {
+            v: gerber_differences(directories[builds[0]], d, files)
+            for v, d in list(directories.items())[1:]
+        }
+        if refused := [
+            f"variant {v}: its Gerbers differ from variant {builds[0]}'s in"
+            f" {', '.join(x.layer or x.path for x in d)}: a variant cannot change copper,"
+            " mask, paste, Edge.Cuts or the drill"
+            for v, d in differ.items()
+            if not silkscreen_only(d)
+        ]:
+            sys.exit("\n".join(refused))
+        split = any(differ.values())
+        if split:
+            layers = sorted({x.layer or x.path for d in differ.values() for x in d})
+            print(
+                f"variants {', '.join(map(str, builds))}: the Gerbers differ in"
+                f" {', '.join(layers)}: a Gerber zip per variant, each a bare-board order of"
+                " its own",
+                file=sys.stderr,
+            )
         if dest.exists():
             shutil.rmtree(dest)
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
         label = f"{b.name} {rev}"
-        gerbers = gerber_zip(base, profile)
-        title = f"{label}: the files in {gerbers}"
-        directory = r.work / GERBERS
-        files = r.export_gerbers(directory, profile.gerbers)
+        # Each build's file stem: NAME-REV, or NAME-REV-VARIANT.
+        bases = {v: base if v is None else f"{base}-{v}" for v in builds}
+        zips = {v: gerber_zip(bases[v] if split else base, profile) for v in builds}
+        named = list(dict.fromkeys(zips.values()))
+        title = (
+            f"{label}: the files in {named[0]}"
+            if len(named) == 1
+            else f"{label}: the files in each of {', '.join(named)}"
+        )
         map_text = gerber_map(title, files)
-        write_gerber_zip(dest / gerbers, directory, {GERBER_README: map_text})
+        for v in builds if split else builds[:1]:
+            write_gerber_zip(dest / zips[v], directories[v], {GERBER_README: map_text})
         (dest / f"{base}-{GERBER_MAP}").write_text(map_text)
         stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
         stackup_text, notes_text = r.fabrication(
-            label, pcb, files, directory, stackup_name, map_name
+            label, pcb, files, directories[builds[0]], stackup_name, map_name
         )
         (dest / stackup_name).write_text(stackup_text)
         (dest / f"{base}-{NOTES}").write_text(notes_text)
-        r.odb(dest / f"{base}-odb.tgz")
-        r.ipc2581(dest / f"{base}-ipc2581.zip", profile.distributor)
-        write_csv(dest / f"{base}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
-        profile.assembly(dest, base, parts, placements, options[b.name])
-        r.source(dest / f"{base}-source.tgz", commit)
+        for v in builds:
+            r.odb(dest / f"{bases[v]}-odb.tgz", v)
+            r.ipc2581(dest / f"{bases[v]}-ipc2581.zip", profile.distributor, v)
+        for v in builds:
+            parts, placements = rows[v]
+            write_csv(dest / f"{bases[v]}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
+            profile.assembly(dest, bases[v], parts, placements, options[b.name])
+        r.source(dest / f"{base}-source.tgz", commit, builds)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
             message = f"{b.name} {rev}: fab release {b.production / dest.name}"
+            if b.variants:
+                message += f"; variants {', '.join(b.variants)}"
             r.tag(tag, message, plan is TagPlan.MOVE)
             force = " --force" if plan is TagPlan.MOVE else ""
             print(f"tagged {tag}; push it with: git push{force} origin refs/tags/{tag}")

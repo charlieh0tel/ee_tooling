@@ -302,9 +302,9 @@ the stackup, the Gerber job's design rules and the drill, which do not
 differ by variant.  With a zip per variant, the map's title names the
 files in each `NAME-REV-VARIANT-gerbers-jlcpcb.zip`.
 
-The Gerbers and drill of every variant are exported, each with
-`--variant`, and compared layer by layer, less their date and comment
-lines:
+The Gerbers and drill of every variant are exported, the Gerbers with
+`--variant` (`pcb export drill` takes none in 10.0.8), and compared file
+by file, less their comment lines and the job file's creation date:
 
 - All the same: one Gerber zip, `NAME-REV-gerbers-jlcpcb.zip`, as
   without variants.
@@ -335,7 +335,8 @@ Checks per variant, beyond the core's:
 
 - A part fitted in the variant's placement export and DNP in its BOM,
   or the reverse, is refused, naming it: the board's variant data is
-  not the schematic's.  DRC's schematic parity does not compare
+  not the schematic's.  The board's DNP parts are those in a placement
+  export without `--exclude-dnp` and not in the one with it.  DRC's schematic parity does not compare
   variants (10.0.8); Update PCB from Schematic syncs them.
 - A part whose Value differs between the two exports is refused, for
   the same reason.

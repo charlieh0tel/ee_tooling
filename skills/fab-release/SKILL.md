@@ -32,6 +32,7 @@ directory = "hardware/widget"      # holds widget.kicad_pcb and widget.kicad_sch
 production = "production"          # where YYYYMMDD-REV/ goes
 sources = ["docs"]                 # added to the source tgz; optional, default []
 profile = "jlcpcb"                 # the fab: jlcpcb
+variants = ["lite", "full"]        # KiCad 10 design variants built; optional, default []
 
 [board.fab]                        # every key required
 ipc_class = 2                      # IPC-A-600 / IPC-6012 class: 1, 2 or 3
@@ -43,7 +44,7 @@ electrical_test = "100% netlist test per IPC-9252"
 require_lcsc = true
 ```
 
-Every key but `sources` and the profile's table is required.
+Every key but `sources`, `variants` and the profile's table is required.
 `[board.fab]` says what the fab is to build to that the board cannot
 say; the fabrication notes take it.  `adopt` writes the profile's house
 values, never `fab-release`: check them.  A key it
@@ -53,6 +54,46 @@ allowed are `fab` and the one named by `profile`.  Paths are from the repository
 each of several.  There is no `copper` key: the copper layers, top to
 bottom, are the stackup's.  Each `sources` path is inside the repository: one that
 is absolute or leads out of it (`..`) is an error naming it.
+
+## Design variants
+
+KiCad 10's design variants: one schematic and board, several builds
+differing in which parts are fitted and in their fields.  Without
+`variants` (or with `[]`), the release builds KiCad's default variant.
+With it, it builds each variant listed, and not the default: one
+release, one production directory, one tag, whose message names the
+variants.
+
+- A name is letters, digits, `.`, `_` and `-`, not starting with `-`;
+  names are unique ignoring case.  Otherwise an error naming it.
+- A listed variant the board's `(variants ...)` lacks is an error,
+  before anything runs: `kicad-cli` takes an unknown `--variant` as the
+  default.  A variant of the project (the board's, or one in the
+  schematic's symbol instances) not listed is a warning naming it, as is
+  a project with variants and none listed.
+- Per variant, with `kicad-cli ... --variant`: the BOM and placement
+  exports, so the house BOM, the profile's BOM and CPL, `require_lcsc`
+  and every other profile check; IPC-2581, ODB++ and the schematic and
+  board PDFs (in the source tgz, `pdf/NAME-VARIANT-schematic.pdf` and
+  `pdf/NAME-VARIANT-board.pdf`).
+- Each variant's schematic and board compared, as DRC's schematic
+  parity does not compare variants: a part DNP in the variant's BOM and
+  fitted on its board (a placement export with `--exclude-dnp` and one
+  without), or the reverse, a different Value, or a different footprint
+  (a variant's Footprint override: one board has one footprint per
+  reference) refuses the release, naming the variant and the part.  Run
+  Update PCB from Schematic.
+- Each variant's Gerbers are exported and compared with the first's,
+  less comment lines and dates.  The same: one Gerber zip, as without
+  variants.  Different only in F.Silkscreen, B.Silkscreen or
+  User.Drawings (`${VARIANT}` on the silkscreen): a Gerber zip per
+  variant, `NAME-REV-VARIANT-gerbers-jlcpcb.zip`, and no shared one,
+  said on stderr: each is a bare-board order of its own.  Different
+  anywhere else (copper, mask, paste, Edge.Cuts, the drill, the job
+  file): refused, naming the variant and the layer.  The drill export
+  takes no variant.
+- Built once: the Gerber map (its title naming each zip), the stackup,
+  the fabrication notes and the source tgz.
 
 ## The source tgz
 
@@ -80,7 +121,8 @@ anything is written.
 
 It tags the commit the package was built from (the tgz's COMMIT),
 annotated, `NAME-YYYYMMDD-REV`, with the message `NAME REV: fab
-release PRODUCTION/YYYYMMDD-REV`.  It does not push the tag: it prints
+release PRODUCTION/YYYYMMDD-REV` (with `; variants A, B` for a board
+with `variants`).  It does not push the tag: it prints
 the command, `git push origin refs/tags/NAME-YYYYMMDD-REV`.  Run that
 only when the owner says to.
 
@@ -101,7 +143,10 @@ only when the owner says to.
 
 ## What it writes
 
-`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project:
+`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  With
+`variants`, the BOMs, CPL, ODB++ and IPC-2581 are per variant,
+`NAME-REV-VARIANT-...`, and the Gerber zip too where the silkscreens
+differ (Design variants):
 
 | File | Use |
 |---|---|

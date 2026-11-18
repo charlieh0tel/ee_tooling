@@ -19,17 +19,24 @@ from ee_tooling.fab_release import (
     Board,
     Release,
     TagPlan,
+    board_variants,
+    check_variants,
+    cross_checks,
+    gerber_differences,
     gerber_zip,
     house_bom,
     load_config,
     main,
     profile_options,
     revision,
+    silkscreen_only,
     tag_plan,
+    variant_names,
 )
-from ee_tooling.fabrication import Fab
+from ee_tooling.fabrication import Fab, GerberFile
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
-from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part
+from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
+from ee_tooling.sexpr import parse
 
 CONFIG = """
 [[board]]
@@ -433,15 +440,24 @@ def test_tag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 # A release of a fixture board from start to end, kicad-cli being a fake
 # that logs its arguments and writes FAKE_OUTPUTS: each export's files, by
-# its subcommand, as name to contents, "" naming the -o file itself.
+# its subcommand, as name to contents, "" naming the -o file itself.  The
+# placement export without --exclude-dnp is "pcb export pos all"; a
+# variant's export, if it differs from the default's, is "<subcommand>
+# @<variant>".
 FAKE_KICAD_CLI = """
 import json, os, pathlib, sys
 args = sys.argv[1:]
 with open(os.environ["FAKE_KICAD_LOG"], "a") as f:
     f.write(json.dumps(args) + "\\n")
 key = " ".join(args[:3] if args[1] == "export" else args[:2])
+if key == "pcb export pos" and "--exclude-dnp" not in args:
+    key += " all"
+outputs = json.loads(os.environ["FAKE_OUTPUTS"])
+if "--variant" in args:
+    variant = f"{key} @{args[args.index('--variant') + 1]}"
+    key = variant if variant in outputs else key
 out = pathlib.Path(args[args.index("-o") + 1])
-for name, text in json.loads(os.environ["FAKE_OUTPUTS"])[key].items():
+for name, text in outputs[key].items():
     (out / name if name else out).write_text(text)
 """
 
@@ -523,6 +539,15 @@ Ref,Val,Package,PosX,PosY,Rot,Side
 "U1","TPS1","SOT-23-5",112.250000,-61.125000,45.000000,top
 "U2","NEW1","SOIC-8_3.9x4.9mm_P1.27mm",115.000000,-61.000000,0.000000,top
 """
+# The placement export with the DNP parts too.
+FAKE_POS_ALL = (
+    FAKE_POS
+    + """\
+"C4","100n","C_0402_1005Metric",108.000000,-62.000000,0.000000,top
+"R3","10k","R_0402_1005Metric",108.000000,-58.000000,0.000000,top
+"R4","10k","R_0402_1005Metric",109.000000,-58.000000,0.000000,top
+"""
+)
 FAKE_OUTPUTS = {
     "sch erc": {"": "ERC report\n"},
     "pcb drc": {"": "DRC report\n"},
@@ -532,6 +557,7 @@ FAKE_OUTPUTS = {
     "pcb export ipc2581": {"": "IPC-2581 zip\n"},
     "sch export bom": {"": FAKE_BOM},
     "pcb export pos": {"": FAKE_POS},
+    "pcb export pos all": {"": FAKE_POS_ALL},
     "sch export pdf": {"": "schematic PDF\n"},
     "pcb export pdf": {"": "board PDF\n"},
 }
@@ -1015,3 +1041,444 @@ def test_release_refuses_a_board_without_copper_in_its_stackup(
         release(tmp_path, monkeypatch)
     assert kicad_calls(tmp_path) == []
     assert not (tmp_path / "repo/production").exists()
+
+
+def test_config_variants() -> None:
+    """Optional, default none; each a build."""
+    assert load_config(BOARD)["b"].variants == ()
+    text = f'{BOARD}variants = ["lite", "Full.2", "_x", "a-b"]\n'
+    assert load_config(text)["b"].variants == ("lite", "Full.2", "_x", "a-b")
+
+
+@pytest.mark.parametrize(
+    ("variants", "error"),
+    [
+        ('["-x"]', "variant '-x' is not letters, digits, '.', '_' and '-', not starting with '-'"),
+        ('["a b"]', "variant 'a b' is not letters, digits"),
+        ('[""]', "variant '' is not letters, digits"),
+        ('["a/b"]', "variant 'a/b' is not letters, digits"),
+        ('["lite", "LITE"]', "variant 'LITE' is there twice, ignoring case"),
+        ('"lite"', "'variants' is not a list of strings"),
+    ],
+)
+def test_config_variants_refused(variants: str, error: str) -> None:
+    with pytest.raises(ValueError, match=rf"^\[\[board\]\] 'b': {re.escape(error)}"):
+        load_config(f"{BOARD}variants = {variants}\n")
+
+
+# A board's variants, and a schematic's symbol instance with one of its own.
+VARIANTS_PCB = (
+    '(kicad_pcb (variants (variant (name "lite")) (variant (name "full")))'
+    ' (footprint "R" (variant (name "lite") (dnp yes))))'
+)
+VARIANTS_SCH = (
+    '(kicad_sch (symbol (instances (project "b" (path "/x" (reference "R1")'
+    ' (variant (name "lite") (dnp yes)) (variant (name "proto") (in_bom no)))))))'
+)
+
+
+def test_variant_names() -> None:
+    assert board_variants(parse(VARIANTS_PCB)) == ["lite", "full"]
+    assert board_variants(parse("(kicad_pcb)")) == []
+    assert variant_names(parse(VARIANTS_SCH)) == ["lite", "proto"]
+
+
+@pytest.mark.parametrize(
+    ("listed", "errors", "warnings"),
+    [
+        (["lite", "full"], [], ["variants proto of the project are not built"]),
+        (["lite"], [], ["variants full, proto of the project are not built"]),
+        (
+            [],
+            [],
+            [
+                "the project has variants lite, full, proto, and fab.toml lists none:"
+                " the default variant is built"
+            ],
+        ),
+        (
+            ["lite", "full", "proto"],
+            ["variant 'proto' is not one of the board's"],
+            [],
+        ),
+        (
+            ["Lite", "full"],
+            ["variant 'Lite' is not one of the board's (it has 'lite')"],
+            ["variants proto of the project are not built"],
+        ),
+    ],
+)
+def test_check_variants(listed: list[str], errors: list[str], warnings: list[str]) -> None:
+    """A listed variant the board lacks is an error; a project variant, the
+    board's or the schematic's, not listed is a warning."""
+    assert check_variants(listed, ["lite", "full"], ["lite", "proto"]) == (errors, warnings)
+
+
+def test_check_variants_none() -> None:
+    assert check_variants([], [], []) == ([], [])
+
+
+def placement(ref: str, value: str = "10k", package: str = "R_0402") -> Placement:
+    return Placement(ref, value, package, 0.0, 0.0, 0.0, "top")
+
+
+@pytest.mark.parametrize(
+    ("part", "fitted", "problems"),
+    [
+        (Part("R1", "10k", "lib:R_0402", ""), True, []),
+        (Part("R1", "10k", "lib:R_0402", "", dnp=True), False, []),
+        (
+            Part("R1", "10k", "lib:R_0402", "", dnp=True),
+            True,
+            ["R1: DNP in the schematic, fitted on the board"],
+        ),
+        (
+            Part("R1", "10k", "lib:R_0402", ""),
+            False,
+            ["R1: fitted in the schematic, DNP on the board"],
+        ),
+        (
+            Part("R1", "4k7", "lib:R_0402", ""),
+            True,
+            ["R1: Value '4k7' in the schematic, '10k' on the board"],
+        ),
+        (
+            Part("R1", "10k", "lib:R_0603", ""),
+            True,
+            [
+                "R1: Footprint 'lib:R_0603' in the schematic, 'R_0402' on the board:"
+                " a variant cannot change a footprint"
+            ],
+        ),
+        (Part("H1", "MountingHole", "lib:H", ""), False, []),
+    ],
+)
+def test_cross_checks(part: Part, fitted: bool, problems: list[str]) -> None:
+    """A variant's schematic and board compared: a part not on the board
+    (H1) is not compared."""
+    placed = [placement("R1")]
+    assert cross_checks([part], placed if fitted else [], placed) == problems
+
+
+def gerber_directory(path: Path, files: dict[str, str]) -> Path:
+    path.mkdir()
+    for name, text in files.items():
+        (path / name).write_text(text)
+    return path
+
+
+# A variant's Gerber directory: each layer's file, by name.
+VARIANT_GERBERS = {
+    "b-F_Cu.gtl": "G04 date 1*\n%TF.CreationDate,1*%\nX0Y0D02*\n",
+    "b-F_Silkscreen.gto": "G04 date 1*\nX0Y0D03*\n",
+    "b-PTH.drl": "M48\n; date 1\nT1C0.300\n",
+    "b-job.gbrjob": json.dumps({"Header": {"CreationDate": "1"}, "FilesAttributes": []}),
+}
+VARIANT_FILES = [
+    GerberFile("b-F_Cu.gtl", ("Copper", "L1", "Top"), "Positive", "F.Cu"),
+    GerberFile("b-F_Silkscreen.gto", ("Legend", "Top"), "Positive", "F.Silkscreen"),
+    GerberFile("b-PTH.drl", ("Plated", "1", "2", "PTH"), "", ""),
+    GerberFile("b-job.gbrjob", (), "", ""),
+]
+
+
+@pytest.mark.parametrize(
+    ("changes", "differ", "allowed"),
+    [
+        (
+            {
+                "b-F_Cu.gtl": "G04 date 2*\n%TF.CreationDate,2*%\nX0Y0D02*\n",
+                "b-F_Silkscreen.gto": "G04 date 2*\nX0Y0D03*\n",
+                "b-PTH.drl": "M48\n; date 2\nT1C0.300\n",
+                "b-job.gbrjob": json.dumps(
+                    {"Header": {"CreationDate": "2"}, "FilesAttributes": []}
+                ),
+            },
+            [],
+            True,
+        ),
+        ({"b-F_Silkscreen.gto": "X1Y1D03*\n"}, ["b-F_Silkscreen.gto"], True),
+        ({"b-F_Cu.gtl": "X1Y1D02*\n"}, ["b-F_Cu.gtl"], False),
+        ({"b-PTH.drl": "M48\nT1C0.400\n"}, ["b-PTH.drl"], False),
+        (
+            {"b-job.gbrjob": json.dumps({"Header": {}, "FilesAttributes": [1]})},
+            ["b-job.gbrjob"],
+            False,
+        ),
+        ({"b-B_Cu.gbl": "X0Y0D02*\n"}, ["b-B_Cu.gbl"], False),
+    ],
+)
+def test_gerber_differences(
+    tmp_path: Path, changes: dict[str, str], differ: list[str], allowed: bool
+) -> None:
+    """Less comments and dates; only the silkscreens (and User.Drawings)
+    may differ; a file only one variant has differs."""
+    first = gerber_directory(tmp_path / "a", VARIANT_GERBERS)
+    other = gerber_directory(tmp_path / "b", {**VARIANT_GERBERS, **changes})
+    found = gerber_differences(first, other, VARIANT_FILES)
+    assert [f.path for f in found] == differ
+    assert silkscreen_only(found) is allowed
+
+
+def test_user_drawings_may_differ() -> None:
+    assert silkscreen_only([GerberFile("b-User_Drawings.gbr", ("Other", "User"), "", "")])
+    assert not silkscreen_only([GerberFile("b-F_Mask.gts", ("SolderMask", "Top"), "", "")])
+
+
+# The fixture's two variants: lite has R2 DNP; full is the default.
+VARIANTS = '["lite", "full"]'
+LITE_BOM = FAKE_BOM.replace('"C25744","","","",""\n"R3"', '"C25744","","","","DNP"\n"R3"')
+LITE_POS = "".join(line + "\n" for line in FAKE_POS.splitlines() if '"R2"' not in line)
+
+
+def variant_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outputs: dict[str, dict[str, str]],
+    variants: str = VARIANTS,
+    args: tuple[str, ...] = (),
+) -> tuple[Path, list[list[str]]]:
+    """The fixture released with the board's variants lite and full, the
+    fab.toml's variants, and the fake's outputs changed."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace(
+        "(kicad_pcb ", '(kicad_pcb (variants (variant (name "lite")) (variant (name "full")))\n'
+    )
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    toml = FIXTURE["fab.toml"].replace(
+        'profile = "jlcpcb"\n', f'profile = "jlcpcb"\nvariants = {variants}\n'
+    )
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    for key, value in outputs.items():
+        monkeypatch.setitem(FAKE_OUTPUTS, key, value)
+    return release(tmp_path, monkeypatch, args=args)
+
+
+LITE_OUTPUTS = {
+    "sch export bom @lite": {"": LITE_BOM},
+    "pcb export pos @lite": {"": LITE_POS},
+}
+
+
+def variant(call: list[str], name: str) -> list[str]:
+    """A kicad-cli call with --variant name before its -o, and the work
+    files named for the variant."""
+    at = call.index("-o")
+    out = call[at + 1]
+    for stem in ("bom", "pos", "gerbers"):
+        if out.startswith(f"WORK/{stem}"):
+            out = out.replace(f"WORK/{stem}", f"WORK/{stem}-{name}", 1)
+    return [*call[:at], "--variant", name, "-o", out, *call[at + 2 :]]
+
+
+def in_variant_directory(call: list[str], name: str) -> list[str]:
+    """A call writing into the variant's Gerber directory, without --variant."""
+    return [x.replace("WORK/gerbers/", f"WORK/gerbers-{name}/") for x in call]
+
+
+def all_placements(call: list[str], name: str) -> list[str]:
+    """The placement call of a variant, DNP parts too."""
+    out = variant(call, name)
+    out.remove("--exclude-dnp")
+    return [x.replace("WORK/pos-", "WORK/pos-all-") for x in out]
+
+
+def test_release_variants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Variants whose Gerbers are the same: one Gerber zip and the shared
+    documents as without variants, and per variant its BOMs, CPL, ODB++,
+    IPC-2581 and PDFs, each from kicad-cli with --variant."""
+    root, calls = variant_release(tmp_path, monkeypatch, LITE_OUTPUTS)
+    dest = root / "production/20261118-1"
+    files = sorted(f.name for f in dest.iterdir())
+    assert files == sorted(
+        [
+            "b-1-fab-notes.txt",
+            "b-1-gerber-map.txt",
+            "b-1-gerbers-jlcpcb.zip",
+            "b-1-source.tgz",
+            "b-1-stackup.txt",
+            *(
+                f"b-1-{v}-{f}"
+                for v in ("lite", "full")
+                for f in ("bom.csv", "ipc2581.zip", "jlcpcb-bom.csv", "jlcpcb-cpl.csv", "odb.tgz")
+            ),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert "warning" not in err
+    assert "differ" not in err
+    erc, drc, bom, pos, gerbers, drill, odb, ipc, sch_pdf, pcb_pdf = RELEASE_CALLS
+    v = ("lite", "full")
+    assert calls == [
+        erc,
+        drc,
+        *(c for n in v for c in (variant(bom, n), variant(pos, n), all_placements(pos, n))),
+        *(c for n in v for c in (variant(gerbers, n), in_variant_directory(drill, n))),
+        *(variant([x.replace("b-1-", f"b-1-{n}-") for x in c], n) for n in v for c in (odb, ipc)),
+        *(
+            variant([x.replace("WORK/pdf/b-", f"WORK/pdf/b-{n}-") for x in c], n)
+            for n in v
+            for c in (sch_pdf, pcb_pdf)
+        ),
+    ]
+    for name in ("b-1-gerber-map.txt", "b-1-stackup.txt", "b-1-fab-notes.txt"):
+        assert (dest / name).read_bytes() == RELEASE_TEXT[name].encode()
+    for name in ("bom.csv", "jlcpcb-bom.csv", "jlcpcb-cpl.csv"):
+        assert (dest / f"b-1-full-{name}").read_bytes() == RELEASE_TEXT[f"b-1-{name}"].encode()
+    lite = (dest / "b-1-lite-bom.csv").read_text()
+    assert '"R1,R2",10k' not in lite
+    assert "R1,10k,Resistor_SMD:R_0402_1005Metric,1,," in lite
+    assert "R2,10k,Resistor_SMD:R_0402_1005Metric,0,yes," in lite
+    assert "\nR2," not in (dest / "b-1-lite-jlcpcb-cpl.csv").read_text()
+    with tarfile.open(dest / "b-1-source.tgz") as t:
+        assert sorted(m.name for m in t.getmembers() if "/pdf/" in m.name) == [
+            "b-1-source/pdf/b-full-board.pdf",
+            "b-1-source/pdf/b-full-schematic.pdf",
+            "b-1-source/pdf/b-lite-board.pdf",
+            "b-1-source/pdf/b-lite-schematic.pdf",
+        ]
+    assert git(root, "tag", "-n") == (
+        "b-20261118-1    b 1: fab release production/20261118-1; variants lite, full"
+    )
+
+
+def test_release_variants_silkscreen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Variants whose silkscreens differ: a Gerber zip per variant, each with
+    its own Gerbers, and no shared one; the map names each; stderr names
+    the layer."""
+    silk = {**FAKE_GERBERS, "b-F_Silkscreen.gto": "G04 F.Silkscreen*\nX1Y1D03*\n"}
+    root, _ = variant_release(
+        tmp_path, monkeypatch, {**LITE_OUTPUTS, "pcb export gerbers @full": silk}
+    )
+    dest = root / "production/20261118-1"
+    zips = sorted(f.name for f in dest.glob("*.zip") if "gerbers" in f.name)
+    assert zips == ["b-1-full-gerbers-jlcpcb.zip", "b-1-lite-gerbers-jlcpcb.zip"]
+    title = "b 1: the files in each of b-1-lite-gerbers-jlcpcb.zip, b-1-full-gerbers-jlcpcb.zip"
+    text = (dest / "b-1-gerber-map.txt").read_text()
+    assert text == RELEASE_TEXT["b-1-gerber-map.txt"].replace(
+        "b 1: the files in b-1-gerbers-jlcpcb.zip", title
+    )
+    for name, gerber in (("lite", FAKE_GERBERS), ("full", silk)):
+        with zipfile.ZipFile(dest / f"b-1-{name}-gerbers-jlcpcb.zip") as z:
+            assert z.read("b-F_Silkscreen.gto").decode() == gerber["b-F_Silkscreen.gto"]
+            assert z.read("README.txt").decode() == text
+    assert capsys.readouterr().err == (
+        "variants lite, full: the Gerbers differ in F.Silkscreen: a Gerber zip per variant,"
+        " each a bare-board order of its own\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "what"),
+    [
+        ("b-F_Cu.gtl", "X1Y1D02*\n", "F.Cu"),
+        ("b-F_Mask.gts", "X1Y1D03*\n", "F.Mask"),
+        ("b-Edge_Cuts.gm1", "X1Y1D01*\n", "Edge.Cuts"),
+    ],
+)
+def test_release_variants_refused_gerbers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, text: str, what: str
+) -> None:
+    """Variants whose copper, mask or outline differ: refused, naming the
+    variant and the layer, before a --force replaces the release."""
+    old = tmp_path / "repo/production/20261118-1/old.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    outputs = {**LITE_OUTPUTS, "pcb export gerbers @full": {**FAKE_GERBERS, name: text}}
+    with pytest.raises(
+        SystemExit,
+        match=rf"^variant full: its Gerbers differ from variant lite's in {re.escape(what)}:"
+        " a variant cannot change copper, mask, paste, Edge.Cuts or the drill$",
+    ):
+        variant_release(tmp_path, monkeypatch, outputs, args=("--force",))
+    assert sorted(p.name for p in old.parent.iterdir()) == ["old.txt"]
+    assert git(tmp_path / "repo", "tag") == ""
+
+
+@pytest.mark.parametrize(
+    ("outputs", "error"),
+    [
+        (
+            {"sch export bom @lite": {"": LITE_BOM}},
+            "variant lite: R2: DNP in the schematic, fitted on the board",
+        ),
+        (
+            {"pcb export pos @lite": {"": LITE_POS}},
+            "variant lite: R2: fitted in the schematic, DNP on the board\n"
+            "variant lite: in the BOM but not placed: R2",
+        ),
+        (
+            {
+                **LITE_OUTPUTS,
+                "pcb export pos all @full": {
+                    "": FAKE_POS_ALL.replace('"U2","NEW1"', '"U2","NEW2"')
+                },
+            },
+            "variant full: U2: Value 'NEW1' in the schematic, 'NEW2' on the board",
+        ),
+        (
+            {
+                **LITE_OUTPUTS,
+                "sch export bom @full": {
+                    "": FAKE_BOM.replace("Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "Package_SO:SO-8")
+                },
+            },
+            "variant full: U2: Footprint 'Package_SO:SO-8' in the schematic,"
+            " 'SOIC-8_3.9x4.9mm_P1.27mm' on the board: a variant cannot change a footprint",
+        ),
+    ],
+)
+def test_release_variants_cross_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outputs: dict[str, dict[str, str]],
+    error: str,
+) -> None:
+    """A variant's schematic and board that differ: refused, naming the
+    variant and the part, after the exports, before anything is written."""
+    with pytest.raises(SystemExit, match=f"^{re.escape(error)}$"):
+        variant_release(tmp_path, monkeypatch, outputs)
+    assert all(c[2] in ("bom", "pos") for c in kicad_calls(tmp_path)[2:])
+    assert not (tmp_path / "repo/production").exists()
+
+
+def test_release_variants_profile_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The profile's check of every variant, each refusal naming it: U2 in
+    lite's BOM and not on its board."""
+    lite = "".join(line + "\n" for line in LITE_POS.splitlines() if '"U2"' not in line)
+    every = "".join(line + "\n" for line in FAKE_POS_ALL.splitlines() if '"U2"' not in line)
+    outputs = {
+        **LITE_OUTPUTS,
+        "pcb export pos @lite": {"": lite},
+        "pcb export pos all @lite": {"": every},
+    }
+    with pytest.raises(SystemExit, match=r"^variant lite: in the BOM but not placed: U2$"):
+        variant_release(tmp_path, monkeypatch, outputs)
+    assert not (tmp_path / "repo/production").exists()
+
+
+def test_release_variant_the_board_lacks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Before anything runs."""
+    with pytest.raises(
+        SystemExit, match=r"^b.kicad_pcb: variant 'proto' is not one of the board's$"
+    ):
+        variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, '["lite", "proto"]')
+    assert kicad_calls(tmp_path) == []
+
+
+def test_release_variants_unlisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A project with variants and none listed: the default built, as
+    without variants, and a warning."""
+    root, calls = variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, "[]")
+    assert calls == RELEASE_CALLS
+    bom = root / "production/20261118-1/b-1-bom.csv"
+    assert bom.read_bytes() == RELEASE_TEXT["b-1-bom.csv"].encode()
+    assert capsys.readouterr().err == (
+        "warning: the project has variants lite, full, and fab.toml lists none:"
+        " the default variant is built\n"
+    )
