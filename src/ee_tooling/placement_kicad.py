@@ -13,6 +13,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+from ee_tooling.kicad_pcbnew import missing
 from ee_tooling.placement import Box, Footprint, Layout, Pad, Point, Rules, report, score
 from ee_tooling.placement_render import render
 
@@ -26,10 +27,7 @@ def load(board_file: Path) -> Layout:
         # Imported here, to say what to do when the venv lacks it.
         import pcbnew
     except ImportError:
-        sys.exit(
-            "pcbnew is not importable: make the venv with"
-            " uv venv --system-site-packages --python /usr/bin/python3"
-        )
+        sys.exit(missing())
 
     def point(v: "pcbnew.VECTOR2I") -> Point:
         return float(pcbnew.ToMM(v.x)), float(pcbnew.ToMM(v.y))
