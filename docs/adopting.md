@@ -32,6 +32,13 @@ Every mode needs git-lfs (the distribution's `git-lfs` package): with
 `git lfs version` failing, `adopt` stops before anything else, saying
 so.  It installs nothing itself.
 
+Its git commands run in the board repository (or the submodule) by
+directory: the variables naming a repository (`git rev-parse
+--local-env-vars`: `GIT_DIR`, `GIT_INDEX_FILE`, ...), which a hook or
+`git rebase -x` may set for another repository or relative to another
+directory, are removed from their environment.  `fab-release` does the
+same.
+
 The submodule's parent need not be `hardware/`.  With the submodule at
 `ee_tooling/` and the KiCad project at the repository root, the hardware
 tools' uv project is the root: `pyproject.toml`, `.venv` and the

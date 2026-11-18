@@ -69,6 +69,7 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
+from ee_tooling.git_environment import environment
 from ee_tooling.kicad_rules import Installed, board_setup, copied_message, install, installed
 from ee_tooling.kicad_style_netclass import sheet_files
 from ee_tooling.kicad_style_stackup import check_stackup
@@ -690,7 +691,11 @@ def release_name_problem(root: Path, name: str, date: str, rev: str) -> str | No
         return f"release directory {directory!r} is not one path component {where}"
     tag = f"{name}-{directory}"
     r = subprocess.run(
-        ["git", "check-ref-format", f"refs/tags/{tag}"], cwd=root, capture_output=True, check=False
+        ["git", "check-ref-format", f"refs/tags/{tag}"],
+        cwd=root,
+        env=environment(),
+        capture_output=True,
+        check=False,
     )
     if r.returncode != 0:
         return f"tag {tag!r} is not a git tag name {where}; fix the title block's rev"
@@ -737,7 +742,9 @@ class Release:
         return [*self.copper, *OTHER_LAYERS]
 
     def run(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(args, cwd=self.root, capture_output=True, text=True, check=False)
+        return subprocess.run(
+            args, cwd=self.root, env=environment(), capture_output=True, text=True, check=False
+        )
 
     def kicad(self, *args: str) -> None:
         r = self.run("kicad-cli", *args)
@@ -1141,7 +1148,11 @@ class Release:
 
 def repository_root() -> Path:
     r = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
+        ["git", "rev-parse", "--show-toplevel"],
+        env=environment(),
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         sys.exit(f"not in a git repository: {r.stderr.strip()}")

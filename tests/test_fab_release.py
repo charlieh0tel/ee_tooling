@@ -32,6 +32,7 @@ from ee_tooling.fab_release import (
     profile_options,
     project_variants,
     release_name_problem,
+    repository_root,
     revision,
     settings_variants,
     silkscreen_only,
@@ -2316,3 +2317,21 @@ def test_release_warnings_name_the_variant(
             f"warning: variant {v}: check a new part (C4) in JLCPCB's placement preview:"
             " no correction known\n"
         ) in err
+
+
+def test_release_git_ignores_a_callers_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GIT_DIR naming another repository: the release's git commands act on
+    the one it runs in."""
+    other, board = tmp_path / "other", tmp_path / "board"
+    for d in (other, board):
+        d.mkdir()
+        git(d, "init", "-q")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.chdir(board)
+    assert repository_root() == board
+    release = Release(board, load_config(CONFIG)["jig"], tmp_path / "work")
+    assert release.run("git", "rev-parse", "--absolute-git-dir").stdout.strip() == str(
+        board / ".git"
+    )

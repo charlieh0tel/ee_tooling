@@ -39,9 +39,13 @@ def run_with_git_dir(tmp_path: Path, git_dir: Path, *options: str) -> int:
     return r.returncode
 
 
-def tags(git_dir: Path) -> str:
+def refs(git_dir: Path) -> str:
+    """The repository's commits' subjects and its tags."""
     return subprocess.run(
-        ["git", "--git-dir", str(git_dir), "tag"], capture_output=True, text=True, check=True
+        ["git", "--git-dir", str(git_dir), "log", "--all", "--format=%s %D"],
+        capture_output=True,
+        text=True,
+        check=False,
     ).stdout
 
 
@@ -52,13 +56,13 @@ def test_suite_leaves_a_named_repository_alone(tmp_path: Path) -> None:
     config = scratch(repository)
     assert run_with_git_dir(tmp_path, repository / ".git") == 0
     assert (repository / ".git/config").read_text() == config
-    assert tags(repository / ".git") == ""
+    assert refs(repository / ".git") == ""
 
 
 def test_without_the_fixture_the_named_repository_is_changed(tmp_path: Path) -> None:
-    """What the fixture prevents: the same test without conftest.py tags
-    the named repository."""
+    """What the fixture prevents: the same test without conftest.py commits
+    in the named repository."""
     repository = tmp_path / "named"
     scratch(repository)
     run_with_git_dir(tmp_path, repository / ".git", "--noconftest")
-    assert tags(repository / ".git") == "jig-20261102-1\n"
+    assert refs(repository / ".git").startswith("one ")

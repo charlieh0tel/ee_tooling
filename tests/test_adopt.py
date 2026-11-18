@@ -1269,3 +1269,19 @@ def test_check_agrees_with_the_plan_before_migration(tmp_path: Path) -> None:
     edits = {s.path for s in plan(layout) if isinstance(s, Edit)}
     assert edits == {Path("hardware/main/main.kicad_dru"), Path("hardware/main/main.kicad_pro")}
     assert {p for what, p in pending(layout) if what == "to be updated"} == edits
+
+
+def test_git_ignores_a_callers_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """GIT_DIR and a relative GIT_INDEX_FILE, as a hook or `git rebase -x`
+    sets them: adopt's git commands act on the repository they run in."""
+    other = tmp_path / "other"
+    git("init", "-q", str(other))
+    before = (other / ".git/config").read_text()
+    board = tmp_path / "board"
+    git("init", "-q", str(board))
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", ".git/index")
+    assert adopt.git(board, "rev-parse", "--show-toplevel") == str(board)
+    adopt.run_command(("git", "config", "core.hooksPath", ".githooks"), board)
+    assert adopt.git(board, "config", "core.hooksPath") == ".githooks"
+    assert (other / ".git/config").read_text() == before

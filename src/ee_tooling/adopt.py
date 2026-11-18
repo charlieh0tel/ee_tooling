@@ -12,7 +12,6 @@ ee_tooling renamed (jlcpcb.toml, the release's skill).
 import argparse
 import importlib.resources
 import json
-import os
 import re
 import subprocess
 import sys
@@ -25,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from ee_tooling.fab_release import CONFIG, DRU, FAB, GONE_KEYS, string, strings
+from ee_tooling.git_environment import environment
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 from ee_tooling.kicad_rules import (
     ERC_SETTINGS,
@@ -176,13 +176,22 @@ class Layout:
 
 def git(directory: Path, *args: str) -> str:
     """git's output, or "" if it fails (a missing key, no superproject)."""
-    r = subprocess.run(["git", *args], cwd=directory, capture_output=True, text=True, check=False)
+    r = subprocess.run(
+        ["git", *args],
+        cwd=directory,
+        env=environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     return r.stdout.strip()
 
 
 def lfs_missing() -> str | None:
     """Why git-lfs cannot run here, or None if it can."""
-    r = subprocess.run(["git", "lfs", "version"], capture_output=True, text=True, check=False)
+    r = subprocess.run(
+        ["git", "lfs", "version"], env=environment(), capture_output=True, text=True, check=False
+    )
     if r.returncode == 0:
         return None
     return (
@@ -212,6 +221,7 @@ def plain_blobs(root: Path) -> str | None:
         r = subprocess.run(
             ["git", "-c", f"core.hooksPath={hooks}", "lfs", "fsck", "--pointers", "HEAD"],
             cwd=root,
+            env=environment(),
             capture_output=True,
             text=True,
             check=False,
@@ -717,9 +727,14 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
 
 
 def run_command(args: Sequence[str], directory: Path) -> None:
-    # Not in the venv adopt runs in (its submodule's), but the directory's own.
-    environment = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
-    subprocess.run(args, cwd=directory, env=environment, check=True)
+    # Not in the venv adopt runs in (its submodule's), but the directory's own;
+    # git's repository the directory's too.
+    subprocess.run(
+        args,
+        cwd=directory,
+        env={k: v for k, v in environment().items() if k != "VIRTUAL_ENV"},
+        check=True,
+    )
 
 
 def read_config(root: Path) -> str | None:
