@@ -2024,3 +2024,15 @@ def test_refused_while_kicad_has_the_board_open(tmp_path: Path, suffix: str) -> 
     apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
     lock.write_text("{}")
     assert Path("hardware/main/main.kicad_pro") not in stale(layout)
+
+
+def test_check_names_a_missing_fab_toml(tmp_path: Path) -> None:
+    """fab.toml gone, which --yes would write again and the release needs:
+    --check fails, naming it; with no KiCad project there is none to want."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    (tmp_path / "fab.toml").unlink()
+    assert ("missing", Path("fab.toml")) in pending(layout)
+    empty = repository(tmp_path / "empty")
+    apply(empty.root, [s for s in plan(empty) if isinstance(s, File)], lambda *_: None)
+    assert Path("fab.toml") not in stale(empty)

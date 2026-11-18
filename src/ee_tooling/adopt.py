@@ -531,6 +531,8 @@ def unsaved(root: Path, path: Path) -> str | None:
     return None
 
 
+# The project files the release needs: --check names one missing.
+RELEASE_NEEDS = (Path(CONFIG),)
 # Why a scratch file of an interrupted write is removed.
 LEFTOVER_WHY = "left by a write that was interrupted"
 # Directories not searched for them: git's, the venv's.
@@ -1144,8 +1146,15 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
     refuse_links(root, [*(f for f, a in managed if a), *migrating, *edits])
     renamed = [s.source if isinstance(s, Rename) else s.path for s in migrating]
     rules = [s.path for s in edits]
+    # A project file the release needs, which --yes would create.
+    needed = [
+        f.path
+        for f in planned
+        if f.owner is Owner.PROJECT and f.path in RELEASE_NEEDS and f.action(root) == "create"
+    ]
     return [
         *(("missing" if a == "create" else "out of date", f.path) for f, a in managed if a),
+        *(("missing", p) for p in needed),
         *(("to be migrated", p) for p in renamed),
         *(("to be updated", p) for p in rules),
         *(("left over", p) for p in leftovers(root)),
