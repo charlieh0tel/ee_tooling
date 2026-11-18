@@ -478,6 +478,14 @@ if "--variant" in args:
     variant = f"{key} @{args[args.index('--variant') + 1]}"
     key = variant if variant in outputs else key
 out = pathlib.Path(args[args.index("-o") + 1])
+if key.startswith("sch export bom") and "--exclude-dnp" in args:
+    # kicad-cli's BOM of the fitted parts: the fake's BOM's, by its DNP column.
+    import csv, io
+    rows = list(csv.reader(io.StringIO(outputs[key][""])))
+    keep = [rows[0]] + [r for r in rows[1:] if r[rows[0].index("DNP")] == ""]
+    text = io.StringIO()
+    csv.writer(text, quoting=csv.QUOTE_ALL, lineterminator="\\n").writerows(keep)
+    outputs = {key: {"": text.getvalue()}}
 # As kicad-cli 10.0.8 does: NAME.kicad_prl beside the project it reads.
 board = pathlib.Path(args[-1])
 board.with_suffix(".kicad_prl").write_text("{}\\n")
@@ -760,9 +768,21 @@ RELEASE_CALLS = [
         "export",
         "bom",
         "--fields",
-        "Reference,Value,Footprint,LCSC,MPN,Manufacturer,Datasheet,${DNP}",
+        "Reference,Value,Footprint,LCSC,MPN,Manufacturer,Datasheet",
         "-o",
         "WORK/bom.csv",
+        "WORK/board/hw/b.kicad_sch",
+    ],
+    # The fitted parts: the DNP attribute, which a field cannot shadow.
+    [
+        "sch",
+        "export",
+        "bom",
+        "--fields",
+        "Reference,Value,Footprint,LCSC,MPN,Manufacturer,Datasheet",
+        "--exclude-dnp",
+        "-o",
+        "WORK/bom-fitted.csv",
         "WORK/board/hw/b.kicad_sch",
     ],
     [
@@ -778,6 +798,21 @@ RELEASE_CALLS = [
         "--exclude-dnp",
         "-o",
         "WORK/pos.csv",
+        "WORK/board/hw/b.kicad_pcb",
+    ],
+    # Every placement, DNP too, for the schematic-board DNP cross-check.
+    [
+        "pcb",
+        "export",
+        "pos",
+        "--format",
+        "csv",
+        "--units",
+        "mm",
+        "--side",
+        "both",
+        "-o",
+        "WORK/pos-all.csv",
         "WORK/board/hw/b.kicad_pcb",
     ],
     [
@@ -1081,7 +1116,7 @@ def test_release_refused_by_its_profile_before_anything(
         release(
             tmp_path, monkeypatch, args=("--force",), config="[board.jlcpcb]\nrequire_lcsc = true\n"
         )
-    assert kicad_calls(tmp_path) == RELEASE_CALLS[:4]
+    assert kicad_calls(tmp_path) == RELEASE_CALLS[:6]
     assert old.read_text() == "kept\n"
     assert git(tmp_path / "repo", "tag") == ""
 
@@ -1095,10 +1130,12 @@ def test_release_refuses_a_part_not_placed_before_anything(
     old.parent.mkdir(parents=True)
     old.write_text("kept\n")
     pos = "".join(line + "\n" for line in FAKE_POS.splitlines() if '"U2"' not in line)
+    every = "".join(line + "\n" for line in FAKE_POS_ALL.splitlines() if '"U2"' not in line)
     monkeypatch.setitem(FAKE_OUTPUTS, "pcb export pos", {"": pos})
+    monkeypatch.setitem(FAKE_OUTPUTS, "pcb export pos all", {"": every})
     with pytest.raises(SystemExit, match=r"^in the BOM but not placed: U2$"):
         release(tmp_path, monkeypatch, args=("--force",))
-    assert kicad_calls(tmp_path) == RELEASE_CALLS[:4]
+    assert kicad_calls(tmp_path) == RELEASE_CALLS[:6]
     assert sorted(p.name for p in old.parent.iterdir()) == ["old.txt"]
     assert git(tmp_path / "repo", "tag") == ""
 
@@ -1402,22 +1439,16 @@ def variant(call: list[str], name: str) -> list[str]:
     files named for the variant."""
     at = call.index("-o")
     out = call[at + 1]
-    for stem in ("bom", "pos", "gerbers"):
-        if out.startswith(f"WORK/{stem}"):
-            out = out.replace(f"WORK/{stem}", f"WORK/{stem}-{name}", 1)
+    if out.startswith("WORK/") and out.endswith(".csv"):
+        out = out.removesuffix(".csv") + f"-{name}.csv"
+    elif out.startswith("WORK/gerbers"):
+        out = out.replace("WORK/gerbers", f"WORK/gerbers-{name}", 1)
     return [*call[:at], "--variant", name, "-o", out, *call[at + 2 :]]
 
 
 def in_variant_directory(call: list[str], name: str) -> list[str]:
     """A call writing into the variant's Gerber directory, without --variant."""
     return [x.replace("WORK/gerbers/", f"WORK/gerbers-{name}/") for x in call]
-
-
-def all_placements(call: list[str], name: str) -> list[str]:
-    """The placement call of a variant, DNP parts too."""
-    out = variant(call, name)
-    out.remove("--exclude-dnp")
-    return [x.replace("WORK/pos-", "WORK/pos-all-") for x in out]
 
 
 def test_release_variants(
@@ -1461,12 +1492,16 @@ def test_release_variants(
     err = profile_quiet(capsys.readouterr().err)
     assert "warning" not in err
     assert "differ" not in err
-    erc, drc, bom, pos, gerbers, drill, odb, ipc, sch_pdf, pcb_pdf = RELEASE_CALLS
+    erc, drc, bom, fitted, pos, every, gerbers, drill, odb, ipc, sch_pdf, pcb_pdf = RELEASE_CALLS
     v = ("lite", "full")
     assert calls == [
         erc,
         drc,
-        *(c for n in v for c in (variant(bom, n), variant(pos, n), all_placements(pos, n))),
+        *(
+            c
+            for n in v
+            for c in (variant(bom, n), variant(fitted, n), variant(pos, n), variant(every, n))
+        ),
         *(c for n in v for c in (variant(gerbers, n), in_variant_directory(drill, n))),
         *(variant([x.replace("b-1-", f"b-1-{n}-") for x in c], n) for n in v for c in (odb, ipc)),
         *(
@@ -2621,3 +2656,15 @@ def test_release_resolves_a_rev_variable(tmp_path: Path, monkeypatch: pytest.Mon
     root, _ = release(tmp_path, monkeypatch)
     assert (root / "production/20261118-1/b-1-bom.csv").exists()
     assert git(root, "tag") == "b-20261118-1"
+
+
+def test_release_cross_checks_the_default_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without variants too: a part fitted in the schematic and DNP on the
+    board, refused before anything is written."""
+    pos = "".join(line + "\n" for line in FAKE_POS.splitlines() if '"R2"' not in line)
+    monkeypatch.setitem(FAKE_OUTPUTS, "pcb export pos", {"": pos})
+    with pytest.raises(SystemExit, match=r"^R2: fitted in the schematic, DNP on the board\n"):
+        release(tmp_path, monkeypatch)
+    assert not (tmp_path / "repo/production").exists()

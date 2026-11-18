@@ -382,7 +382,11 @@ Built per variant, each with `--variant VARIANT`, one `kicad-cli` call
 per variant (`pcb export pos` with several `--variant` and `${VARIANT}`
 in the path writes one file, named with `${VARIANT}` literally):
 
-- The BOM export (with the `DNP` field) and the placement export (with
+- The BOM export, and again with `--exclude-dnp` for which parts are
+  fitted (KiCad's DNP attribute: `${DNP}` in `--fields` gives a
+  symbol's own field named DNP when it has one, 10.0.8, so a fitted part
+  with a field DNP = "no" would read as not fitted), and the placement
+  export (with
   `--exclude-dnp`), parsed into `Part` and `Placement` rows; from them
   the house BOM and the profile's `assembly`.
 - IPC-2581 and ODB++: their component data differ by variant (Value,
@@ -424,7 +428,7 @@ fab makes, panels and charges for each silkscreen apart.  The board
 PDF is per variant already; the tag and the production directory are
 one per release, as without differing Gerbers.
 
-Checks per variant, beyond the core's:
+Checks per build, the default's too, beyond the core's:
 
 - A part fitted in the variant's placement export and DNP in its BOM,
   or the reverse, is refused, naming it: the board's variant data is
@@ -506,46 +510,49 @@ Breaking changes:
    own, is refused, naming each path as written.
 8. A schematic sheet file that is not there, or is outside the
    repository, is refused, naming it and the sheet that names it.
-9. Two boards' production directories the same, or one inside the
-   other, are an error naming both; `--force` stops on a release
-   directory holding a file not the board's (`NAME-REV-*`).
-10. A `production` outside the repository, or the same as or holding a
+9. A part DNP in the schematic and fitted on the board, or the reverse,
+   or whose Value or footprint differs between them, is refused for the
+   default build as for a variant's.
+10. Two boards' production directories the same, or one inside the
+    other, are an error naming both; `--force` stops on a release
+    directory holding a file not the board's (`NAME-REV-*`).
+11. A `production` outside the repository, or the same as or holding a
     board's `directory` or a `sources` path, is an error.
-11. A title-block rev (or `--date`) that makes the release directory more
+12. A title-block rev (or `--date`) that makes the release directory more
     than one path component, or the tag not a git tag name (`Rev A`), is
     refused before anything runs.
-12. A title-block rev using a text variable the project does not define
+13. A title-block rev using a text variable the project does not define
     is refused.
-13. A board with no stackup is refused (now a warning).
-14. A board without a stackup table on User.Drawings matching its stackup
+14. A board with no stackup is refused (now a warning).
+15. A board without a stackup table on User.Drawings matching its stackup
     is refused.
-15. DRC runs with the profile's current rules: a board clean today may
+16. DRC runs with the profile's current rules: a board clean today may
     not be.
-16. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+17. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-17. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-18. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+18. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+19. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-19. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+20. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-20. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+21. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-21. `adopt --yes` sets the board's ERC severities and connection grid.
-22. `adopt` and `adopt --check` require git-lfs.
-23. `adopt --check` fails on a plain blob of an LFS-tracked type at
+22. `adopt --yes` sets the board's ERC severities and connection grid.
+23. `adopt` and `adopt --check` require git-lfs.
+24. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-24. `adopt --yes` writes a managed section of `.gitattributes` and
+25. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-25. A push without git-lfs is refused.
-26. The release refuses a board whose inputs hold an unfetched LFS
+26. A push without git-lfs is refused.
+27. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-27. A board repository's host must support Git LFS: a push to one that
+28. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".

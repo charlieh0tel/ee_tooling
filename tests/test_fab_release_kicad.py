@@ -82,17 +82,30 @@ def board(root: Path) -> None:
     at = text.index('(property "Reference" "R1"')
     end = text.index("\n\t\t(embedded_fonts", at)
     text = f'{text[:end]}\n\t\t(variant\n\t\t\t(name "lite")\n\t\t\t(dnp yes)\n\t\t){text[end:]}'
+    # R2's field DNP, as the schematic's below.
+    at = text.index('(property "Reference" "R2"')
+    text = (
+        text[:at]
+        + '(property "DNP" "no"\n\t\t\t(at 0 0 0)\n\t\t\t(layer "F.Fab")\n\t\t\t(hide yes)\n'
+        '\t\t\t(uuid "5d0c0a1e-0000-4000-8000-000000000002")\n'
+        "\t\t\t(effects (font (size 1 1) (thickness 0.15)))\n\t\t)\n\t\t" + text[at:]
+    )
     pcb.write_text(refresh(text, parse(text)).text)
     sch = directory / f"{NAME}.kicad_sch"
     instance = '(reference "R1")\n\t\t\t\t\t(unit 1)'
-    sch.write_text(
-        sch.read_text().replace(
-            instance,
-            instance
-            + '\n\t\t\t\t\t(variant\n\t\t\t\t\t\t(name "lite")\n\t\t\t\t\t\t(dnp yes)\n\t\t\t\t\t)',
-            1,
-        )
+    text = sch.read_text().replace(
+        instance,
+        instance
+        + '\n\t\t\t\t\t(variant\n\t\t\t\t\t\t(name "lite")\n\t\t\t\t\t\t(dnp yes)\n\t\t\t\t\t)',
+        1,
     )
+    # R2, fitted, with a field of its own named DNP, which ${DNP} would give.
+    at = text.index('(property "Reference" "R2"')
+    field = (
+        '(property "DNP" "no"\n\t\t\t(at 0 0 0)\n'
+        "\t\t\t(effects (font (size 1.27 1.27)) (hide yes))\n\t\t)\n\t\t"
+    )
+    sch.write_text(text[:at] + field + text[at:])
     project = directory / f"{NAME}.kicad_pro"
     settings = json.loads(project.read_text())
     settings["schematic"]["variants"] = [{"name": "lite"}, {"name": "full"}]
@@ -147,12 +160,13 @@ def test_release_with_kicad_cli(
 
     assert bom("lite")["R1"] == "yes"
     assert bom("full")["R1"] == ""
+    assert bom("full")["R2"] == ""
     for variant, placed in (("lite", False), ("full", True)):
         cpl = (dest / f"StickHub-A-{variant}-jlcpcb-cpl.csv").read_text()
         assert ("\nR1," in cpl) is placed
     exports = [c for c in calls if c[:4] in (("kicad-cli", "sch", "export", "bom"),)]
-    assert [c[c.index("--variant") + 1] for c in exports] == ["lite", "full"]
-    assert all("${DNP}" in c[c.index("--fields") + 1] for c in exports)
+    assert [c[c.index("--variant") + 1] for c in exports] == ["lite", "lite", "full", "full"]
+    assert ["--exclude-dnp" in c for c in exports] == [False, True, False, True]
     placements = [c for c in calls if c[:4] == ("kicad-cli", "pcb", "export", "pos")]
     assert [c[c.index("--variant") + 1] for c in placements] == ["lite", "lite", "full", "full"]
     drc = next(c for c in calls if c[:3] == ("kicad-cli", "pcb", "drc"))

@@ -154,8 +154,9 @@ OTHER_LAYERS = (
 # The board PDF's layers after the copper, one page each.
 BOARD_PDF_LAYERS = ("F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab", "User.Drawings")
 
-# The BOM export's fields: ${DNP} is kicad-cli's, "DNP" for a part not
-# fitted, "" for one fitted, under the header DNP.
+# The BOM export's fields.  Whether a part is fitted comes from a second
+# export with --exclude-dnp, which reads KiCad's DNP attribute: ${DNP} in
+# --fields gives a symbol's own field named DNP when it has one (10.0.8).
 BOM_FIELDS = (
     "Reference",
     "Value",
@@ -164,7 +165,6 @@ BOM_FIELDS = (
     "MPN",
     "Manufacturer",
     "Datasheet",
-    "${DNP}",
 )
 # The house BOM's columns (docs/kicad-style.md's fields), and its DNP
 # column's value for a part not fitted.
@@ -1180,24 +1180,28 @@ class Release:
         """The schematic's parts, of the variant if any, DNP too, in KiCad's
         order of reference."""
         raw = self.work / work_name("bom", variant, ".csv")
-        self.kicad(
-            "sch",
-            "export",
-            "bom",
-            "--fields",
-            ",".join(BOM_FIELDS),
-            *variant_flag(variant),
-            "-o",
-            str(raw),
-            self.path(self.board.sch),
-        )
+        fitted_raw = self.work / work_name("bom-fitted", variant, ".csv")
+        for out, dnp in ((raw, []), (fitted_raw, ["--exclude-dnp"])):
+            self.kicad(
+                "sch",
+                "export",
+                "bom",
+                "--fields",
+                ",".join(BOM_FIELDS),
+                *dnp,
+                *variant_flag(variant),
+                "-o",
+                str(out),
+                self.path(self.board.sch),
+            )
+        fitted = {r["Reference"] for r in csv.DictReader(io.StringIO(fitted_raw.read_text()))}
         return [
             Part(
                 r["Reference"],
                 r["Value"],
                 r["Footprint"],
                 r["LCSC"],
-                dnp=bool(r["DNP"]),
+                dnp=r["Reference"] not in fitted,
                 mpn=r["MPN"],
                 manufacturer=r["Manufacturer"],
                 datasheet=r["Datasheet"],
@@ -1511,9 +1515,7 @@ def main() -> None:
         refusals = []
         for v in builds:
             parts, placements = r.parts(v), r.placements(v)
-            found_problems = (
-                [] if v is None else cross_checks(parts, placements, r.placements(v, True))
-            )
+            found_problems = cross_checks(parts, placements, r.placements(v, True))
             found_problems += profile.check(parts, placements, options[b.name])
             for w in profile.warnings(parts, placements, options[b.name]):
                 print(f"warning: {w if v is None else f'variant {v}: {w}'}", file=sys.stderr)
