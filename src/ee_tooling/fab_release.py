@@ -1077,6 +1077,11 @@ def main() -> None:
             + "put each library in the repository (a git submodule) and name it by a"
             " ${KIPRJMOD}-relative path (docs/kicad-style.md, Files)"
         )
+    for model in found_libraries.unresolved:
+        print(
+            f"warning: 3D model not found, from the project or its library: {model}",
+            file=sys.stderr,
+        )
     try:
         inputs = [
             *b.source_paths(root),

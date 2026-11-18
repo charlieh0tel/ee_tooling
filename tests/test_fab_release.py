@@ -1971,3 +1971,22 @@ def test_release_refuses_an_lfs_pointer_in_a_library(
     with pytest.raises(SystemExit, match=r"Git LFS pointers among .*\n  libs/3d/R.step\n"):
         release(tmp_path, monkeypatch)
     assert kicad_calls(tmp_path) == []
+
+
+def test_release_warns_of_a_model_found_nowhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A relative 3D model path that resolves nowhere: a warning naming
+    the footprint and the path; the release goes on."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace(
+        "(setup",
+        '(footprint "x:R" (property "Reference" "R9") (model "3d/R.step"))\n  (setup',
+        1,
+    )
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    root, _ = release(tmp_path, monkeypatch)
+    assert (root / "production/20261118-1/b-1-bom.csv").exists()
+    assert capsys.readouterr().err == (
+        "warning: 3D model not found, from the project or its library: R9 (x:R): 3d/R.step"
+        " (library 'x' not in fp-lib-table)\n"
+    )

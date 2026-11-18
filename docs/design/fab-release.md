@@ -116,6 +116,17 @@ electrical_test = "100% netlist test per IPC-9252"
   stock library: allowed, and not in the source tgz.  Any other
   variable (`${KICAD10_3RD_PARTY}`, a user's own) is refused: its value
   is the user's.  An embedded model is not a path.
+- A footprint's 3D model path with no variable, relative, is found as
+  KiCad 10.0.8 finds it (`kicad-cli pcb export step` on a scratch board:
+  a model present only beside the project, or only beside the
+  footprint's library, loads; present in both, the project's): from the
+  project's directory, else from the directory of the footprint's
+  library (its `LIBRARY` of `LIBRARY:NAME` in the project's
+  `fp-lib-table`).  `${KIPRJMOD}/...` is not looked up beside the
+  library.  Found outside the repository: refused.  Found nowhere (a
+  missing model does not change the fabrication files): a warning
+  naming the footprint and the path, and the library when the table
+  lacks it.  A stock library's footprint's relative model is stock.
 
 ### JLCPCB profile (`profiles/jlcpcb.py`)
 

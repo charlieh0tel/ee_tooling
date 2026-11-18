@@ -117,7 +117,10 @@ anything runs, a path in the project's `fp-lib-table` or
 `sym-lib-table`, or a footprint's 3D model path, that leads outside the
 repository or uses a variable other than `${KIPRJMOD}` and KiCad's own
 install variables (`${KICAD10_3DMODEL_DIR}` and the like, KiCad's stock
-libraries), naming each path.
+libraries), naming each path.  A relative 3D model path is looked
+up as KiCad does, from the project's directory, then from the
+footprint's library's directory (`fp-lib-table`); one found nowhere is a
+warning naming the footprint and the path.
 
 It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not
