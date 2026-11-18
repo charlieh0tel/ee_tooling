@@ -4,7 +4,7 @@
 # than editing this file.  Git runs a hook from the top of the work tree, so
 # the path is from there.  Until `git submodule update --init` the hook
 # is missing, and the commit is refused rather than left unchecked.
-HOOK=@EE_TOOLING@/.githooks/commit-msg
+HOOK="@EE_TOOLING@/.githooks/commit-msg"
 if [ ! -f "$HOOK" ]; then
     echo "commit refused: $HOOK is missing; run git submodule update --init" >&2
     exit 1

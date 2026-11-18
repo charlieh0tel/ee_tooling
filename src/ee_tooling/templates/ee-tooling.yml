@@ -18,10 +18,10 @@ jobs:
           submodules: true
       - run: >-
           git log --format=%B HEAD
-          | sh @EE_TOOLING@/.githooks/commit-msg --messages /dev/stdin
+          | sh "@EE_TOOLING@/.githooks/commit-msg" --messages /dev/stdin
       - run: >-
           git log --format='%an <%ae>%n%cn <%ce>' HEAD
-          | sh @EE_TOOLING@/.githooks/commit-msg --identities /dev/stdin
+          | sh "@EE_TOOLING@/.githooks/commit-msg" --identities /dev/stdin
   adopted:
     # The files adopt writes match the submodule's ee_tooling, and no file
     # of a type Git LFS tracks is a plain blob.  It needs git-lfs, not the
@@ -35,4 +35,4 @@ jobs:
           git lfs version
           || { sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs; }
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: @EE_TOOLING@/adopt --check
+      - run: '"@EE_TOOLING@/adopt" --check'

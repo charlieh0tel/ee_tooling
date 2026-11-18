@@ -309,7 +309,8 @@ Git runs a hook from the top of the work tree, whatever the directory
 of the commit, so the wrapper's path is from there.  Before
 `git submodule update --init` the hook is missing, and the wrapper
 refuses every commit, saying so.  `make hook-test` in ee_tooling tests
-the wrapper in a scratch repository.
+the wrapper in a scratch repository.  The hooks and the CI workflow quote the
+submodule's path, so one with a space works.
 
 `.githooks/pre-push` runs `git lfs pre-push`, which uploads the pushed
 commits' Git LFS objects; without it a push sends pointers whose files

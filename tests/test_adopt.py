@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -261,10 +262,11 @@ def test_root_layout(tmp_path: Path) -> None:
     }
     apply(tmp_path, steps, lambda *_: None)
     assert (
-        "HOOK=ee_tooling/.githooks/commit-msg\n" in (tmp_path / ".githooks/commit-msg").read_text()
+        'HOOK="ee_tooling/.githooks/commit-msg"\n'
+        in (tmp_path / ".githooks/commit-msg").read_text()
     )
     workflow = (tmp_path / ".github/workflows/ee-tooling.yml").read_text()
-    assert "run: ee_tooling/adopt --check" in workflow
+    assert "run: '\"ee_tooling/adopt\" --check'" in workflow
     assert "@ee_tooling/docs/kicad-style.md" in (tmp_path / "AGENTS.md").read_text()
     assert "(ee_tooling/docs/adopting.md)" in (tmp_path / ".githooks/pre-push").read_text()
     assert stale(layout) == []
@@ -302,11 +304,11 @@ def test_apply_writes_files(tmp_path: Path) -> None:
     ran(tmp_path)
     hook = tmp_path / ".githooks/commit-msg"
     assert hook.stat().st_mode & 0o111
-    assert "HOOK=hardware/ee_tooling/.githooks/commit-msg\n" in hook.read_text()
+    assert 'HOOK="hardware/ee_tooling/.githooks/commit-msg"\n' in hook.read_text()
     assert "@" not in hook.read_text().replace('"$@"', "")
     workflow = (tmp_path / ".github/workflows/ee-tooling.yml").read_text()
-    assert "sh hardware/ee_tooling/.githooks/commit-msg --messages" in workflow
-    assert "run: hardware/ee_tooling/adopt --check" in workflow
+    assert 'sh "hardware/ee_tooling/.githooks/commit-msg" --messages' in workflow
+    assert "run: '\"hardware/ee_tooling/adopt\" --check'" in workflow
     assert (
         "git lfs version\n          || { sudo apt-get update && sudo apt-get install -y"
         " --no-install-recommends git-lfs; }\n" in workflow
@@ -1929,3 +1931,40 @@ def test_bom_and_crlf_kept(tmp_path: Path) -> None:
     assert project.read_bytes().startswith(b"\xef\xbb\xbf{")
     assert json.loads(project.read_text(encoding="utf-8-sig"))["schematic"]
     assert stale(layout) == []
+
+
+def test_submodule_path_with_a_space(tmp_path: Path) -> None:
+    """The hooks and CI quote the submodule's path: one with a space works."""
+    root = tmp_path / "board"
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    layout = Layout(root, Path("hard ware/ee tooling"))
+    apply(root, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    hook = root / "hard ware/ee tooling/.githooks/commit-msg"
+    message = tmp_path / "message"
+    message.write_text("x\n")
+    missing = subprocess.run(
+        ["sh", ".githooks/commit-msg", str(message)], cwd=root, capture_output=True, text=True
+    )
+    assert missing.returncode == 1
+    assert missing.stderr == (
+        "commit refused: hard ware/ee tooling/.githooks/commit-msg is missing; run git"
+        " submodule update --init\n"
+    )
+    hook.parent.mkdir(parents=True)
+    hook.write_text('echo "ran $1"\n')
+    ran_hook = subprocess.run(
+        ["sh", ".githooks/commit-msg", str(message)], cwd=root, capture_output=True, text=True
+    )
+    assert ran_hook.stdout == f"ran {message}\n"
+    workflow = (root / ".github/workflows/ee-tooling.yml").read_text()
+    run = next(line for line in workflow.splitlines() if 'adopt" --check' in line)
+    assert shlex.split(run.split("run: ", 1)[1].strip("'")) == [
+        "hard ware/ee tooling/adopt",
+        "--check",
+    ]
+    for line in workflow.splitlines():
+        if "commit-msg --" in line:
+            assert shlex.split(line.strip().lstrip("| "))[:2] == [
+                "sh",
+                "hard ware/ee tooling/.githooks/commit-msg",
+            ]
