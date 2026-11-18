@@ -185,3 +185,17 @@ def erc_set(project: dict[str, Any], house: dict[str, Any]) -> tuple[dict[str, A
 
     walk(out, house, "")
     return out, changes
+
+
+def copied_message(path: str, names: list[str]) -> str:
+    """What to do about the board's own rules in path that copy the
+    section's (Dru.copied): their count, one name a line, and where they
+    are."""
+    one = len(names) == 1
+    return (
+        f"{path}: {len(names)} {'rule' if one else 'rules'} below ee_tooling's end marker"
+        f" {'copies' if one else 'copy'} the profile's and {'wins' if one else 'win'} over"
+        " them:\n"
+        + "".join(f"  {n}\n" for n in names)
+        + f"remove {'this rule' if one else 'these rules'} from below the end marker in {path}"
+    )

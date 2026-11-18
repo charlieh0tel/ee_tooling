@@ -30,6 +30,7 @@ from ee_tooling.kicad_rules import (
     ERC_SETTINGS,
     Dru,
     board_setup,
+    copied_message,
     erc_set,
     install,
     installed,
@@ -494,11 +495,7 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         ):
             raise ValueError(f"[[board]] {name!r}: the rules are not where they belong; {by_hand}")
         if found.copied:
-            print(
-                f"{dru.as_posix()}: rules {', '.join(found.copied)} after ee_tooling's copy them"
-                " and win over them: remove them",
-                file=sys.stderr,
-            )
+            print(copied_message(dru.as_posix(), found.copied), file=sys.stderr)
         close = "close the board in KiCad first"
         if found.stale:
             out.append(

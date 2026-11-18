@@ -1693,8 +1693,9 @@ def test_release_warns_of_rules_not_installed(
         f"warning: b.kicad_dru: ee_tooling's jlcpcb rules missing or out of date: {adopt}\n"
         "warning: b.kicad_pro: Board Setup below jlcpcb's minimums"
         f" (board.design_settings.rules.min_clearance: 0.05 -> 0.1): {adopt}\n"
-        "warning: b.kicad_dru: rules JLCPCB track width after ee_tooling's copy them and win"
-        " over them: remove them\n"
+        "warning: hw/b.kicad_dru: 1 rule below ee_tooling's end marker copies the profile's and"
+        " wins over them:\n  JLCPCB track width\nremove this rule from below the end marker in"
+        " hw/b.kicad_dru\n"
     )
     assert (root / "hw/b.kicad_dru").read_text() == f"(version 1)\n{copy}"
 

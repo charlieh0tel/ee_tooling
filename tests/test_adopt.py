@@ -955,8 +955,8 @@ def test_rules_copied_named(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
     assert dru.read_text().endswith(f"\n{copy}")
     assert (
-        "hardware/main/main.kicad_dru: rules JLCPCB track width after ee_tooling's copy them"
-        " and win over them: remove them\n"
+        "hardware/main/main.kicad_dru: 1 rule below ee_tooling's end marker copies the"
+        " profile's and wins over them:\n  JLCPCB track width\n"
     ) in capsys.readouterr().err
 
 

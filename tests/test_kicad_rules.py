@@ -11,6 +11,7 @@ from ee_tooling.kicad_rules import (
     ERC_SETTINGS,
     Dru,
     board_setup,
+    copied_message,
     erc_set,
     install,
     installed,
@@ -225,3 +226,11 @@ def test_erc_set_house() -> None:
     assert set(house["erc"]["rule_severities"].values()) <= {"ignore", "warning", "error"}
     out, _ = erc_set({}, house)
     assert out == house
+
+
+def test_copied_message() -> None:
+    """A count, one name a line, the file and what to do."""
+    assert copied_message("hw/b.kicad_dru", ["A", "B"]) == (
+        "hw/b.kicad_dru: 2 rules below ee_tooling's end marker copy the profile's and win over"
+        " them:\n  A\n  B\nremove these rules from below the end marker in hw/b.kicad_dru"
+    )

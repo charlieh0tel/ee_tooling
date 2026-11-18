@@ -64,6 +64,13 @@ minimums, or its ERC severities or connection grid differ as above.  A board who
 is not there, is left, said on stderr.  The boards are `fab.toml`'s,
 or, on the run that writes it, those it is written with.
 
+A board whose `.kicad_dru` is a hand-made copy of ee_tooling's rules
+file, its own rules after it, keeps that copy below the end marker
+after `--yes`: those rules, named as the section's, win over it.
+`adopt` and `fab-release` say so on stderr, with the count, each rule's
+name and the file; `--check` does not fail on it.  Delete those rules
+from below the end marker, keeping the board's own.
+
 It finds the KiCad projects (`*.kicad_pro`) under `hardware/`, skipping
 the submodule, every directory whose name starts with `.` (`.git`,
 `.venv`, `.claude/`'s worktrees) and every production directory

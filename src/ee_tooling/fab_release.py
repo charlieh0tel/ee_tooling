@@ -68,7 +68,7 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
-from ee_tooling.kicad_rules import Installed, board_setup, install, installed
+from ee_tooling.kicad_rules import Installed, board_setup, copied_message, install, installed
 from ee_tooling.kicad_style_netclass import sheets
 from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.profiles import PROFILES
@@ -985,8 +985,7 @@ def board_rules(root: Path, b: Board, profile: Profile[Any], options: object) ->
         print(f"warning: {w}: {adopt}", file=sys.stderr)
     if found.copied:
         print(
-            f"warning: {dru_path.name}: rules {', '.join(found.copied)} after ee_tooling's"
-            " copy them and win over them: remove them",
+            f"warning: {copied_message(str(b.directory / dru_path.name), found.copied)}",
             file=sys.stderr,
         )
     return found
