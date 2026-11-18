@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -114,9 +115,56 @@ def test_agents_section_with_the_style_replaced() -> None:
     assert agents_text(old, "new\n") == f"{AGENTS_BEGIN}\nnew\n{AGENTS_END}\n"
 
 
-def test_agents_markers_out_of_order_appended() -> None:
-    old = f"{AGENTS_END}\nown\n{AGENTS_BEGIN}\n"
-    assert agents_text(old, "new\n") == f"{old}\n{AGENTS_BEGIN}\nnew\n{AGENTS_END}\n"
+def test_agents_marker_quoted_in_prose_is_the_projects() -> None:
+    """A marker within a line is not one: the real section is replaced, the
+    lines before it kept."""
+    old = (
+        f"# Agents\n\nadopt's section starts at `{AGENTS_BEGIN}`.\n\nOwn rules.\n\n"
+        f"{AGENTS_BEGIN}\nold\n{AGENTS_END}\n"
+    )
+    text = agents_text(old, "new\n")
+    assert text == old.replace("\nold\n", "\nnew\n")
+    assert agents_text(text, "new\n") == text
+
+
+@pytest.mark.parametrize(
+    "old",
+    [
+        f"{AGENTS_END}\nown\n{AGENTS_BEGIN}\n",
+        f"own\n{AGENTS_BEGIN}\nmine\n",
+        f"own\n{AGENTS_BEGIN}\nold\n{AGENTS_END}\nmine\n{AGENTS_END}\n",
+        f"{AGENTS_BEGIN}\na\n{AGENTS_END}\n{AGENTS_BEGIN}\nb\n{AGENTS_END}\n",
+        f"own\n{AGENTS_END}\n",
+    ],
+)
+def test_agents_markers_out_of_place_refused(old: str) -> None:
+    """An end before the begin, a begin with no end, two of either: refused,
+    rather than a section added at every run or the project's lines lost."""
+    with pytest.raises(ValueError, match=r"^ee_tooling's markers are not one begin line, then one"):
+        agents_text(old, "new\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "old"),
+    [
+        ("AGENTS.md", f"own\n{AGENTS_BEGIN}\nmine\n"),
+        (
+            ".gitattributes",
+            "*.png -text\n# ee_tooling: end; the project's own lines follow and win\n",
+        ),
+    ],
+)
+def test_adopt_refuses_misplaced_markers(tmp_path: Path, name: str, old: str) -> None:
+    """Naming the file, before anything is written."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / name).write_text(old)
+    for run in (plan, stale):
+        with pytest.raises(
+            ValueError, match=rf"^{re.escape(name)}: ee_tooling's markers .*by hand$"
+        ):
+            run(layout)
+    assert (tmp_path / name).read_text() == old
+    assert not (tmp_path / ".githooks").exists()
 
 
 # A section that goes first, as the project's lines after it win.
@@ -131,7 +179,8 @@ FIRST = Markers("# begin", "# end", first=True)
         ("\n\nown\n", "# begin\nnew\n# end\nown\n"),
         ("# begin\nold\n# end\nown\n", "# begin\nnew\n# end\nown\n"),
         ("mine\n# begin\nold\n# end\n\nown\n", "mine\n# begin\nnew\n# end\nown\n"),
-        ("# end\nown\n", "# begin\nnew\n# end\n# end\nown\n"),
+        ("own # begin\n", "# begin\nnew\n# end\nown # begin\n"),
+        ("# begin \nold\n# end\t\nown\n", "# begin\nnew\n# end\nown\n"),
     ],
 )
 def test_marked_text_first(existing: str | None, text: str) -> None:

@@ -120,6 +120,13 @@ ask whether it should be made in ee_tooling instead.  An `AGENTS.md`
 that already imports the house style outside the markers was adopted
 by hand and is left alone.
 
+In `AGENTS.md` and `.gitattributes` a marker is a whole line (a marker
+quoted within a line is the project's text).  With no marker line the
+section is added; with one begin line, then one end line, the lines
+between them are replaced.  Any other arrangement (an end before the
+begin, a begin with no end, two of either) stops `adopt`, naming the
+file, before anything is written: fix the markers by hand.
+
 What it runs, each only when needed:
 
 - `uv venv --system-site-packages --python /usr/bin/python3` in

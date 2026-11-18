@@ -537,16 +537,35 @@ AGENTS_MARKERS = Markers(AGENTS_BEGIN, AGENTS_END, first=False)
 GITATTRIBUTES_MARKERS = Markers(GITATTRIBUTES_BEGIN, GITATTRIBUTES_END, first=True)
 
 
+def marked_span(text: str, markers: Markers) -> tuple[int, int] | None:
+    """Where the section is in text, from its begin line's start to its end
+    line's end, or None if neither marker is a line of it (a marker within
+    a line is the project's text).  ValueError unless the markers are one
+    begin line, then one end line."""
+
+    def lines(marker: str) -> list[re.Match[str]]:
+        return list(re.finditer(rf"^{re.escape(marker)}[ \t]*$", text, re.M))
+
+    begins, ends = lines(markers.begin), lines(markers.end)
+    if not begins and not ends:
+        return None
+    if len(begins) != 1 or len(ends) != 1 or ends[0].start() < begins[0].start():
+        raise ValueError("ee_tooling's markers are not one begin line, then one end line")
+    return begins[0].start(), ends[0].end()
+
+
 def marked_text(existing: str | None, block: str, markers: Markers) -> str:
     """A file with ee_tooling's section, block between the markers: the
     section replaced in place, or added where markers says; the rest of the
-    file kept."""
+    file kept.  ValueError, from marked_span, if the markers are not where
+    they belong."""
     section = f"{markers.begin}\n{block.rstrip()}\n{markers.end}\n"
     if existing is None:
         return section
-    begin, end = existing.find(markers.begin), existing.find(markers.end)
-    if begin >= 0 and end > begin:
-        return existing[:begin] + section + existing[end + len(markers.end) :].lstrip("\n")
+    span = marked_span(existing, markers)
+    if span is not None:
+        begin, end = span
+        return existing[:begin] + section + existing[end:].lstrip("\n")
     if markers.first:
         return section + existing.lstrip("\n")
     return existing.rstrip("\n") + "\n\n" + section
@@ -554,12 +573,9 @@ def marked_text(existing: str | None, block: str, markers: Markers) -> str:
 
 def agents_text(existing: str | None, block: str) -> str | None:
     """AGENTS.md with ee_tooling's section, or None if it was adopted by
-    hand (the house style imported outside the markers)."""
-    if (
-        existing is not None
-        and STYLE in existing
-        and not (0 <= existing.find(AGENTS_BEGIN) < existing.find(AGENTS_END))
-    ):
+    hand (the house style imported outside the markers).  ValueError, from
+    marked_span."""
+    if existing is not None and STYLE in existing and marked_span(existing, AGENTS_MARKERS) is None:
         return None
     return marked_text(existing, block, AGENTS_MARKERS)
 
@@ -611,15 +627,18 @@ def files(layout: Layout) -> list[File]:
     warn_replaced_hook(root)
     attributes = root / GITATTRIBUTES
     existing = attributes.read_text() if attributes.exists() else None
-    out.append(
-        File(
-            GITATTRIBUTES,
-            marked_text(existing, layout.fill("gitattributes"), GITATTRIBUTES_MARKERS),
-            Owner.MANAGED,
-        )
-    )
+    try:
+        attributes_text = marked_text(existing, layout.fill("gitattributes"), GITATTRIBUTES_MARKERS)
+    except ValueError as e:
+        raise ValueError(f"{GITATTRIBUTES}: {e}; nothing written: fix them by hand") from e
+    out.append(File(GITATTRIBUTES, attributes_text, Owner.MANAGED))
     agents = root / AGENTS
-    text = agents_text(agents.read_text() if agents.exists() else None, layout.fill("agents.md"))
+    try:
+        text = agents_text(
+            agents.read_text() if agents.exists() else None, layout.fill("agents.md")
+        )
+    except ValueError as e:
+        raise ValueError(f"{AGENTS}: {e}; nothing written: fix them by hand") from e
     if text is None:
         print(f"{AGENTS}: adopted by hand; left as it is", file=sys.stderr)
     else:
