@@ -25,6 +25,8 @@ from ee_tooling.fab_release import (
     gerber_differences,
     gerber_zip,
     house_bom,
+    lfs_pointer,
+    lfs_pointers,
     load_config,
     main,
     profile_options,
@@ -1702,3 +1704,91 @@ def test_release_rebuilt_over_its_own_output(
     (root / directory / "stray.txt").write_text("x\n")
     with pytest.raises(SystemExit, match=r"uncommitted changes in the release's sources:\n.*stray"):
         main()
+
+
+# A Git LFS pointer as git-lfs 3.7.1 writes it.
+POINTER = (
+    "version https://git-lfs.github.com/spec/v1\n"
+    "oid sha256:27c22de2bca1a85418f3a0e1ea8e9917745bcb75960a9a8fe526a7c1a76f3c95\n"
+    "size 10\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "pointer"),
+    [
+        (POINTER, True),
+        (POINTER.replace("git-lfs.github.com", "hawser.github.com"), True),
+        (POINTER.rstrip("\n"), True),
+        ("version https://git-lfs.github.com/spec/v1", True),
+        ("", False),
+        (POINTER.replace("v1", "v2"), False),
+        (" " + POINTER, False),
+        ("(kicad_pcb)\n", False),
+        (POINTER + "x" * (1024 - len(POINTER) - 1), True),
+        (POINTER + "x" * (1024 - len(POINTER)), False),
+    ],
+)
+def test_lfs_pointer(tmp_path: Path, text: str, pointer: bool) -> None:
+    """By its first line and its size alone; an empty file is not one."""
+    f = tmp_path / "f"
+    f.write_text(text)
+    assert lfs_pointer(f) is pointer
+
+
+def test_lfs_pointers(tmp_path: Path) -> None:
+    """Files and directories walked, from the root, in order."""
+    for name, text in {
+        "hw/b.kicad_pcb": POINTER,
+        "hw/b.kicad_sch": "(kicad_sch)\n",
+        "hw/b.3dshapes/z.step": POINTER,
+        "hw/b.3dshapes/a/m.wrl": POINTER,
+        "hw/b.3dshapes/empty.step": "",
+        "docs/d.pdf": "%PDF-1.4\n",
+    }.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    paths = [Path("hw/b.kicad_pcb"), Path("hw/b.kicad_sch"), Path("hw/b.3dshapes"), Path("docs")]
+    assert lfs_pointers(tmp_path, paths) == [
+        Path("hw/b.kicad_pcb"),
+        Path("hw/b.3dshapes/a/m.wrl"),
+        Path("hw/b.3dshapes/z.step"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "args", [(), ("--force",), ("--allow-dirty",), ("--force", "--allow-dirty")]
+)
+def test_release_refuses_lfs_pointers_before_anything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: tuple[str, ...]
+) -> None:
+    """A pointer among the board's files or its sources, as a clone without
+    git-lfs leaves it, stops the release before anything is checked or
+    written, naming each, whatever the options."""
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", POINTER)
+    monkeypatch.setitem(FIXTURE, "docs/datasheets/u1.pdf", POINTER)
+    old = tmp_path / "repo/production/20261118-1/old.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    with pytest.raises(SystemExit) as e:
+        release(tmp_path, monkeypatch, args=args)
+    assert str(e.value) == (
+        "Git LFS pointers among the release's inputs, their files never fetched"
+        " (a clone without git-lfs):\n"
+        "  hw/b.kicad_pro\n"
+        "  docs/datasheets/u1.pdf\n"
+        "install git-lfs, then run git lfs install --local --skip-repo and git lfs pull"
+    )
+    assert kicad_calls(tmp_path) == []
+    assert old.read_text() == "kept\n"
+    assert git(tmp_path / "repo", "tag") == ""
+
+
+def test_release_with_variants_refuses_lfs_pointers_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With design variants, once, before any build."""
+    monkeypatch.setitem(FIXTURE, "docs/u1.pdf", POINTER)
+    with pytest.raises(SystemExit, match=r"^Git LFS pointers among .*\n  docs/u1.pdf\ninstall"):
+        variant_release(tmp_path, monkeypatch, LITE_OUTPUTS)
+    assert kicad_calls(tmp_path) == []

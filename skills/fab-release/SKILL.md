@@ -124,6 +124,15 @@ the board's directory and `sources` have no uncommitted changes
 `-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before
 anything is written.
 
+Before any of those, once for every variant, it stops on a Git LFS
+pointer among its inputs (the board's files and the source tgz's,
+directories walked): a file under
+1024 bytes whose first line is git-lfs's `version
+https://git-lfs.github.com/spec/v1`, as a clone without git-lfs leaves
+it.  It names each; `--force` and `--allow-dirty` do not pass it.  The
+fix: install git-lfs, then `git lfs install --local --skip-repo` and
+`git lfs pull`.
+
 ## The tag
 
 It tags the commit the package was built from (the tgz's COMMIT),

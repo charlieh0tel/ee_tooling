@@ -165,6 +165,15 @@ DNP = "yes"
 PROJECT_SUFFIXES = (".kicad_pcb", ".kicad_sch", ".kicad_pro", ".kicad_dru", ".pretty", ".3dshapes")
 PROJECT_FILES = ("fp-lib-table", "sym-lib-table")
 
+# A Git LFS pointer's first line (git-lfs's spec.md): the spec's version,
+# then the pre-release one git-lfs still reads; a pointer is smaller than
+# LFS_POINTER_SIZE bytes, and an empty file is not taken for one.
+LFS_VERSIONS = (
+    b"version https://git-lfs.github.com/spec/v1",
+    b"version https://hawser.github.com/spec/v1",
+)
+LFS_POINTER_SIZE = 1024
+
 # ODB++ export: mm, as the Gerbers and drill; 6 decimals, as kicad-cli's
 # default 4.6 Gerbers, is KiCad's 1 nm unit, so nothing is rounded; a tgz of one
 # odb/ job directory, ODB++'s usual archive and the one tools/odb_current reads.
@@ -333,6 +342,25 @@ def load_config(text: str) -> dict[str, Board]:
         if b.name in out:
             raise ValueError(f"[[board]] {b.name!r} is there twice")
         out[b.name] = b
+    return out
+
+
+def lfs_pointer(path: Path) -> bool:
+    """Whether the file is a Git LFS pointer, by its contents alone."""
+    if not 0 < path.stat().st_size < LFS_POINTER_SIZE:
+        return False
+    return path.read_bytes().split(b"\n", 1)[0] in LFS_VERSIONS
+
+
+def lfs_pointers(root: Path, paths: Iterable[Path]) -> list[Path]:
+    """The files among paths, from root, directories walked, that are Git
+    LFS pointers whose files were never fetched; from root.  OSError if one
+    cannot be read."""
+    out = []
+    for p in paths:
+        top = root / p
+        found = sorted(f for f in top.rglob("*") if f.is_file()) if top.is_dir() else [top]
+        out += [f.relative_to(root) for f in found if lfs_pointer(f)]
     return out
 
 
@@ -954,6 +982,17 @@ def main() -> None:
     missing = [str(s) for s in (b.pcb, b.sch, *b.sources) if not (root / s).exists()]
     if missing:
         sys.exit(f"{CONFIG} names files that are not there: {', '.join(missing)}")
+    try:
+        pointers = lfs_pointers(root, b.source_paths(root))
+    except OSError as e:
+        sys.exit(f"{e.filename}: {e.strerror}")
+    if pointers:
+        sys.exit(
+            "Git LFS pointers among the release's inputs, their files never fetched"
+            " (a clone without git-lfs):\n"
+            + "".join(f"  {p}\n" for p in pointers)
+            + "install git-lfs, then run git lfs install --local --skip-repo and git lfs pull"
+        )
     pcb_text = (root / b.pcb).read_text()
     rev = revision(pcb_text)
     if rev is None:
