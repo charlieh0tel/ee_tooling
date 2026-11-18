@@ -131,8 +131,9 @@ with ee_tooling's rules (`docs/kicad-rules.md`).
 - Mounting holes plated, with an annular ring.  A hole tied to ground
   needs no vias of its own.
 - A physical stackup in Board Setup, and its table (Place > Add Stackup
-  Table) on User.Drawings.  KiCad does not update the table: replace it
-  after any stackup change.
+  Table, or `stackup-table`, `docs/stackup-table.md`) on User.Drawings.
+  KiCad does not update the table: replace it, or rerun
+  `stackup-table`, after any stackup change.
 
 ## Silkscreen
 

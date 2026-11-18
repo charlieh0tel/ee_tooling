@@ -77,7 +77,8 @@ wires versus labels are not checked.
   `group-boardStackUp`) is reported for replacing.
 - The table matching the stackup: a row per layer or dielectric
   sublayer, and each material, thickness (any of KiCad's units), Er and
-  loss tangent the stackup gives.
+  loss tangent the stackup gives.  `stackup-table` writes or refreshes
+  the table (`docs/stackup-table.md`).
 
 ### Routing: kicad_style_routing.py
 
