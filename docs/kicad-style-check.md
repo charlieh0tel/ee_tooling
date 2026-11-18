@@ -206,9 +206,9 @@ item.  Ids and subject fields are part of the semver API.
 | Finishing | `mounting-hole-no-net` | `reference` | a mounting hole on no net |
 | Stackup | `stackup-missing` | none | no physical stackup (Board Setup) |
 | Stackup | `stackup-table-missing` | none | no stackup table on User.Drawings |
-| Stackup | `stackup-table-layer` | `layer` | a stackup table on another layer, the one it is on |
+| Stackup | `stackup-table-layer` | `layer` | a stackup table on a layer other than User.Drawings; `layer` is the board layer it is drawn on (e.g. User.Comments) |
 | Stackup | `stackup-table-rows` | none | a stackup table with a row count not the stackup's |
-| Stackup | `stackup-table-row` | `layer` | a stackup table's row not matching its stackup layer |
+| Stackup | `stackup-table-row` | `layer` | a stackup table's row not matching its stackup layer; `layer` is that stackup layer (e.g. In1.Cu) |
 | Routing | `decoupling-no-pin` | `capacitor`, `pin` | placement.toml's pin not on the board |
 | Routing | `decoupling-no-pad` | `capacitor`, `pin` | the capacitor has no pad on the pin's net |
 | Routing | `via-off-plane` | `net`, `pad` | a stub's via not reaching the plane |
