@@ -426,14 +426,15 @@ def lfs_pointer(path: Path) -> bool:
 
 def lfs_pointers(root: Path, paths: Iterable[Path]) -> list[Path]:
     """The files among paths, from root, directories walked, that are Git
-    LFS pointers whose files were never fetched; from root.  OSError if one
-    cannot be read."""
-    out = []
+    LFS pointers whose files were never fetched; from root, each once (a
+    library's 3D model may also be under a source directory).  OSError if
+    one cannot be read."""
+    out: dict[Path, None] = {}
     for p in paths:
         top = root / p
         found = sorted(f for f in top.rglob("*") if f.is_file()) if top.is_dir() else [top]
-        out += [f.relative_to(root) for f in found if lfs_pointer(f)]
-    return out
+        out.update((f.relative_to(root), None) for f in found if lfs_pointer(f))
+    return list(out)
 
 
 def house_bom(parts: Iterable[Part]) -> list[list[str]]:

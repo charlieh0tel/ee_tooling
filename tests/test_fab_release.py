@@ -1864,6 +1864,12 @@ def test_lfs_pointers(tmp_path: Path) -> None:
         Path("hw/b.3dshapes/a/m.wrl"),
         Path("hw/b.3dshapes/z.step"),
     ]
+    overlapping = [Path("hw/b.3dshapes/z.step"), Path("hw/b.3dshapes"), Path("hw/b.kicad_pcb")]
+    assert lfs_pointers(tmp_path, overlapping) == [
+        Path("hw/b.3dshapes/z.step"),
+        Path("hw/b.3dshapes/a/m.wrl"),
+        Path("hw/b.kicad_pcb"),
+    ]
 
 
 @pytest.mark.parametrize(
