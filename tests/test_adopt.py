@@ -2052,3 +2052,19 @@ def test_two_projects_of_one_name_refused(tmp_path: Path) -> None:
     ):
         plan(layout)
     assert not (tmp_path / "fab.toml").exists()
+
+
+def test_lfs_ls_files_failing_stops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """git lfs ls-files failing (not git-lfs missing): its error, not
+    "nothing to fetch"."""
+    layout = repository(tmp_path, "main")
+    monkeypatch.setattr(
+        adopt,
+        "git_lfs",
+        lambda *_: subprocess.CompletedProcess([], 2, "", "Error: bad index\n"),
+    )
+    monkeypatch.setattr(shutil, "which", lambda _: "/usr/bin/git-lfs")
+    with pytest.raises(ValueError, match=r"^git lfs ls-files failed \(2\): Error: bad index$"):
+        plan(layout)
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    assert not adopt.lfs_unfetched(tmp_path)

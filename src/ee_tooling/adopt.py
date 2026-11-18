@@ -15,6 +15,7 @@ import importlib.resources
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -285,10 +286,16 @@ def git_lfs(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def lfs_unfetched(root: Path) -> bool:
     """Whether a file Git LFS tracks at HEAD is a pointer in the work tree
-    (git lfs ls-files marks it -, a fetched one *)."""
-    return any(
-        line.split(" ", 2)[1:2] == ["-"] for line in git_lfs(root, "ls-files").stdout.splitlines()
-    )
+    (git lfs ls-files marks it -, a fetched one *); False without git-lfs
+    (main refuses to run then).  ValueError with git-lfs's error if
+    ls-files fails otherwise."""
+    r = git_lfs(root, "ls-files")
+    if r.returncode != 0:
+        if shutil.which("git-lfs") is None:
+            return False
+        error = r.stderr.strip() or r.stdout.strip()
+        raise ValueError(f"git lfs ls-files failed ({r.returncode}): {error}")
+    return any(line.split(" ", 2)[1:2] == ["-"] for line in r.stdout.splitlines())
 
 
 # How git lfs fsck --pointers starts each line naming a file whose blob is

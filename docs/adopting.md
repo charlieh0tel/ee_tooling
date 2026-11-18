@@ -200,7 +200,8 @@ that fails must not leave the hooks or the filters unset):
 - `git lfs pull`, when a file Git LFS tracks is a pointer in the work
   tree (`git lfs ls-files` marks it `-`): the clone's pointers become
   files.  With no remote, or the remote out of reach, it fails, and
-  `adopt` says the files stay pointers until it runs;
+  `adopt` says the files stay pointers until it runs.  When `git lfs
+  ls-files` itself fails, `adopt` stops with its error;
 - `uv venv --system-site-packages --python /usr/bin/python3` in
   `hardware/`, with `--clear` for a venv without system packages:
   uv has no project setting for it, and KiCad's `pcbnew` is only in
