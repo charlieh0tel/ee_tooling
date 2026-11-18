@@ -71,6 +71,10 @@ too).  The link's target, perhaps outside the repository, is not
 `adopt`'s to change: replace the link with what it links to, or remove
 it.
 
+A file `adopt` reads that is not UTF-8 stops it, naming the file,
+before anything is done; a Markdown file in a skill it moves is left as
+it is, named on stderr.
+
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
 overwrites the change.  `--check` fails while a board's rules section

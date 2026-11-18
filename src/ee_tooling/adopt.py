@@ -89,6 +89,14 @@ TOML_STRING = re.compile(r""""(?:[^"\\]|\\.)*"|'[^']*'""")
 FAB_HEADER = re.compile(rf"^[ \t]*\[[ \t]*board[ \t]*\.[ \t]*{FAB}[ \t]*\][ \t]*(#.*)?$", re.M)
 
 
+def read(path: Path) -> str:
+    """A file's text; ValueError naming it if it is not UTF-8."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"{path}: not UTF-8 (byte {e.start}: {e.reason})") from e
+
+
 class Owner(Enum):
     """Who keeps a file up to date once it is written."""
 
@@ -111,7 +119,7 @@ class File:
         target = root / self.path
         if not target.exists():
             return "create"
-        if self.owner is Owner.MANAGED and target.read_text() != self.text:
+        if self.owner is Owner.MANAGED and read(target) != self.text:
             return "update"
         if self.owner is Owner.MANAGED and self.executable and not executable(root, self.path):
             return "make executable"
@@ -371,8 +379,8 @@ def productions(layout: Layout) -> list[Path]:
         if not path.exists():
             continue
         try:
-            boards = tomllib.loads(path.read_text()).get("board", [])
-        except tomllib.TOMLDecodeError as e:
+            boards = tomllib.loads(read(path)).get("board", [])
+        except (tomllib.TOMLDecodeError, ValueError) as e:
             print(f"{config}: {e}; its production directories not skipped", file=sys.stderr)
             continue
         out += [
@@ -484,7 +492,7 @@ def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
     out: list[Remove | Rename | Edit] = []
     if (root / CONFIG).exists():
         try:
-            edited = fab_added((root / CONFIG).read_text())
+            edited = fab_added(read(root / CONFIG))
         except ValueError as e:  # tomllib.TOMLDecodeError among them
             raise ValueError(f"{CONFIG}: {e}; add each [board.{FAB}] key by hand") from e
         if edited is not None:
@@ -541,10 +549,10 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         house = json.loads(resource(ERC_SETTINGS))
         by_hand = "install the rules by hand"
         try:
-            settings = json.loads((root / project).read_text())
+            settings = json.loads(read(root / project))
         except ValueError as e:
             raise ValueError(f"{project.as_posix()}: {e}; {by_hand}") from e
-        existing = (root / dru).read_text() if (root / dru).exists() else None
+        existing = read(root / dru) if (root / dru).exists() else None
         try:
             found = install(existing, settings, section, least)
         except ValueError as e:
@@ -652,7 +660,7 @@ def warn_replaced_hook(root: Path) -> None:
 def uses_ee_tooling(pyproject: Path) -> bool:
     if not pyproject.exists():
         return False
-    sources = tomllib.loads(pyproject.read_text()).get("tool", {}).get("uv", {}).get("sources", {})
+    sources = tomllib.loads(read(pyproject)).get("tool", {}).get("uv", {}).get("sources", {})
     return "ee-tooling" in sources
 
 
@@ -678,17 +686,16 @@ def files(layout: Layout) -> list[File]:
     ]
     warn_replaced_hook(root)
     attributes = root / GITATTRIBUTES
-    existing = attributes.read_text() if attributes.exists() else None
+    existing = read(attributes) if attributes.exists() else None
     try:
         attributes_text = marked_text(existing, layout.fill("gitattributes"), GITATTRIBUTES_MARKERS)
     except ValueError as e:
         raise ValueError(f"{GITATTRIBUTES}: {e}; nothing written: fix them by hand") from e
     out.append(File(GITATTRIBUTES, attributes_text, Owner.MANAGED))
     agents = root / AGENTS
+    agents_existing = read(agents) if agents.exists() else None
     try:
-        text = agents_text(
-            agents.read_text() if agents.exists() else None, layout.fill("agents.md")
-        )
+        text = agents_text(agents_existing, layout.fill("agents.md"))
     except ValueError as e:
         raise ValueError(f"{AGENTS}: {e}; nothing written: fix them by hand") from e
     if text is None:
@@ -702,7 +709,7 @@ def files(layout: Layout) -> list[File]:
         return out
     if (root / OLD_CONFIG).exists():
         try:
-            config = migrated_config((root / OLD_CONFIG).read_text())
+            config = migrated_config(read(root / OLD_CONFIG))
         except (tomllib.TOMLDecodeError, ValueError) as e:
             raise ValueError(f"{OLD_CONFIG}: {e}; fix it, or write {CONFIG} by hand") from e
         out.append(File(Path(CONFIG), config, Owner.PROJECT))
@@ -837,7 +844,11 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
             case Rename():
                 (root / step.source).rename(root / step.target)
                 for f in sorted((root / step.target).rglob("*.md")):
-                    text = f.read_text()
+                    try:
+                        text = read(f)
+                    except ValueError as e:
+                        print(f"{e}: left as it is", file=sys.stderr)
+                        continue
                     for old, new in step.names:
                         text = text.replace(old, new)
                     f.write_text(text)
@@ -857,7 +868,7 @@ def run_command(args: Sequence[str], directory: Path) -> None:
 def read_config(root: Path) -> str | None:
     """fab.toml's text, or None if it is not there."""
     path = root / CONFIG
-    return path.read_text() if path.exists() else None
+    return read(path) if path.exists() else None
 
 
 def pending(layout: Layout) -> list[tuple[str, Path]]:

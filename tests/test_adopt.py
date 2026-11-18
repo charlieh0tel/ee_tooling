@@ -1531,3 +1531,30 @@ def test_dry_run_and_check_leave_git_config(tmp_path: Path) -> None:
     assert '"a.zip"' in report
     assert (tmp_path / ".git/config").read_bytes() == config
     assert not (tmp_path / ".githooks").exists()
+
+
+@pytest.mark.parametrize(
+    "name", ["AGENTS.md", ".gitattributes", "fab.toml", "hardware/main/main.kicad_pro"]
+)
+def test_file_not_utf8_named(tmp_path: Path, name: str) -> None:
+    layout = repository(tmp_path, "main")
+    if name == "hardware/main/main.kicad_pro":
+        (tmp_path / "fab.toml").write_text(fab_config(layout) or "")
+    (tmp_path / name).write_bytes(b"caf\xe9\n")
+    for run in (plan, stale):
+        with pytest.raises(ValueError, match=rf"{re.escape(name)}: not UTF-8 \(byte 3: "):
+            run(layout)
+
+
+def test_rename_leaves_a_markdown_file_not_utf8(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    layout = adopted(tmp_path, "main")
+    (tmp_path / ".claude/skills/jlcpcb-release/old.md").write_bytes(b"jlcpcb-release caf\xe9\n")
+    apply(tmp_path, plan(layout), lambda *_: None)
+    moved = tmp_path / ".claude/skills/fab-release"
+    assert (moved / "old.md").read_bytes() == b"jlcpcb-release caf\xe9\n"
+    assert (moved / "SKILL.md").read_text().startswith("---\nname: fab-release\n")
+    assert "old.md: not UTF-8 (byte 18: invalid continuation byte): left as it is" in (
+        capsys.readouterr().err
+    )
