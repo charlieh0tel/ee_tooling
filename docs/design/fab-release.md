@@ -5,9 +5,10 @@ and `jlcpcb.toml` with a fab-neutral `fab-release` and `fab.toml`, with
 JLCPCB as one profile.  Decided in review: the names below, a neutral
 core with profiles, required per-board fab values, the house BOM in the
 core, rules added by the release (not refused when stale), no `kicad`
-profile yet, no alias for the old command, a flag day, and DNP parts
-at Qty 0 in the house BOM.  Deferred: the fab notes and the
-no-extra-cost via rules.  Nothing is open.
+profile yet, no alias for the old command, a flag day, DNP parts at
+Qty 0 in the house BOM, and a fitted part with no LCSC number a warning
+unless the board requires LCSC numbers.  Deferred: the fab notes and
+the no-extra-cost via rules.  Nothing is open.
 
 ## Names
 
@@ -81,7 +82,9 @@ electrical_test = "100% netlist test per IPC-9252"
 - Its BOM `NAME-REV-jlcpcb-bom.csv` (Comment, Designator, Footprint,
   LCSC Part #; DNP left out) and CPL `NAME-REV-jlcpcb-cpl.csv`, with
   `parts.toml`'s rotations and offsets.  A fitted part with no LCSC
-  number refuses the release, naming each one.
+  number is a warning, naming each one, as now; with the board option
+  `require_lcsc = true` in `[board.jlcpcb]` (default false), it refuses
+  the release.
 - IPC-2581's distributor: the `LCSC` field, distributor "LCSC".
 - Rules: `rules/jlcpcb.kicad_dru` in sections (limits, house), and
   `rules/jlcpcb_board_setup.json`, the Board Setup minimums.
@@ -236,9 +239,7 @@ Breaking changes:
 13. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`, `Parts` and the BOM and CPL to
     `ee_tooling.profiles.jlcpcb`.
-14. JLCPCB profile: a fitted part with no LCSC number is refused (now a
-    warning).
-15. `adopt --yes` sets the board's ERC severities and connection grid.
+14. `adopt --yes` sets the board's ERC severities and connection grid.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
 
@@ -268,9 +269,8 @@ Then one PR, breaking, merged as one:
 11. The rules in sections; DRC on a scratch
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
-12. The JLCPCB profile refuses a fitted part with no LCSC number.
-13. `adopt` sets the ERC severities and connection grid.
-14. Release 0.3.0; tag after CI.
+12. `adopt` sets the ERC severities and connection grid.
+13. Release 0.3.0; tag after CI.
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
@@ -286,8 +286,6 @@ rules.
   quote upload, with no order, checks it before step 9 merges.
 - DRC in the editor and in the release differ until `adopt --yes`; the
   release warns.
-- A fitted part JLCPCB is not to place (a test point, a hand-fitted
-  connector) needs DNP or Exclude from BOM, or the release is refused.
 - Board Setup is raised, never lowered: a board moved to a looser fab
   keeps the stricter values.
 - `adopt` editing `.kicad_pro` and `.kicad_dru` while KiCad has them open
