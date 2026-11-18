@@ -59,8 +59,9 @@ overwrites the change.
    the board has it; and `schematic.connection_grid_size` set to the
    file's (Formatting, Connection grid).
 
-`fab-release` runs DRC on a scratch copy of the project (its directory's
-files copied, its directories linked, at its own path from the
+`fab-release` runs DRC on a scratch copy of the project (its
+`.kicad_pcb`, `.kicad_sch` and `.kicad_prl` copied, every other entry
+of its directory linked, at its own path from the
 repository's root under the scratch directory beside links to its
 ancestors' other entries up to the root, so a library path relative to
 the project finds the same library) with the same rules installed and

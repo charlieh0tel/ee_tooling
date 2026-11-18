@@ -2122,3 +2122,49 @@ def test_release_refuses_a_bad_rev(
 def test_release_name_problem(tmp_path: Path) -> None:
     assert release_name_problem(tmp_path, "b", "20261118", "1.0") is None
     assert "not one path component" in (release_name_problem(tmp_path, "b", "a/b", "1") or "")
+
+
+def test_drc_project_links_odd_entries(tmp_path: Path) -> None:
+    """A broken link, a link loop, a FIFO and an unreadable file in the
+    board's directory: linked, not read; KiCad's cache left out; the
+    project's own files copied."""
+    root = tmp_path / "repo"
+    board = root / "hw"
+    board.mkdir(parents=True)
+    for name in ("b.kicad_pcb", "b.kicad_sch", "fp-info-cache"):
+        (board / name).write_text(name)
+    (board / "broken").symlink_to(board / "nothing")
+    (board / "loop").symlink_to(board / "loop")
+    os.mkfifo(board / "fifo")
+    (board / "secret").write_text("x")
+    (board / "secret").chmod(0)
+    work = tmp_path / "work"
+    work.mkdir()
+    r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
+    r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules)))
+    scratch = work / "project/hw"
+    assert sorted(p.name for p in scratch.iterdir()) == [
+        "b.kicad_dru",
+        "b.kicad_pcb",
+        "b.kicad_pro",
+        "b.kicad_sch",
+        "broken",
+        "fifo",
+        "loop",
+        "secret",
+    ]
+    for name in ("broken", "fifo", "loop", "secret"):
+        assert (scratch / name).is_symlink()
+    assert not (scratch / "b.kicad_sch").is_symlink()
+    (board / "secret").chmod(0o600)
+
+
+def test_drc_project_stops_on_an_unreadable_board(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    (root / "hw").mkdir(parents=True)
+    (root / "hw/b.kicad_pcb").symlink_to(root / "hw/nothing")
+    work = tmp_path / "work"
+    work.mkdir()
+    r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
+    with pytest.raises(SystemExit, match=r"^DRC's scratch copy: .*b.kicad_pcb: No such file"):
+        r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules)))

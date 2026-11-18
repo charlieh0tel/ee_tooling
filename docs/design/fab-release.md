@@ -269,9 +269,13 @@ class Profile(Protocol):
   fails DRC as any other.
 - It checks Board Setup against the profile's minimums the same way, on
   the scratch copy, raised to at least the profile's values.
-- It never writes the board's files.  The scratch copy is each file of
-  the project's directory copied and each directory linked, the
-  `.kicad_dru` and `.kicad_pro` written, at the directory's path from
+- It never writes the board's files.  The scratch copy is the project's
+  `.kicad_pcb`, `.kicad_sch` and `.kicad_prl` copied (a link would let
+  anything KiCad writes beside them reach the board's), its `.kicad_dru`
+  and `.kicad_pro` written, `fp-info-cache` left out, and every other
+  entry of its directory linked, never read (an odd entry, a broken
+  link or a FIFO, is harmless; an unreadable board or schematic stops
+  the release, naming it), at the directory's path from
   the repository's root under the scratch directory, beside a link to
   every other entry of each of its ancestors up to the root:
   `kicad-cli pcb drc` checks footprints against their libraries

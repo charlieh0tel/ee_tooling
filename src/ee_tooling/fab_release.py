@@ -116,6 +116,12 @@ BUILDING = ".building"
 # The work directory's subdirectory DRC's scratch copy of the project is
 # in, and the suffix of a project's custom rules.
 DRC_PROJECT = "project"
+# In DRC's scratch copy, the project's files copied, by suffix to its name
+# (kicad-cli reads them; a link would let anything KiCad writes beside
+# them reach the board's), and those left out (KiCad's cache, which it
+# writes); every other entry is a link.
+DRC_COPIED = (".kicad_pcb", ".kicad_sch", ".kicad_prl")
+DRC_LEFT_OUT = ("fp-info-cache",)
 DRU = ".kicad_dru"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
 GERBERS = "gerbers"
@@ -706,8 +712,9 @@ class Release:
 
     def drc_project(self, rules: Installed) -> Path:
         """A scratch copy of the board's project with the rules installed;
-        return its .kicad_pcb.  Its directory's files are copied and its
-        directories linked, at the board directory's own path from the
+        return its .kicad_pcb.  The project's own files are copied
+        (DRC_COPIED), its .kicad_dru and .kicad_pro written, and every
+        other entry of its directory linked, at the board directory's own path from the
         repository's root under the scratch directory, beside a link to
         every other entry of each of its ancestors up to the root: so a
         library path relative to the project (${KIPRJMOD}/../lib), which
@@ -720,11 +727,18 @@ class Release:
         top = self.work / DRC_PROJECT
         scratch = top / source.relative_to(root)
         scratch.mkdir(parents=True)
+        copied = {f"{b.name}{s}" for s in DRC_COPIED}
+        written = {f"{b.name}{DRU}", b.project.name}
         for entry in sorted(source.iterdir()):
-            if entry.is_dir():
-                (scratch / entry.name).symlink_to(entry, target_is_directory=True)
+            if entry.name in written or entry.name in DRC_LEFT_OUT:
+                continue
+            if entry.name in copied:
+                try:
+                    shutil.copyfile(entry, scratch / entry.name)
+                except OSError as e:
+                    sys.exit(f"DRC's scratch copy: {entry}: {e.strerror}")
             else:
-                shutil.copyfile(entry, scratch / entry.name)
+                (scratch / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
         ancestors = [p for p in source.parents if p.is_relative_to(root)]
         for here, parent in zip([source, *ancestors], ancestors, strict=False):
             mirror = top / parent.relative_to(root)
