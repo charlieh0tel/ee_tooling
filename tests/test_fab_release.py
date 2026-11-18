@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import pytest
 from test_fabrication import FAB
 from test_profiles_jlcpcb import CORRECTIONS
 
+from ee_tooling import fab_release
 from ee_tooling.fab_release import (
     Board,
     Release,
@@ -2442,3 +2444,71 @@ def test_release_warns_on_variant_text(
     err = capsys.readouterr().err
     assert ("warning: b.kicad_pcb: text 'rev ${VARIANT}' on F.Silkscreen" in err) is warned
     assert (root / "production/20261118-1/b-1-lite-bom.csv").exists()
+
+
+def test_release_refuses_a_board_without_a_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace('(rev "1")', "")
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    with pytest.raises(SystemExit, match=r"^no revision in b.kicad_pcb's title block$"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
+def test_release_refuses_an_existing_release_without_force(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = tmp_path / "repo/production/20261118-1/b-1-bom.csv"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    with pytest.raises(
+        SystemExit, match=r"production/20261118-1 exists; use --force to replace it$"
+    ):
+        release(tmp_path, monkeypatch)
+    assert old.read_text() == "kept\n"
+    assert kicad_calls(tmp_path) == []
+
+
+def test_release_refuses_missing_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', 'sources = ["docs", "gone"]')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    with pytest.raises(SystemExit, match=r"^fab.toml names files that are not there: gone$"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
+def test_release_stops_on_an_unreadable_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An input the pointer check cannot read: named, before anything runs."""
+    monkeypatch.setitem(FIXTURE, "docs/secret.txt", "x\n")
+
+    def unreadable(path: Path) -> bool:
+        if path.name == "secret.txt":
+            raise PermissionError(13, "Permission denied", str(path))
+        return False
+
+    monkeypatch.setattr(fab_release, "lfs_pointer", unreadable)
+    with pytest.raises(SystemExit, match=r"docs/secret.txt: Permission denied$"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
+def test_core_imports_no_profile_module() -> None:
+    """fab_release imports PROFILES and profile.py, never a profile's module;
+    profile.py imports nothing from ee_tooling."""
+    import ast
+
+    def imports(module: str) -> set[str]:
+        tree = ast.parse(Path(importlib.util.find_spec(module).origin or "").read_text())  # type: ignore[union-attr]
+        return {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)} | {
+            a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
+        }
+
+    core = imports("ee_tooling.fab_release")
+    assert {m for m in core if m.startswith("ee_tooling.profiles")} == {
+        "ee_tooling.profiles",
+        "ee_tooling.profiles.profile",
+    }
+    assert not [m for m in imports("ee_tooling.profiles.profile") if m.startswith("ee_tooling")]
