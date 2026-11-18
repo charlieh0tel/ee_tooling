@@ -13,8 +13,9 @@ BOM, CPL, IPC-2581 and ODB++ per variant and the Gerbers and fab
 documents shared; a Gerber zip per variant when the variants'
 silkscreens differ; a variant that differs in copper, mask, paste,
 outline or drill, or that overrides a part's Footprint field, refused.
-Deferred: the fab notes and the no-extra-cost via rules.  Nothing is
-open.
+The source tgz leaves out libraries outside the repository, and says
+so.  Deferred: the fab notes and the no-extra-cost via rules.  Nothing
+is open.
 
 ## Names
 
@@ -55,6 +56,8 @@ electrical_test = "100% netlist test per IPC-9252"
 - An unknown key, at any level, is an error naming it, so later keys
   (`assembly`, `kind = "panel"`) are additive.
 - Only the table named by `profile` is allowed beside `fab`.
+- Each `sources` path is inside the repository; one that is absolute or
+  leads out of it (`..`) is an error naming it.
 - House values for `[board.fab]` are written by `adopt` and the setup
   tool, never applied silently by `fab-release`.
 
@@ -78,6 +81,14 @@ electrical_test = "100% netlist test per IPC-9252"
   own with Qty 0 and DNP `yes`, never grouped with fitted parts.
 - One ungrouped BOM export and one placement export, parsed into `Part`
   and `Placement` rows for the house BOM and the profile.
+- The source tgz: the project's `.kicad_pcb`, `.kicad_sch`,
+  `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
+  `sym-lib-table` that exist, `sources`, the PDFs and `COMMIT`.  A
+  library outside the repository (a sibling clone named by a relative
+  path in a library table or a 3D model path) is not in it.  The board
+  file embeds each footprint and the schematic each symbol, so the
+  archive rebuilds the board and its outputs; the 3D models of parts
+  from such a library are missing from it.
 
 ### JLCPCB profile (`profiles/jlcpcb.py`)
 
@@ -400,21 +411,25 @@ Then one PR, breaking, merged as one:
 4. `fab.toml`, `fab-release`, `profile` and its options; unknown keys
    refused; `jlcpcb-release` removed.
 5. `adopt`: write and migrate `fab.toml`; move the skill.
-6. Copper layers from the stackup; refuse a board with none.
-7. `[board.fab]` required.
-8. The house BOM; JLCPCB's files take its name; the Gerber zip's name.
-9. Design variants: the `variants` key and its name checks; the
-   per-variant exports and files; the Gerbers compared across
-   variants, a zip per variant when only silkscreen differs; the
-   per-variant cross-checks.
-10. User.Drawings in the Gerbers, the map and the board PDF; the
+6. `sources` limited to the repository.  Docs:
+   `skills/fab-release/SKILL.md` says what the source tgz holds, and
+   that it leaves out libraries outside the repository and their 3D
+   models.
+7. Copper layers from the stackup; refuse a board with none.
+8. `[board.fab]` required.
+9. The house BOM; JLCPCB's files take its name; the Gerber zip's name.
+10. Design variants: the `variants` key and its name checks; the
+    per-variant exports and files; the Gerbers compared across
+    variants, a zip per variant when only silkscreen differs; the
+    per-variant cross-checks.
+11. User.Drawings in the Gerbers, the map and the board PDF; the
     documents in the Gerber zip.
-11. Refuse a board without a matching stackup table.
-12. The rules in sections; DRC on a scratch
+12. Refuse a board without a matching stackup table.
+13. The rules in sections; DRC on a scratch
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
-13. `adopt` sets the ERC severities and connection grid.
-14. Release 0.4.0; tag after CI.
+14. `adopt` sets the ERC severities and connection grid.
+15. Release 0.4.0; tag after CI.
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
@@ -427,7 +442,7 @@ rules.
   JLCPCB by habit.
 - The Gerber zip's new contents are unchecked against JLCPCB's parser:
   User.Drawings may be taken as a layer, the text files rejected.  A
-  quote upload, with no order, checks it before step 10 merges.
+  quote upload, with no order, checks it before step 11 merges.
 - DRC in the editor and in the release differ until `adopt --yes`; the
   release warns.
 - Board Setup is raised, never lowered: a board moved to a looser fab
