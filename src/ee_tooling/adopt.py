@@ -10,6 +10,7 @@ ee_tooling renamed (jlcpcb.toml, the release's skill).
 """
 
 import argparse
+import codecs
 import importlib.resources
 import json
 import os
@@ -93,10 +94,16 @@ TOML_STRING = re.compile(r""""(?:[^"\\]|\\.)*"|'[^']*'""")
 FAB_HEADER = re.compile(rf"^[ \t]*\[[ \t]*board[ \t]*\.[ \t]*{FAB}[ \t]*\][ \t]*(#.*)?$", re.M)
 
 
+# A UTF-8 byte order mark, as text.
+BOM = "\ufeff"
+
+
 def read(path: Path) -> str:
-    """A file's text; ValueError naming it if it is not UTF-8."""
+    """A file's text, without a leading UTF-8 byte order mark, its line
+    endings \n (write restores both); ValueError naming it if it is not
+    UTF-8."""
     try:
-        return path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as e:
         raise ValueError(f"{path}: not UTF-8 (byte {e.start}: {e.reason})") from e
 
@@ -994,9 +1001,24 @@ def describe(step: Step, root: Path) -> str:
             )
 
 
+def in_style(target: Path, text: str) -> str:
+    """text, with \n line endings and no byte order mark, as target has
+    its own: its first line's line ending (\r\n in a checkout that
+    converts them) and a leading UTF-8 byte order mark, if it has one; text
+    as it is for a file not there yet."""
+    if not target.exists():
+        return text
+    raw = target.read_bytes()
+    first = raw.find(b"\n")
+    if first > 0 and raw[first - 1 : first] == b"\r":
+        text = text.replace("\n", "\r\n")
+    return BOM + text if raw.startswith(codecs.BOM_UTF8) else text
+
+
 def write(target: Path, text: str) -> None:
-    """target's text replaced whole or not at all (atomic.write_text)."""
-    write_text(target, text)
+    """target's text replaced whole or not at all (atomic.write_text), in
+    its own line endings and byte order mark (in_style)."""
+    write_text(target, in_style(target, text))
 
 
 def writable(path: Path) -> bool:

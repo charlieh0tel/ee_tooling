@@ -85,6 +85,11 @@ A file `adopt` reads that is not UTF-8 stops it, naming the file,
 before anything is done; a Markdown file in a skill it moves is left as
 it is, named on stderr.
 
+A file `adopt` edits or rewrites keeps its own line endings (its first
+line's: `\r\n` in a checkout that converts them) and a leading UTF-8
+byte order mark, which stays first (before `.gitattributes`'s section,
+say); a new file is written with `\n` and no mark.
+
 `--yes` checks that it can write every file it writes (a read-only
 `.kicad_pro`, say) before it does anything, and stops naming the first
 it cannot.  It writes each file beside it and renames it over the old,

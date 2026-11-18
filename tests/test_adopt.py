@@ -1905,3 +1905,27 @@ def test_lines_in_the_section_not_ours_named(
         "hardware/main/main.kicad_dru: 2 lines between ee_tooling's markers are not in its"
         " section now and go; rules: Mine inside\n"
     ) in capsys.readouterr().err
+
+
+def test_bom_and_crlf_kept(tmp_path: Path) -> None:
+    """.gitattributes with a byte order mark and CRLF line endings, a CRLF
+    fab.toml and a .kicad_pro with a byte order mark: each written in its
+    own style, the mark first; then nothing to do."""
+    layout = rules_repository(tmp_path)
+    attributes = tmp_path / ".gitattributes"
+    attributes.write_bytes(b"\xef\xbb\xbf*.png -text\r\n")
+    (tmp_path / "fab.toml").write_bytes(NO_FAB.replace("\n", "\r\n").encode())
+    project = tmp_path / "hardware/main/main.kicad_pro"
+    project.write_bytes(b"\xef\xbb\xbf" + project.read_bytes())
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File | Edit)], lambda *_: None)
+    raw = attributes.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf# ee_tooling: begin")
+    assert raw.endswith(
+        b"# ee_tooling: end; the project's own lines follow and win\r\n*.png -text\r\n"
+    )
+    assert b"\n" not in raw.replace(b"\r\n", b"")
+    fab = (tmp_path / "fab.toml").read_bytes()
+    assert b"ipc_class = 2\r\n" in fab and b"\n" not in fab.replace(b"\r\n", b"")
+    assert project.read_bytes().startswith(b"\xef\xbb\xbf{")
+    assert json.loads(project.read_text(encoding="utf-8-sig"))["schematic"]
+    assert stale(layout) == []
