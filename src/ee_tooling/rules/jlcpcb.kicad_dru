@@ -1,8 +1,10 @@
 (version 1)
 
 # ee_tooling's custom DRC rules for a board made at JLCPCB, KiCad 10
-# (docs/kicad-rules.md).  A board's own rules go after these: KiCad takes
-# the last rule that matches, so a board's own rule wins over these.
+# (docs/kicad-rules.md).  ee-tooling-adopt installs them in a board's
+# .kicad_dru, and fab-release runs DRC with them.  A board's own rules go
+# after these: KiCad takes the last rule that matches, so a board's own
+# rule wins over these.
 #
 # A rule here replaces, for what it matches, the Board Setup constraint of
 # its kind, and a clearance rule would replace the net classes'
@@ -104,21 +106,6 @@
 (rule "JLCPCB silkscreen to pad"
 	(condition "B.Type == 'Pad' && (B.existsOnLayer('F.Cu') || B.existsOnLayer('B.Cu'))")
 	(constraint silk_clearance (min 0.15mm)))
-
-# --- JLCPCB price ----------------------------------------------------------
-#
-# The same page, Drilling, min. via hole size/diameter: "0.1mm or 0.15mm
-# hole size with any size via diameter, and 0.2mm or 0.25mm hole size with
-# via diameter less than 0.45mm, will cost more."  A via costs nothing
-# extra with a hole of 0.3 mm or more, or of 0.2 mm or more in a diameter
-# of 0.45 mm or more.
-
-(rule "JLCPCB via hole at no extra cost"
-	(condition "A.Type == 'Via'")
-	(constraint hole_size (min 0.2mm)))
-(rule "JLCPCB small via hole at no extra cost"
-	(condition "A.Type == 'Via' && A.Diameter < 0.45mm")
-	(constraint hole_size (min 0.3mm)))
 
 # --- House rules (docs/kicad-style.md) -------------------------------------
 

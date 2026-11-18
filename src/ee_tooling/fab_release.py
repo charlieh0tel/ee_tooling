@@ -25,7 +25,8 @@ the variants' silkscreens differ.
 NAME is the KiCad project, REV its board's title-block revision; the
 board's profile (profiles/) names the fab whose files these are.  The
 board must have a stackup and a stackup table matching it, ERC and DRC
-must be clean and the release's sources committed, unless --allow-dirty.
+(with the profile's rules, on a scratch copy of the project) must be clean
+and the release's sources committed, unless --allow-dirty.
 The commit it was built from gets an annotated tag NAME-YYYYMMDD-REV, which
 it does not push: it prints the command.  A build from uncommitted sources
 is not tagged; a tag already on another commit stops it, unless --retag.
@@ -67,6 +68,7 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
+from ee_tooling.kicad_rules import Installed, board_setup, install, installed
 from ee_tooling.kicad_style_netclass import sheets
 from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.profiles import PROFILES
@@ -105,6 +107,10 @@ VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
 # The Gerber map's name in the Gerber zip; the stackup and the fabrication
 # notes are there by their names after NAME-REV-.
 GERBER_README = "README.txt"
+# The work directory's subdirectory DRC's scratch copy of the project is
+# in, and the suffix of a project's custom rules.
+DRC_PROJECT = "project"
+DRU = ".kicad_dru"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
 GERBERS = "gerbers"
 # The fabrication documents' names after NAME-REV-, then the house BOM's.
@@ -487,6 +493,15 @@ def revision(pcb_text: str) -> str | None:
     return m.group(1) if m else None
 
 
+def report(path: Path) -> str:
+    """A kicad-cli report's text, for the message that stops a release: its
+    work directory goes with it."""
+    try:
+        return path.read_text()
+    except OSError as e:
+        return f"no report: {e}"
+
+
 def variant_flag(variant: str | None) -> list[str]:
     """kicad-cli's argument for the variant; none for the default."""
     return [] if variant is None else ["--variant", variant]
@@ -543,14 +558,31 @@ class Release:
     def path(self, p: Path) -> str:
         return str(self.root / p)
 
-    def check(self, allow_dirty: bool) -> str:
-        """ERC, DRC with schematic parity, and committed sources; return the commit."""
+    def drc_project(self, rules: Installed) -> Path:
+        """A scratch copy of the board's project with the rules installed:
+        each file of its directory copied, each directory linked; return
+        its .kicad_pcb.  The board's own files are not written."""
+        b = self.board
+        scratch = self.work / DRC_PROJECT
+        scratch.mkdir()
+        for entry in sorted((self.root / b.directory).iterdir()):
+            if entry.is_dir():
+                (scratch / entry.name).symlink_to(entry.resolve(), target_is_directory=True)
+            else:
+                shutil.copyfile(entry, scratch / entry.name)
+        (scratch / f"{b.name}{DRU}").write_text(rules.dru)
+        (scratch / b.project.name).write_text(json.dumps(rules.project, indent=2) + "\n")
+        return scratch / b.pcb.name
+
+    def check(self, allow_dirty: bool, rules: Installed) -> str:
+        """ERC, DRC with schematic parity and the rules (drc_project), and
+        committed sources; return the commit."""
         b = self.board
         erc = self.work / "erc.rpt"
         if self.run(
             "kicad-cli", "sch", "erc", "--exit-code-violations", "-o", str(erc), self.path(b.sch)
         ).returncode:
-            sys.exit(f"ERC is not clean: see {erc}")
+            sys.exit(f"ERC is not clean:\n{report(erc)}")
         drc = self.work / "drc.rpt"
         if self.run(
             "kicad-cli",
@@ -560,9 +592,9 @@ class Release:
             "--exit-code-violations",
             "-o",
             str(drc),
-            self.path(b.pcb),
+            str(self.drc_project(rules)),
         ).returncode:
-            sys.exit(f"DRC is not clean: see {drc}")
+            sys.exit(f"DRC is not clean, with {self.board.profile}'s rules:\n{report(drc)}")
         paths = [str(b.directory), *(str(s) for s in b.sources)]
         status = self.run("git", "status", "--porcelain", "--", *paths).stdout.strip()
         if status and not allow_dirty:
@@ -839,6 +871,40 @@ def profile_options(boards: dict[str, Board], profiles: dict[str, Profile[Any]])
     return out
 
 
+def board_rules(root: Path, b: Board, profile: Profile[Any], options: object) -> Installed:
+    """The board's project with its profile's rules installed, for DRC; a
+    warning on stderr for each way its own files differ (adopt --yes
+    installs them there)."""
+    dru_path, project_path = root / b.directory / f"{b.name}{DRU}", root / b.project
+    try:
+        project = json.loads(project_path.read_text())
+        dru = dru_path.read_text() if dru_path.exists() else None
+        section = installed(profile.name, profile.rules, options)
+        found = install(dru, project, section, board_setup(profile.rules))
+    except (OSError, ValueError) as e:
+        sys.exit(f"{b.name}: its rules: {e}")
+    adopt = "run ee_tooling's adopt --yes to make KiCad's DRC the release's"
+    warnings = []
+    if found.stale:
+        warnings.append(
+            f"{dru_path.name}: ee_tooling's {profile.name} rules missing or out of date"
+        )
+    if found.raised:
+        warnings.append(
+            f"{project_path.name}: Board Setup below {profile.name}'s minimums"
+            f" ({'; '.join(found.raised)})"
+        )
+    for w in warnings:
+        print(f"warning: {w}: {adopt}", file=sys.stderr)
+    if found.copied:
+        print(
+            f"warning: {dru_path.name}: rules {', '.join(found.copied)} after ee_tooling's"
+            " copy them and win over them: remove them",
+            file=sys.stderr,
+        )
+    return found
+
+
 def main() -> None:
     root = repository_root()
     try:
@@ -898,9 +964,10 @@ def main() -> None:
     # Each build: a listed variant, or the default (None).
     builds: list[str | None] = [*b.variants] or [None]
     profile = profiles[b.profile]
+    rules = board_rules(root, b, profile, options[b.name])
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp), copper)
-        commit = r.check(a.allow_dirty)
+        commit = r.check(a.allow_dirty, rules)
         tag = f"{b.name}-{dest.name}"
         tagged = r.tagged(tag)
         plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)

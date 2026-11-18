@@ -6,7 +6,7 @@ a board with DRC or ERC violations.
 
 | File | What |
 |---|---|
-| `jlcpcb.kicad_dru` | custom DRC rules: JLCPCB's limits, JLCPCB's price, then the house rules |
+| `jlcpcb.kicad_dru` | custom DRC rules, in sections headed `# --- <name> ---`: JLCPCB's limits, then the house rules |
 | `jlcpcb_board_setup.json` | a `.kicad_pro` fragment: Board Setup minimums from JLCPCB's limits |
 | `erc_severities.json` | a `.kicad_pro` fragment: every ERC check's severity, and the connection grid |
 
@@ -26,20 +26,44 @@ a board with DRC or ERC violations.
 - `fab-release` runs `kicad-cli ... --exit-code-violations`, which
   fails on a warning as on an error.
 
-## Installing in a board repository
+## In a board repository
 
-By hand, with KiCad closed (`ee-tooling-adopt` does not yet):
+`ee-tooling-adopt --yes` (`docs/adopting.md`) installs a board's
+profile's rules (`kicad_rules.py`), with KiCad closed: KiCad does not
+reload a project file changed under it, and saving from KiCad
+overwrites the change.
 
-1. `NAME.kicad_dru` is `jlcpcb.kicad_dru` followed by the board's own
-   rules, without their `(version 1)` line.  The board's rules come
-   last, so they win.
-2. In `NAME.kicad_pro`, raise each of `board.design_settings.rules` to
-   at least its value in `jlcpcb_board_setup.json` (Board Setup, Design
-   Rules, Constraints).
-3. In `NAME.kicad_pro`, set each of `erc.rule_severities` and
-   `schematic.connection_grid_size` to its value in
+1. `NAME.kicad_dru`: the profile's rules, without their `(version 1)`
+   line, between markers, then the board's own rules, which come last
+   and so win:
+
+   ```
+   (version 1)
+   # --- ee_tooling: jlcpcb rules; written by adopt ---
+   <the profile's rules>
+   # --- ee_tooling: end; the board's own rules follow and win ---
+   <the board's own rules>
+   ```
+
+   A rerun replaces the section between the markers and keeps the rest.
+   A rule of the board's own with the name of one of the section's (a
+   copy made by hand) is named on stderr, and left: it wins over the
+   section's.
+2. `NAME.kicad_pro`: each of `board.design_settings.rules` raised to at
+   least its value in `jlcpcb_board_setup.json` (Board Setup, Design
+   Rules, Constraints), never lowered.
+3. `NAME.kicad_pro`: each of `erc.rule_severities` and
+   `schematic.connection_grid_size` set to its value in
    `erc_severities.json` (Schematic Setup, Electrical Rules, Violation
-   Severity; Formatting, Connection grid).
+   Severity; Formatting, Connection grid), by hand.
+
+`fab-release` runs DRC on a scratch copy of the project (its directory's
+files copied, its directories linked) with the same rules installed and
+Board Setup raised, so a release is checked against this ee_tooling's
+rules whatever the board's files hold; it never writes the board's
+files.  It warns when the board's `.kicad_dru` lacks the current
+section, or its Board Setup is below the minimums, naming
+`adopt --yes`.
 
 ## JLCPCB's numbers
 
@@ -77,13 +101,10 @@ and 6 layers.  mm.
 | Legend: pad to silkscreen | 0.15 | 0.15 | `JLCPCB silkscreen to pad` |
 
 
-Price, the same page, Drilling, min. via hole size/diameter: a hole of
-0.1 or 0.15, or of 0.2 or 0.25 in a diameter under 0.45, costs more.
-`JLCPCB via hole at no extra cost` and `JLCPCB small via hole at no
-extra cost` hold a via to a hole of 0.2, and 0.3 in a diameter under
-0.45.
-
-Not checked: 2 oz and heavier copper's figures; copper from a V-cut
+Not checked: JLCPCB's price (the same page, Drilling, min. via hole
+size/diameter: a hole of 0.1 or 0.15, or of 0.2 or 0.25 in a diameter
+under 0.45, costs more), as no-extra-cost via rules are deferred
+(`docs/design/fab-release.md`); 2 oz and heavier copper's figures; copper from a V-cut
 edge (0.4; KiCad does not tell a V-cut from a routed edge); a
 silkscreen graphic's line width (KiCad's library footprints draw silk at
 0.12); character width to height, 1:6 ("preferred"); soldermask bridge

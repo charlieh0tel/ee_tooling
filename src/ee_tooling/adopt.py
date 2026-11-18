@@ -22,8 +22,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ee_tooling.fab_release import CONFIG, FAB, GONE_KEYS, string, strings
+from ee_tooling.fab_release import CONFIG, DRU, FAB, GONE_KEYS, string, strings
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
+from ee_tooling.kicad_rules import Dru, board_setup, install, installed, raised
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.jlcpcb import Jlcpcb
 
@@ -360,6 +361,76 @@ def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
     return out
 
 
+def project_json(project: dict[str, Any]) -> str:
+    """A .kicad_pro's text, indented as KiCad writes it."""
+    return json.dumps(project, indent=2, ensure_ascii=False) + "\n"
+
+
+def rules_edits(root: Path, config: str | None) -> list[Edit]:
+    """What installs each board's profile's rules in its .kicad_dru and
+    raises its Board Setup in its .kicad_pro, by fab.toml's text (config),
+    each checked once edited.  A board whose profile is not known, or whose
+    .kicad_pro is not there, is left, said on stderr.  ValueError naming
+    what cannot be done."""
+    if config is None:
+        return []
+    try:
+        boards = tomllib.loads(config).get("board", [])
+    except tomllib.TOMLDecodeError as e:
+        raise ValueError(f"{CONFIG}: {e}") from e
+    out = []
+    for b in boards if isinstance(boards, list) else []:
+        if not isinstance(b, dict) or b.get("profile") not in PROFILES:
+            continue
+        name, directory = b.get("name"), b.get("directory")
+        if not isinstance(name, str) or not isinstance(directory, str):
+            continue
+        profile = PROFILES[b["profile"]]()
+        try:
+            options = profile.options(b.get(profile.name, {}))
+        except ValueError as e:
+            raise ValueError(f"{CONFIG}: [[board]] {name!r}: [board.{profile.name}]: {e}") from e
+        project, dru = Path(directory, f"{name}.kicad_pro"), Path(directory, f"{name}{DRU}")
+        if not (root / project).exists():
+            print(f"{project.as_posix()} is not there: rules not installed", file=sys.stderr)
+            continue
+        section = installed(profile.name, profile.rules, options)
+        least = board_setup(profile.rules)
+        by_hand = "install the rules by hand"
+        try:
+            settings = json.loads((root / project).read_text())
+        except ValueError as e:
+            raise ValueError(f"{project.as_posix()}: {e}; {by_hand}") from e
+        existing = (root / dru).read_text() if (root / dru).exists() else None
+        try:
+            found = install(existing, settings, section, least)
+        except ValueError as e:
+            raise ValueError(f"{dru.as_posix()}: {e}; {by_hand}") from e
+        if Dru.split(found.dru).section != section or raised(found.project, least)[1]:
+            raise ValueError(f"[[board]] {name!r}: the rules are not where they belong; {by_hand}")
+        if found.copied:
+            print(
+                f"{dru.as_posix()}: rules {', '.join(found.copied)} after ee_tooling's copy them"
+                " and win over them: remove them",
+                file=sys.stderr,
+            )
+        close = "close the board in KiCad first"
+        if found.stale:
+            out.append(
+                Edit(dru, found.dru, f"ee_tooling's {profile.name} rules installed; {close}")
+            )
+        if found.raised:
+            out.append(
+                Edit(
+                    project,
+                    project_json(found.project),
+                    f"Board Setup raised to {profile.name}'s minimums: {'; '.join(found.raised)};"
+                    f" {close}",
+                )
+            )
+    return out
+
+
 def agents_text(existing: str | None, block: str) -> str | None:
     """AGENTS.md with ee_tooling's section, or None if it was adopted by
     hand (the house style imported outside the markers)."""
@@ -429,8 +500,11 @@ def files(layout: Layout) -> list[File]:
 def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
-    steps: list[Step] = [f for f in files(layout) if f.action(root)]
+    planned = files(layout)
+    steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
+    config = next((f.text for f in planned if f.path == Path(CONFIG) and f.action(root)), None)
+    steps += rules_edits(root, config if config is not None else read_config(root))
     venv = root / hardware / ".venv"
     reason = unsupported()
     if reason is not None:
@@ -507,12 +581,20 @@ def run_command(args: Sequence[str], directory: Path) -> None:
     subprocess.run(args, cwd=directory, env=environment, check=True)
 
 
+def read_config(root: Path) -> str | None:
+    """fab.toml's text, or None if it is not there."""
+    path = root / CONFIG
+    return path.read_text() if path.exists() else None
+
+
 def stale(layout: Layout) -> list[Path]:
-    """The managed files that differ from what would be written, and the
-    project files still to be migrated."""
+    """The managed files that differ from what would be written, the
+    project files still to be migrated, and the rules still to be
+    installed."""
     managed = [f.path for f in files(layout) if f.owner is Owner.MANAGED and f.action(layout.root)]
     renamed = [s.source if isinstance(s, Rename) else s.path for s in migrations(layout)]
-    return [*managed, *renamed]
+    rules = [s.path for s in rules_edits(layout.root, read_config(layout.root))]
+    return [*managed, *renamed, *rules]
 
 
 def main() -> None:

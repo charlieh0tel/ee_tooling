@@ -43,6 +43,16 @@ missing, then the project's.
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
 | `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb`, with the profile's house `[board.fab]` values |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
+| each board's `NAME.kicad_dru` | managed section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
+| each board's `NAME.kicad_pro` | project | Board Setup's design rule minimums raised to the profile's, never lowered |
+
+Close the boards in KiCad before `--yes`: KiCad does not reload a
+`.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
+overwrites the change.  `--check` fails while a board's rules section
+is missing or out of date, or its Board Setup is below the profile's
+minimums.  A board whose profile is not known, or whose `.kicad_pro`
+is not there, is left, said on stderr.  The boards are `fab.toml`'s,
+or, on the run that writes it, those it is written with.
 
 It finds the KiCad projects (`*.kicad_pro`) under `hardware/`, skipping
 the submodule, every directory whose name starts with `.` (`.git`,

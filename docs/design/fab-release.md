@@ -224,7 +224,14 @@ class Profile(Protocol):
   fails DRC as any other.
 - It checks Board Setup against the profile's minimums the same way, on
   the scratch copy, raised to at least the profile's values.
-- It never writes the board's files.
+- It never writes the board's files.  The scratch copy is each file of
+  the project's directory copied and each directory linked, the
+  `.kicad_dru` and `.kicad_pro` written; `kicad-cli pcb drc` does not
+  check footprints against their libraries (10.0.8), so a library
+  outside the directory is not missed.
+- `jlcpcb.kicad_dru` holds the limits and house sections only: the
+  price section's no-extra-cost via rules are deferred, and are not in
+  it.
 - `adopt --yes` installs the same rules in the board's `.kicad_dru`,
   between markers, with the board's own rules after them, and raises
   Board Setup values in the `.kicad_pro` to at least the profile's,

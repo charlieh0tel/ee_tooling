@@ -1,3 +1,4 @@
+import json
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,6 +27,8 @@ from ee_tooling.adopt import (
     stale,
 )
 from ee_tooling.fab_release import load_config
+from ee_tooling.kicad_rules import installed
+from ee_tooling.profiles.jlcpcb import Jlcpcb, Options
 
 SUBMODULE = Path("hardware/ee_tooling")
 
@@ -535,7 +538,7 @@ def test_adopt_adds_fab_keys(tmp_path: Path) -> None:
     layout = repository(tmp_path, "main")
     (tmp_path / "fab.toml").write_text(NO_FAB)
     assert Path("fab.toml") in stale(layout)
-    steps = [s for s in plan(layout) if isinstance(s, Edit)]
+    steps = [s for s in plan(layout) if isinstance(s, Edit) and s.path == Path("fab.toml")]
     assert [(s.path, s.why) for s in steps] == [
         (
             Path("fab.toml"),
@@ -546,7 +549,7 @@ def test_adopt_adds_fab_keys(tmp_path: Path) -> None:
     apply(tmp_path, steps, lambda *_: None)
     assert "# the main board" in (tmp_path / "fab.toml").read_text()
     assert Path("fab.toml") not in stale(layout)
-    assert not [s for s in plan(layout) if isinstance(s, Edit)]
+    assert not [s for s in plan(layout) if isinstance(s, Edit) and s.path == Path("fab.toml")]
 
 
 def test_adopt_stops_on_fab_it_cannot_add(tmp_path: Path) -> None:
@@ -554,3 +557,132 @@ def test_adopt_stops_on_fab_it_cannot_add(tmp_path: Path) -> None:
     (tmp_path / "fab.toml").write_text('[[board]]\nname = "b"\nprofile = "jlcpcb"\nfab.tg = 1\n')
     with pytest.raises(ValueError, match=r"^fab.toml: .*; add each \[board.fab\] key by hand$"):
         stale(layout)
+
+
+# A board's own custom rule, and its Board Setup: one value above
+# JLCPCB's minimum, one below.
+OWN_RULE = '(rule "Mine"\n\t(constraint track_width (min 0.2mm)))\n'
+LOW_SETUP = {
+    "board": {"design_settings": {"rules": {"min_clearance": 0.05, "min_hole_clearance": 0.3}}},
+    "meta": {"filename": "main.kicad_pro"},
+}
+SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
+
+
+def rules_repository(tmp_path: Path) -> Layout:
+    """An adopted repository with one board, its rules not installed."""
+    layout = repository(tmp_path, "main")
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    board = tmp_path / "hardware/main"
+    (board / "main.kicad_pro").write_text(json.dumps(LOW_SETUP, indent=2) + "\n")
+    (board / "main.kicad_dru").write_text(f"(version 1)\n\n{OWN_RULE}")
+    return layout
+
+
+def test_rules_installed(tmp_path: Path) -> None:
+    """--check fails while the rules are not installed; --yes installs them
+    before the board's own and raises Board Setup, never lowering a value;
+    then there is nothing to do."""
+    layout = rules_repository(tmp_path)
+    board = tmp_path / "hardware/main"
+    assert {Path("hardware/main/main.kicad_dru"), Path("hardware/main/main.kicad_pro")} <= set(
+        stale(layout)
+    )
+    edits = [s for s in plan(layout) if isinstance(s, Edit)]
+    assert [(s.path.as_posix(), s.why) for s in edits] == [
+        (
+            "hardware/main/main.kicad_dru",
+            "ee_tooling's jlcpcb rules installed; close the board in KiCad first",
+        ),
+        (
+            "hardware/main/main.kicad_pro",
+            "Board Setup raised to jlcpcb's minimums:"
+            " board.design_settings.rules.min_clearance: 0.05 -> 0.1;"
+            " board.design_settings.rules.min_copper_edge_clearance: none -> 0.2;"
+            " close the board in KiCad first",
+        ),
+    ]
+    apply(tmp_path, edits, lambda *_: None)
+    assert (board / "main.kicad_dru").read_text() == f"(version 1)\n{SECTION}\n{OWN_RULE}"
+    project = json.loads((board / "main.kicad_pro").read_text())
+    assert project["board"]["design_settings"]["rules"] == {
+        "min_clearance": 0.1,
+        "min_hole_clearance": 0.3,
+        "min_copper_edge_clearance": 0.2,
+    }
+    assert project["meta"] == LOW_SETUP["meta"]
+    assert stale(layout) == []
+    assert not [s for s in plan(layout) if isinstance(s, Edit)]
+
+
+def test_rules_stale_section_replaced(tmp_path: Path) -> None:
+    """An old section is replaced in place; the board's own rules kept."""
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    old = SECTION.replace("(min 0.1mm)", "(min 0.05mm)", 1)
+    dru.write_text(f"(version 1)\n{old}\n{OWN_RULE}")
+    assert Path("hardware/main/main.kicad_dru") in stale(layout)
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert dru.read_text() == f"(version 1)\n{SECTION}\n{OWN_RULE}"
+
+
+def test_rules_new_dru(tmp_path: Path) -> None:
+    """A board with no .kicad_dru gets one of the profile's rules."""
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    dru.unlink()
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert dru.read_text() == f"(version 1)\n{SECTION}"
+
+
+def test_rules_in_one_run(tmp_path: Path) -> None:
+    """A fresh repository: fab.toml written and the rules installed by the
+    same --yes."""
+    layout = repository(tmp_path, "main")
+    apply(tmp_path, plan(layout), lambda *_: None)
+    assert (tmp_path / "hardware/main/main.kicad_dru").read_text() == f"(version 1)\n{SECTION}"
+    assert stale(layout) == []
+
+
+def test_rules_copied_named(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A copy of the profile's rules among the board's own: said on stderr,
+    left."""
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    copy = '(rule "JLCPCB track width"\n\t(constraint track_width (min 0.1mm)))\n'
+    dru.write_text(f"(version 1)\n{copy}")
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert dru.read_text().endswith(f"\n{copy}")
+    assert (
+        "hardware/main/main.kicad_dru: rules JLCPCB track width after ee_tooling's copy them"
+        " and win over them: remove them\n"
+    ) in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("path", "text", "error"),
+    [
+        (
+            "main.kicad_dru",
+            f"(version 1)\n{SECTION}{SECTION}",
+            "ee_tooling's markers are not one begin line, then one end line",
+        ),
+        ("main.kicad_pro", "{", "Expecting property name"),
+    ],
+)
+def test_rules_refused(tmp_path: Path, path: str, text: str, error: str) -> None:
+    layout = rules_repository(tmp_path)
+    (tmp_path / "hardware/main" / path).write_text(text)
+    with pytest.raises(
+        ValueError, match=rf"^hardware/main/{path}: {error}.*; install the rules by hand$"
+    ):
+        plan(layout)
+
+
+def test_rules_left_without_a_project(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    layout = rules_repository(tmp_path)
+    (tmp_path / "hardware/main/main.kicad_pro").unlink()
+    assert not [s for s in plan(layout) if isinstance(s, Edit)]
+    assert (
+        "hardware/main/main.kicad_pro is not there: rules not installed" in capsys.readouterr().err
+    )

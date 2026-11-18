@@ -10,7 +10,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from ee_tooling.profiles.profile import GerberOptions, Part, Placement, write_csv
+from ee_tooling.profiles.profile import GerberOptions, Part, Placement, Rules, write_csv
 
 # The house [board.fab] values adopt writes for a new board: IPC class 2,
 # FR-4 of Tg 130 deg C or more, and a full netlist test.
@@ -110,6 +110,7 @@ class Jlcpcb:
     gerbers = GerberOptions(
         x2=False, protel_extensions=True, subtract_soldermask=True, separate_drill=True
     )
+    rules = Rules("rules/jlcpcb.kicad_dru", {}, "rules/jlcpcb_board_setup.json")
     distributor: tuple[str, str] | None = ("LCSC", "LCSC")
 
     def __init__(self, corrections: Corrections) -> None:

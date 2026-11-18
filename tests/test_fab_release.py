@@ -34,6 +34,7 @@ from ee_tooling.fab_release import (
     variant_names,
 )
 from ee_tooling.fabrication import Fab, GerberFile, stackup
+from ee_tooling.kicad_rules import board_setup, install, installed
 from ee_tooling.kicad_style_stackup import HEADER
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
@@ -461,6 +462,7 @@ if "--variant" in args:
 out = pathlib.Path(args[args.index("-o") + 1])
 for name, text in outputs[key].items():
     (out / name if name else out).write_text(text)
+sys.exit(5 if key in os.environ.get("FAKE_FAIL", "").split(",") else 0)
 """
 
 # What the fixture board's kicad-cli exports hold, in kicad-cli 10's forms.
@@ -605,12 +607,21 @@ electrical_test = "100% netlist test per IPC-9252"
     "hw/b.kicad_sch": "(kicad_sch)\n",
     "hw/b.kicad_pro": json.dumps(
         {
+            "board": {
+                "design_settings": {
+                    "rules": {
+                        "min_clearance": 0.15,
+                        "min_copper_edge_clearance": 0.2,
+                        "min_hole_clearance": 0.25,
+                    }
+                }
+            },
             "net_settings": {
                 "classes": [
                     {"name": "Default", "track_width": 0.2},
                     {"name": "90Z_DIFF_USB", "diff_pair_width": 0.2, "diff_pair_gap": 0.15},
                 ]
-            }
+            },
         }
     ),
     "hw/fp-lib-table": "(fp_lib_table)\n",
@@ -635,6 +646,10 @@ def with_stackup_table(pcb: str) -> str:
 
 
 FIXTURE["hw/b.kicad_pcb"] = with_stackup_table(FIXTURE["hw/b.kicad_pcb"])
+# The board's own rule, after the rules adopt installed.
+OWN_RULE = '(rule "Board edge"\n\t(constraint edge_clearance (min 0.5mm)))\n'
+SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
+FIXTURE["hw/b.kicad_dru"] = f"(version 1)\n{SECTION}\n{OWN_RULE}"
 
 
 def builtin_corrections(cls: type[Corrections]) -> Corrections:
@@ -699,7 +714,7 @@ RELEASE_CALLS = [
         "--exit-code-violations",
         "-o",
         "WORK/drc.rpt",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/project/b.kicad_pcb",
     ],
     [
         "sch",
@@ -972,6 +987,7 @@ def test_release_files(
             "b-1-source/hw/b.kicad_pcb",
             "b-1-source/hw/b.kicad_sch",
             "b-1-source/hw/b.kicad_pro",
+            "b-1-source/hw/b.kicad_dru",
             "b-1-source/hw/fp-lib-table",
             "b-1-source/docs",
             "b-1-source/docs/notes.txt",
@@ -1559,4 +1575,87 @@ def test_release_refuses_a_board_without_a_matching_stackup_table(
         assert f"b.kicad_pcb: {error}" in message
     assert message.endswith("\nwrite or refresh it with: stackup-table hw/b.kicad_pcb")
     assert kicad_calls(tmp_path) == []
+    assert not (tmp_path / "repo/production").exists()
+
+
+def test_drc_project(tmp_path: Path) -> None:
+    """DRC's scratch copy: the project's files copied, its directories
+    linked, the rules installed in the copy; the board's files unchanged."""
+    root = tmp_path / "repo"
+    board = root / "hw"
+    (board / "lib").mkdir(parents=True)
+    for name in ("b.kicad_pcb", "b.kicad_sch", "fp-lib-table"):
+        (board / name).write_text(name)
+    (board / "b.kicad_pro").write_text("{}")
+    (board / "b.kicad_dru").write_text(f"(version 1)\n{OWN_RULE}")
+    work = tmp_path / "work"
+    work.mkdir()
+    r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
+    rules = install(f"(version 1)\n{OWN_RULE}", {}, SECTION, board_setup(Jlcpcb.rules))
+    pcb = r.drc_project(rules)
+    scratch = work / "project"
+    assert pcb == scratch / "b.kicad_pcb"
+    assert sorted(p.name for p in scratch.iterdir()) == sorted(p.name for p in board.iterdir())
+    assert (scratch / "lib").is_symlink()
+    assert (scratch / "lib").resolve() == (board / "lib").resolve()
+    assert not (scratch / "b.kicad_pcb").is_symlink()
+    assert (scratch / "b.kicad_dru").read_text() == f"(version 1)\n{SECTION}\n{OWN_RULE}"
+    setup = json.loads((scratch / "b.kicad_pro").read_text())["board"]["design_settings"]
+    assert setup["rules"]["min_clearance"] == 0.1
+    assert (board / "b.kicad_dru").read_text() == f"(version 1)\n{OWN_RULE}"
+    assert (board / "b.kicad_pro").read_text() == "{}"
+
+
+def test_release_warns_of_rules_not_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A board's .kicad_dru without the current rules, a Board Setup below
+    the profile's, and a copy of the profile's rules: each a warning, the
+    release made with the current rules."""
+    copy = '(rule "JLCPCB track width"\n\t(constraint track_width (min 0.1mm)))\n'
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_dru", f"(version 1)\n{copy}")
+    project = json.loads(FIXTURE["hw/b.kicad_pro"])
+    project["board"]["design_settings"]["rules"]["min_clearance"] = 0.05
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", json.dumps(project))
+    root, calls = release(tmp_path, monkeypatch)
+    assert calls == RELEASE_CALLS
+    adopt = "run ee_tooling's adopt --yes to make KiCad's DRC the release's"
+    assert capsys.readouterr().err == (
+        f"warning: b.kicad_dru: ee_tooling's jlcpcb rules missing or out of date: {adopt}\n"
+        "warning: b.kicad_pro: Board Setup below jlcpcb's minimums"
+        f" (board.design_settings.rules.min_clearance: 0.05 -> 0.1): {adopt}\n"
+        "warning: b.kicad_dru: rules JLCPCB track width after ee_tooling's copy them and win"
+        " over them: remove them\n"
+    )
+    assert (root / "hw/b.kicad_dru").read_text() == f"(version 1)\n{copy}"
+
+
+def test_release_adopted_has_no_rules_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    release(tmp_path, monkeypatch)
+    assert capsys.readouterr().err == ""
+
+
+def test_release_refuses_bad_markers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_dru", f"(version 1)\n{SECTION}{SECTION}")
+    with pytest.raises(SystemExit, match=r"^b: its rules: ee_tooling's markers are not one"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("key", "error"),
+    [
+        ("sch erc", "ERC is not clean:\nERC report\n"),
+        ("pcb drc", "DRC is not clean, with jlcpcb's rules:\nDRC report\n"),
+    ],
+)
+def test_release_stops_on_violations_with_the_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, key: str, error: str
+) -> None:
+    """The report in the message: the work directory it is in goes."""
+    monkeypatch.setenv("FAKE_FAIL", key)
+    with pytest.raises(SystemExit, match=f"^{re.escape(error)}$"):
+        release(tmp_path, monkeypatch)
     assert not (tmp_path / "repo/production").exists()

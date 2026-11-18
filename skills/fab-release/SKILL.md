@@ -114,7 +114,9 @@ archive must hold goes inside the repository (a submodule) and in
 It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not
 honored: `stackup-table` writes or refreshes the table), ERC is clean,
-DRC (with schematic parity) is clean,
+DRC (with schematic parity, the profile's rules and Board Setup
+minimums, on a scratch copy of the project: `docs/kicad-rules.md`) is
+clean,
 the board's directory and `sources` have no uncommitted changes
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
 `-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before

@@ -20,6 +20,16 @@ class GerberOptions:
     separate_drill: bool  # PTH and NPTH in separate files
 
 
+@dataclass(frozen=True)
+class Rules:
+    """A profile's KiCad rules, files in the ee_tooling package by their
+    paths there."""
+
+    dru: str  # its .kicad_dru, in sections headed "# --- <name> ---"
+    optional: dict[str, str]  # an option of its board options to the section left out when false
+    board_setup: str  # its Board Setup minimums, a .kicad_pro fragment (JSON)
+
+
 # kicad-cli's own Gerber and drill options: a profile with them writes the
 # neutral NAME-REV-gerbers.zip, one with others NAME-REV-gerbers-<name>.zip.
 KICAD_GERBERS = GerberOptions(
@@ -61,6 +71,7 @@ class Profile[Options](Protocol):
 
     name: str  # fab.toml's profile value; names its files
     gerbers: GerberOptions  # its Gerber and drill export
+    rules: Rules  # its DRC rules and Board Setup minimums
     distributor: tuple[str, str] | None  # IPC-2581: the part-number field, the distributor
     fab_defaults: dict[str, Any]  # the [board.fab] values adopt writes for a new board
 
