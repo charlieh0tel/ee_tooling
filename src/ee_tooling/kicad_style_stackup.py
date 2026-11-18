@@ -38,6 +38,12 @@ def cells(table: Expression) -> list[str]:
     return [text_of(c[1]) for c in children(child(table, "cells") or [], "table_cell")]
 
 
+def rows(table: Expression) -> list[list[str]]:
+    """A stackup table's rows after its header, each len(HEADER) cells."""
+    texts = cells(table)
+    return [texts[i : i + len(HEADER)] for i in range(len(HEADER), len(texts), len(HEADER))]
+
+
 def tables(board: Expression) -> list[Expression]:
     """The board's stackup tables: its tables headed HEADER."""
     headed = []
@@ -108,18 +114,17 @@ def check_stackup(board: Expression) -> Checked:
                     "stackup-table-layer", f"stackup table on {name}, not {LAYER_NAME}", layer=name
                 )
             )
-        texts = cells(table)
-        rows = [texts[i : i + len(HEADER)] for i in range(len(HEADER), len(texts), len(HEADER))]
-        if len(rows) != len(found_stackup.layers):
+        found_rows = rows(table)
+        if len(found_rows) != len(found_stackup.layers):
             problems.append(
                 found(
                     "stackup-table-rows",
-                    f"stackup table: {len(rows)} rows, the stackup {len(found_stackup.layers)}"
-                    " layers; out of date: replace it",
+                    f"stackup table: {len(found_rows)} rows, the stackup"
+                    f" {len(found_stackup.layers)} layers; out of date: replace it",
                 )
             )
             continue
-        for row, item in zip(rows, found_stackup.layers, strict=True):
+        for row, item in zip(found_rows, found_stackup.layers, strict=True):
             problems += [
                 found(
                     "stackup-table-row",

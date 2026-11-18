@@ -240,6 +240,12 @@ def where(p: Point) -> str:
     return f"({round(p[0], 2):g}, {round(p[1], 2):g})"
 
 
+def parse_point(text: str) -> Point:
+    """A point given on a command line as X,Y, mm."""
+    x, _, y = text.partition(",")
+    return float(x), float(y)
+
+
 def zone_name(zone: Expression) -> str:
     """A zone as a finding names it: its net and layers."""
     net = child(zone, "net")

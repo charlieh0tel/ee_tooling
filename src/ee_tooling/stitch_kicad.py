@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     import pcbnew
 
 from ee_tooling.kicad_pcbnew import missing
-from ee_tooling.kicad_style_board import Point, Segment, edge, on_board, where
+from ee_tooling.kicad_style_board import Point, Segment, edge, on_board, parse_point, where
 from ee_tooling.kicad_style_finishing import (
     MAX_GAP,
     MOUNTING_HOLE,
@@ -272,11 +272,6 @@ def remove(pcbnew: ModuleType, board_file: Path, vias: list[Point]) -> None:
     board.Save(str(board_file))
 
 
-def point(text: str) -> Point:
-    x, _, y = text.partition(",")
-    return float(x), float(y)
-
-
 def via_size(text: str) -> Via:
     diameter, _, drill = text.partition("/")
     return Via(float(diameter), float(drill))
@@ -290,7 +285,7 @@ def main() -> None:
     parser.add_argument("--net", help="the ground net (default: kicad-style-check's)")
     parser.add_argument("--via", type=via_size, help="DIAMETER/DRILL, mm (default: the board's)")
     parser.add_argument(
-        "--at", type=point, action="append", default=[], help="X,Y: a via here first, mm"
+        "--at", type=parse_point, action="append", default=[], help="X,Y: a via here first, mm"
     )
     for name, help_text in (
         ("pitch", "ring marks this far apart along the outline"),
