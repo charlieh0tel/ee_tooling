@@ -7,8 +7,15 @@ core with profiles, required per-board fab values, the house BOM in the
 core, rules added by the release (not refused when stale), no `kicad`
 profile yet, no alias for the old command, a flag day, DNP parts at
 Qty 0 in the house BOM, and a fitted part with no LCSC number a warning
-unless the board requires LCSC numbers.  Deferred: the fab notes and
-the no-extra-cost via rules.  Nothing is open.
+unless the board requires LCSC numbers.  Decided, additive and after
+the flag day: KiCad 10 design variants, an optional `variants` list per
+board, with a BOM, CPL, IPC-2581 and ODB++ per variant and the Gerbers
+and fab documents shared.  Deferred: the fab notes and the
+no-extra-cost via rules.  Open: should a variant whose Gerbers differ
+(a `${VARIANT}` marking on the silkscreen) get a Gerber zip of its own,
+not be refused?  Should a variant that overrides a part's Footprint
+field be served (KiCad 10 allows it; the board holds one footprint per
+reference), and how?
 
 ## Names
 
@@ -106,6 +113,17 @@ Gerber options or contents, `NAME-REV-gerbers.zip` otherwise.
 | `NAME-REV-jlcpcb-bom.csv`, `NAME-REV-jlcpcb-cpl.csv` | profile |
 | `NAME-REV-source.tgz` | core |
 
+With design variants (below), the files that differ by variant carry
+it after REV; the others are built once and shared:
+
+| File | Built |
+|---|---|
+| `NAME-REV-gerbers-jlcpcb.zip`, `-gerber-map.txt`, `-stackup.txt`, `-fab-notes.txt` | once |
+| `NAME-REV-VARIANT-bom.csv` | per variant |
+| `NAME-REV-VARIANT-jlcpcb-bom.csv`, `NAME-REV-VARIANT-jlcpcb-cpl.csv` | per variant |
+| `NAME-REV-VARIANT-odb.tgz`, `NAME-REV-VARIANT-ipc2581.zip` | per variant |
+| `NAME-REV-source.tgz` | once; its `pdf/` holds `NAME-VARIANT-schematic.pdf` and `NAME-VARIANT-board.pdf` per variant |
+
 ## The profile interface
 
 Internal, not public API.  Data where data will do; hooks only where a
@@ -149,11 +167,18 @@ class Profile(Protocol):
         # refusals beyond the core's
 
     def assembly(
-        self, release: Release, parts: list[Part], placements: list[Placement]
+        self,
+        release: Release,
+        stem: str,
+        parts: list[Part],
+        placements: list[Placement],
     ) -> list[Path]:
         ...
-        # writes its BOM and CPL; returns them
+        # writes its BOM and CPL, named from stem; returns them
 ```
+
+- `stem` is `NAME-REV`, or `NAME-REV-VARIANT` for a variant; the core
+  calls `assembly` once per build.
 
 - The PCB half (`gerbers`, `rules`) and the assembly half (`assembly`,
   `distributor`) are separate, so an `assembly = "<profile>"` key can
@@ -184,6 +209,89 @@ class Profile(Protocol):
 # --- ee_tooling: end; the board's own rules follow and win ---
 <the board's own rules>
 ```
+
+## Design variants
+
+KiCad 10 design variants: one schematic and one board, several builds
+that differ in which parts are fitted and in their fields.  Additive:
+a board with no `variants` key releases as above, file for file.
+
+```toml
+[[board]]
+name = "widget"
+# ...
+variants = ["lite", "full"]      # KiCad 10 design variants; default []
+```
+
+- `variants`: optional, a list of the project's variant names, each a
+  build.  Absent or `[]`: one build, KiCad's default variant, and the
+  names without VARIANT.  Present: one build per name, and the default
+  variant is not built.
+- A name is letters, digits, `.`, `_` and `-`, not starting with `-`;
+  names are unique ignoring case, as in KiCad.  Otherwise an error
+  naming it.
+- The project's variants are those the board's `(variants (variant
+  (name "X")))` names, and the names in the schematic's symbol
+  instances, `(instances (project (path (variant (name "X") ...))))`.
+- A name in `variants` that the board lacks is an error, before
+  anything is written: `kicad-cli` given an unknown `--variant` exports
+  the default variant and exits 0.
+- A project variant not in `variants` is a warning naming it, as is a
+  project with variants and no `variants` key.
+- One release builds every listed variant: one commit, one production
+  directory `YYYYMMDD-REV/`, one tag `NAME-YYYYMMDD-REV`, whose
+  message names the variants.  No option builds a subset.
+
+What a variant can override (KiCad 10.0.8), and what the release does
+with it:
+
+| Override | Schematic, in the instance's `(variant)` | Board, in the footprint's `(variant)` | The release |
+|---|---|---|---|
+| Do not populate | `(dnp yes)` | `(dnp yes)` | honored: a Qty 0 row in the house BOM; left out of JLCPCB's BOM and CPL |
+| Exclude from BOM | `(in_bom no)` | `(exclude_from_bom yes)` | honored: no row in any BOM |
+| Exclude from position files | `(in_pos_files no)` | `(exclude_from_pos_files yes)` | honored by the placement export; a part in the BOM and not placed is refused, as now |
+| Exclude from board | `(on_board no)` | - | as without variants |
+| Exclude from simulation | `(exclude_from_sim yes)` | - | ignored |
+| A field's value (Value, LCSC, MPN, ...) | `(field (name "F") (value "V"))` | likewise | honored: the BOMs, the CPL's Val, `require_lcsc`, IPC-2581 and ODB++ take the variant's |
+| Footprint field | likewise | - | refused: one board has one footprint per reference |
+
+Built per variant, each with `--variant VARIANT`, one `kicad-cli` call
+per variant (`pcb export pos` with several `--variant` and `${VARIANT}`
+in the path writes one file, named with `${VARIANT}` literally):
+
+- The BOM export (with the `DNP` field) and the placement export (with
+  `--exclude-dnp`), parsed into `Part` and `Placement` rows; from them
+  the house BOM and the profile's `assembly`.
+- IPC-2581 and ODB++: their component data differ by variant (Value,
+  `populate="false"`, `.no_pop`).
+- The schematic and board PDFs, in the source tgz.
+
+Built once, shared by the variants: the Gerbers, drill, Gerber job and
+map, `stackup.txt`, `fab-notes.txt`, and the source tgz.  The Gerbers
+are exported with the first listed variant; each other variant's are
+exported to the scratch directory and compared, less their date
+lines.  A difference is refused, naming the variant and the layer: text
+on a Gerber layer can differ by variant (`${VARIANT}`, a variant field
+shown on the silkscreen).
+
+Checks per variant, beyond the core's:
+
+- A part fitted in the variant's placement export and DNP in its BOM,
+  or the reverse, is refused, naming it: the board's variant data is
+  not the schematic's.  DRC's schematic parity does not compare
+  variants (10.0.8); Update PCB from Schematic syncs them.
+- A part whose Value differs between the two exports is refused, for
+  the same reason.
+- A part whose BOM Footprint differs from the board's footprint is
+  refused (the footprint override above).
+
+Parts are read from `kicad-cli`'s BOM export per variant, never from
+the netlist: a netlist's `comp` holds every variant's overrides in its
+`(variants (variant (name "X") (property (name "dnp") ...)))` (in XML,
+`<variants>`), so a
+reader of every `property` under `comp` takes a part DNP in one variant
+as DNP in all.  `review_netlist.py` reads only a `comp`'s direct
+children, which hold the default variant.
 
 ## Fab notes
 
@@ -244,6 +352,11 @@ Breaking changes:
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
 
+Design variants are not on this list: the `variants` key is new and
+optional, and a board without it gets the files above unchanged.  The
+flag day fixes the names with VARIANT (the second table above) and
+`assembly`'s `stem`, so variants land later without renaming a file.
+
 ## Order of work
 
 Refactor first, with no change in behavior; each commit passes every
@@ -273,8 +386,8 @@ Then one PR, breaking, merged as one:
 12. `adopt` sets the ERC severities and connection grid.
 13. Release 0.4.0; tag after CI.
 
-Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
-rules.
+Later, not breaking: design variants, in a patch release after 0.4.0;
+`fab-setup`; the fab notes; the no-extra-cost via rules.
 
 ## Adversarial review
 
@@ -298,3 +411,28 @@ rules.
 - Not served, not foreclosed: PCB and assembly from different fabs (an
   `assembly` key later); KiKit panels, which have no schematic (a
   `kind = "panel"` board later).
+- Variants: a board with a `variants` key builds no default variant; a
+  build of the base design needs a variant of its own in KiCad.
+- Variants: the shared Gerbers refuse a board whose silkscreen names
+  its variant, a common build marking; the owner moves it to a label or
+  a Fab layer, or a Gerber zip per variant is added later (open).
+- Variants: a footprint swap per variant (a different package in one
+  land pattern) is refused; serving it needs the board's footprint
+  checked against each variant's (open).
+- Variants: listing a variant takes a release's work per variant: a BOM,
+  placement, IPC-2581, ODB++, two PDFs and a Gerber comparison each.
+  ODB++ and IPC-2581 repeat the copper per variant; the production
+  directory grows by about one of each per variant.
+- Variants: every listed variant is built at every release, so one
+  build's broken data (a missing LCSC number with `require_lcsc`)
+  blocks the others; removing it from `variants` is the way out.
+- Variants: the cross-checks find a board whose variants were not
+  updated from the schematic, which DRC does not; they find DNP and
+  Value differences, not other fields'.
+- Variants: `kicad-cli` takes an unknown variant name as the default
+  without an error; the release's own name check is the only guard,
+  and it rests on reading the board's `(variants)`, a KiCad 10 format
+  that may change.
+- Variants: one tag for all of a release's variants: a variant added at
+  the same revision later is a new release, a new date directory and a
+  new tag, with every variant rebuilt.
