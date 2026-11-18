@@ -568,6 +568,21 @@ def project_json(project: dict[str, Any]) -> str:
     return json.dumps(project, indent=2, ensure_ascii=False) + "\n"
 
 
+def foreign_directory(root: Path, directory: Path) -> str | None:
+    """Why directory, from root, is not the repository's own: outside it, or
+    in another repository (a directory with a .git, a submodule); or
+    None."""
+    top = root.resolve()
+    target = (root / directory).resolve()
+    if not target.is_relative_to(top):
+        return "is outside the repository"
+    inside = target.relative_to(top)
+    for d in [inside, *inside.parents]:
+        if d != Path() and os.path.lexists(top / d / ".git"):
+            return f"is in another repository ({d.as_posix()})"
+    return None
+
+
 def rules_edits(root: Path, config: str | None) -> list[Edit]:
     """What installs each board's profile's rules in its .kicad_dru, raises
     its Board Setup in its .kicad_pro and sets its ERC severities (kept
@@ -588,6 +603,11 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         name, directory = b.get("name"), b.get("directory")
         if not isinstance(name, str) or not isinstance(directory, str):
             continue
+        if (why := foreign_directory(root, Path(directory))) is not None:
+            raise ValueError(
+                f"{CONFIG}: [[board]] {name!r}: directory {directory!r} {why}: adopt edits no"
+                " file there"
+            )
         profile = PROFILES[b["profile"]]()
         try:
             options = profile.options(b.get(profile.name, {}))

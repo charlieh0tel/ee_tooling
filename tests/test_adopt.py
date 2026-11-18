@@ -1796,3 +1796,36 @@ def test_blank_line_after_the_section_kept(tmp_path: Path) -> None:
     before = {n: (tmp_path / n).read_text() for n in ("AGENTS.md", ".gitattributes")}
     apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
     assert {n: (tmp_path / n).read_text() for n in before} == before
+
+
+@pytest.mark.parametrize(
+    ("directory", "why"),
+    [
+        ("../other", "is outside the repository"),
+        ("hardware/lib/demo", "is in another repository (hardware/lib)"),
+        ("hardware/lib", "is in another repository (hardware/lib)"),
+    ],
+)
+def test_board_directory_not_the_repositorys_refused(
+    tmp_path: Path, directory: str, why: str
+) -> None:
+    """fab.toml naming a directory outside the repository or in another
+    one: refused before any edit is planned, nothing written there."""
+    layout = repository(tmp_path / "board", "main")
+    for d in (tmp_path / "other", tmp_path / "board/hardware/lib/demo"):
+        d.mkdir(parents=True)
+        (d / "main.kicad_pro").write_text("{}")
+    (tmp_path / "board/hardware/lib/.git").write_text("gitdir: x\n")
+    config = fab_config(layout) or ""
+    (tmp_path / "board/fab.toml").write_text(
+        config.replace('directory = "hardware/main"', f'directory = "{directory}"')
+    )
+    for run in (plan, stale):
+        with pytest.raises(
+            ValueError,
+            match=rf"^fab.toml: \[\[board\]\] 'main': directory '{re.escape(directory)}'"
+            rf" {re.escape(why)}: adopt edits no file there$",
+        ):
+            run(layout)
+    assert not (tmp_path / "other/main.kicad_dru").exists()
+    assert not (tmp_path / "board/hardware/lib/demo/main.kicad_dru").exists()

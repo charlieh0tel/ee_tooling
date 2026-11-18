@@ -91,6 +91,12 @@ old or new.  The scratch file such a run may leave beside one
 (`.NAME.PID.ee_tooling-tmp`) is named by `--check` ("left over") and
 removed by `--yes`.
 
+A board whose `directory` in `fab.toml` resolves outside the
+repository, or into another repository (a directory with a `.git` on the
+way: a library's submodule, a clone), stops `adopt` (every mode),
+naming it, before any edit is planned: it edits no `.kicad_dru` or
+`.kicad_pro` there.
+
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
 overwrites the change.  `--check` fails while a board's rules section
