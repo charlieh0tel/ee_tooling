@@ -14,7 +14,9 @@ documents shared; a Gerber zip per variant when the variants'
 silkscreens differ; a variant that differs in copper, mask, paste,
 outline or drill, or that overrides a part's Footprint field, refused.
 The source tgz leaves out libraries outside the repository, and says
-so.  Deferred: the fab notes and the no-extra-cost via rules.  Nothing
+so; `adopt` skips production and hidden directories when finding
+projects; Git LFS (`docs/design/git-lfs.md`) lands in the same merge.
+Deferred: the fab notes and the no-extra-cost via rules.  Nothing
 is open.
 
 ## Names
@@ -33,7 +35,7 @@ is open.
 - `fab_release.py` imports `PROFILES` and `profile.py`, never a
   profile's module.
 - `DEFAULT` is the profile of the boards in `jlcpcb.toml`; it goes
-  when `fab.toml`'s required `profile` key arrives (step 4).
+  when `fab.toml`'s required `profile` key arrives (step 5).
 - `fab_release.py`, as `kicad_style_check.py` is its script's name;
   "release" alone also means ee_tooling's own `vX.Y.Z` releases.
 - One `profile` per board: a project has one `.kicad_dru`, so it meets
@@ -384,7 +386,9 @@ released as 0.4.0.  The last release before it (`v0.2.0` or any
 later release before 0.4.0) is the pin for a board repository not yet
 migrated.  A board repository cannot release from the merge until it
 runs `adopt --yes`, checks `[board.fab]`, draws the stackup table and
-passes DRC under the profile's rules.
+passes DRC under the profile's rules.  For Git LFS
+(`docs/design/git-lfs.md`), it also installs git-lfs on each machine
+and commits `git add --renormalize .`.
 
 Breaking changes:
 
@@ -412,6 +416,16 @@ Breaking changes:
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
 14. `adopt --yes` sets the board's ERC severities and connection grid.
+15. `adopt` and `adopt --check` require git-lfs.
+16. `adopt --check` fails on a plain blob of an LFS-tracked type at
+    HEAD: a repository with committed archives, PDFs, STEP or VRML files
+    renormalizes and commits.
+17. `adopt --yes` writes a managed section of `.gitattributes` and
+    `.githooks/pre-push`; a board repository's own `pre-push` is
+    replaced.
+18. A push without git-lfs is refused.
+19. The release refuses a board whose inputs hold an unfetched LFS
+    pointer.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
 
@@ -431,33 +445,45 @@ The refactor:
 2. `Profile`, `GerberOptions`, `PROFILES`; the core calls the JLCPCB
    profile.  Same files (a test compares a fixture release's).
 3. The core parses the BOM and placement exports into `Part` and
-   `Placement`; the profile writes from them.  Same files.
+   `Placement`; the profile writes from them; `Parts` renamed
+   `Corrections`; `profiles/profile.py`.  Same files.
+4. `adopt`: one marked-section function for `AGENTS.md` and
+   `.gitattributes`; same files.
 
 The breaking work:
 
-4. `fab.toml`, `fab-release`, `profile` and its options; unknown keys
-   refused; `jlcpcb-release` removed.
-5. `adopt`: write and migrate `fab.toml`; move the skill; skip the
+5. `fab.toml`, `fab-release`, `profile` and its options; unknown keys
+   refused; `jlcpcb-release` removed; `DEFAULT` removed.
+6. `adopt`: write and migrate `fab.toml`; move the skill; skip the
    production directories and hidden directories when finding projects.
-6. `sources` limited to the repository.  Docs:
+7. `sources` limited to the repository.  Docs:
    `skills/fab-release/SKILL.md` says what the source tgz holds, and
    that it leaves out libraries outside the repository and their 3D
    models.
-7. Copper layers from the stackup; refuse a board with none.
-8. `[board.fab]` required.
-9. The house BOM; JLCPCB's files take its name; the Gerber zip's name.
-10. Design variants: the `variants` key and its name checks; the
+8. Copper layers from the stackup; refuse a board with none.
+9. `[board.fab]` required.
+10. The house BOM; JLCPCB's files take its name; the Gerber zip's name.
+11. Design variants: the `variants` key and its name checks; the
     per-variant exports and files; the Gerbers compared across
     variants, a zip per variant when only silkscreen differs; the
     per-variant cross-checks.
-11. User.Drawings in the Gerbers, the map and the board PDF; the
+12. User.Drawings in the Gerbers, the map and the board PDF; the
     documents in the Gerber zip.
-12. Refuse a board without a matching stackup table.
-13. The rules in sections; DRC on a scratch
+13. Refuse a board without a matching stackup table.
+14. The rules in sections; DRC on a scratch
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
-14. `adopt` sets the ERC severities and connection grid.
-15. Release 0.4.0; tag after CI.
+15. `adopt` sets the ERC severities and connection grid.
+16. The release refuses an unfetched LFS pointer among its inputs, in
+    `fab_release.py`.
+17. The managed `.gitattributes` section and `.githooks/pre-push`.
+18. `adopt` requires git-lfs, installs the local filters and pulls;
+    `--check` runs `git lfs fsck --pointers HEAD`.
+19. The CI template, if the runner lacks git-lfs; `docs/adopting.md`.
+20. Release 0.4.0; tag after CI.
+
+Before the merge: the host's LFS allowances and the runner's git-lfs
+(`docs/design/git-lfs.md`).
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
@@ -466,11 +492,13 @@ rules.
 
 - Every board repository is blocked at the merge until it is migrated:
   a day's work per board, not a rename.
+- The flag day also brings Git LFS: git-lfs on every machine and a
+  renormalize commit per board repository.
 - `NAME-REV-bom.csv` changing meaning invites uploading the house BOM to
   JLCPCB by habit.
 - The Gerber zip's new contents are unchecked against JLCPCB's parser:
   User.Drawings may be taken as a layer, the text files rejected.  A
-  quote upload, with no order, checks it before step 11 merges.
+  quote upload, with no order, checks it before step 12 merges.
 - DRC in the editor and in the release differ until `adopt --yes`; the
   release warns.
 - Board Setup is raised, never lowered: a board moved to a looser fab
