@@ -75,7 +75,12 @@ electrical_test = "100% netlist test per IPC-9252"
 - Config, `Board`, `--date`, `--force`, `--allow-dirty`, `--retag`, and
   the release's tag (`NAME-YYYYMMDD-REV`).
 - Checks, before anything is written: ERC; DRC with schematic parity
-  and the profile's rules (below); committed sources; a stackup; the
+  and the profile's rules (below); committed sources and libraries (each
+  path the project's library tables and 3D models name inside the
+  repository, a submodule's with `git status --ignore-submodules=none`,
+  which reports a submodule's modified or untracked content and new
+  commits whatever its `ignore` setting, and never a path inside it);
+  the same paths free of unfetched Git LFS pointers; a stackup; the
   stackup table on User.Drawings matching it (kicad-style-check's rule);
   every `[board.fab]` value; the profile's options and its `check` hook.
 - Exports: Gerbers (copper, mask, paste, silk, Edge.Cuts and

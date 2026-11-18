@@ -1899,3 +1899,75 @@ def test_release_refuses_a_library_outside_the_repository(
         " path (docs/kicad-style.md, Files)"
     )
     assert kicad_calls(tmp_path) == []
+
+
+def library_submodule(tmp_path: Path, root: Path) -> Path:
+    """A library repository added to root as the submodule libs/shared,
+    the fixture board's fp-lib-table naming its x.pretty; committed."""
+    lib = tmp_path / "lib"
+    (lib / "x.pretty").mkdir(parents=True)
+    (lib / "x.pretty/R.kicad_mod").write_text("(footprint R)\n")
+    git(lib, "init", "-q")
+    git(lib, "add", ".")
+    git(lib, "commit", "-q", "-m", "lib")
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "libs/shared")
+    (root / "hw/fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "x")(uri "${KIPRJMOD}/../libs/shared/x.pretty")))\n'
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "library")
+    return root / "libs/shared"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda s: (s / "x.pretty/R.kicad_mod").write_text("(footprint R2)\n"),
+        lambda s: (s / "untracked.txt").write_text("x\n"),
+        lambda s: git(s, "commit", "-q", "--allow-empty", "-m", "new"),
+        lambda s: (
+            git(s.parent.parent, "config", "submodule.libs/shared.ignore", "dirty"),
+            (s / "x.pretty/R.kicad_mod").write_text("(footprint R2)\n"),
+        ),
+        lambda s: (
+            git(s.parent.parent, "config", "submodule.libs/shared.ignore", "all"),
+            git(s, "commit", "-q", "--allow-empty", "-m", "new"),
+        ),
+    ],
+)
+def test_release_refuses_a_changed_library_submodule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: Callable[[Path], object]
+) -> None:
+    """A library the board's tables name, in a submodule outside the
+    board's directory and not in sources: its modified or untracked
+    content, or a new commit in it, stops the release, whatever the
+    submodule's ignore setting; --allow-dirty goes on."""
+    root, _ = release(tmp_path, monkeypatch)
+    submodule = library_submodule(tmp_path, root)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    change(submodule)
+    with pytest.raises(
+        SystemExit, match=r"uncommitted changes in the release's sources:\n.*libs/shared"
+    ):
+        main()
+    monkeypatch.setattr(
+        sys, "argv", ["fab-release", "--date", "20261118", "--force", "--allow-dirty"]
+    )
+    main()
+
+
+def test_release_refuses_an_lfs_pointer_in_a_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 3D model the board names, in a library outside the board's
+    directory, never fetched."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace(
+        "(setup", '(footprint "x:R" (model "${KIPRJMOD}/../libs/3d/R.step"))\n  (setup', 1
+    )
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64 + "\nsize 9\n"
+    monkeypatch.setitem(FIXTURE, "libs/3d/R.step", pointer)
+    with pytest.raises(SystemExit, match=r"Git LFS pointers among .*\n  libs/3d/R.step\n"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []

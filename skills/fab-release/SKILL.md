@@ -125,9 +125,13 @@ honored: `stackup-table` writes or refreshes the table), ERC is clean,
 DRC (with schematic parity, the profile's rules and Board Setup
 minimums, on a scratch copy of the project: `docs/kicad-rules.md`) is
 clean,
-the board's directory and `sources` have no uncommitted changes
+the board's directory, `sources` and each library its tables and 3D
+model paths name (in `sources` or not) have no uncommitted changes
 (every board's production directory left out, so a rebuild with
-`--force` over an uncommitted release goes on)
+`--force` over an uncommitted release goes on; a library in a submodule
+counts as changed with modified or untracked content or a new commit,
+whatever its `ignore` setting), none of them holds an unfetched Git LFS
+pointer,
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
 `-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before
 anything is written.

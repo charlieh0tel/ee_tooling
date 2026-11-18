@@ -108,6 +108,8 @@ VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
 # The Gerber map's name in the Gerber zip; the stackup and the fabrication
 # notes are there by their names after NAME-REV-.
 GERBER_README = "README.txt"
+# git ls-files --stage's mode of a submodule (a gitlink).
+GITLINK = "160000 "
 # The work directory's subdirectory DRC's scratch copy of the project is
 # in, and the suffix of a project's custom rules.
 DRC_PROJECT = "project"
@@ -666,10 +668,32 @@ class Release:
         (scratch / b.project.name).write_text(json.dumps(rules.project, indent=2) + "\n")
         return scratch / b.pcb.name
 
-    def check(self, allow_dirty: bool, rules: Installed, productions: Iterable[Path] = ()) -> str:
+    def submodules(self) -> list[Path]:
+        """The repository's submodules (gitlinks), from its root."""
+        listed = self.run("git", "ls-files", "--stage").stdout.splitlines()
+        return [Path(line.split("\t", 1)[1]) for line in listed if line.startswith(GITLINK)]
+
+    def library_paths(self, inside: Iterable[Path]) -> list[Path]:
+        """The paths whose changes git status reports for the libraries
+        inside the repository: each library's submodule if it is in one
+        (git status names a submodule, never a path inside it), else
+        itself."""
+        submodules = self.submodules()
+        out: dict[Path, None] = {}
+        for p in inside:
+            out[next((s for s in submodules if p.is_relative_to(s)), p)] = None
+        return list(out)
+
+    def check(
+        self,
+        allow_dirty: bool,
+        rules: Installed,
+        productions: Iterable[Path] = (),
+        libraries: Iterable[Path] = (),
+    ) -> str:
         """ERC, DRC with schematic parity and the rules (drc_project), and
-        committed sources, less the production directories; return the
-        commit."""
+        committed sources and libraries (inside the repository), less the
+        production directories; return the commit."""
         b = self.board
         erc = self.work / "erc.rpt"
         if self.run(
@@ -693,9 +717,14 @@ class Release:
         paths = [
             str(b.directory),
             *(str(s) for s in b.sources),
+            *(str(p) for p in self.library_paths(libraries)),
             *(f":(exclude){p}" for p in productions),
         ]
-        status = self.run("git", "status", "--porcelain", "--", *paths).stdout.strip()
+        # A submodule's changes, its new commits, modified or untracked
+        # content, whatever its ignore setting in .gitmodules.
+        status = self.run(
+            "git", "status", "--porcelain", "--ignore-submodules=none", "--", *paths
+        ).stdout.strip()
         if status and not allow_dirty:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
         commit = self.run("git", "rev-parse", "--short", "HEAD").stdout.strip()
@@ -1046,7 +1075,11 @@ def main() -> None:
             " ${KIPRJMOD}-relative path (docs/kicad-style.md, Files)"
         )
     try:
-        pointers = lfs_pointers(root, b.source_paths(root))
+        inputs = [
+            *b.source_paths(root),
+            *(p for p in found_libraries.inside if (root / p).exists()),
+        ]
+        pointers = lfs_pointers(root, inputs)
     except OSError as e:
         sys.exit(f"{e.filename}: {e.strerror}")
     if pointers:
@@ -1092,7 +1125,12 @@ def main() -> None:
     rules = board_rules(root, b, profile, options[b.name])
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp), copper)
-        commit = r.check(a.allow_dirty, rules, [x.production for x in boards.values()])
+        commit = r.check(
+            a.allow_dirty,
+            rules,
+            [x.production for x in boards.values()],
+            found_libraries.inside,
+        )
         tag = f"{b.name}-{dest.name}"
         tagged = r.tagged(tag)
         plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
