@@ -62,7 +62,7 @@ the dry run and `--yes` name such an edit "update PATH (project;
 | `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` (git-lfs installed first where the runner lacks it) |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
 | `hardware/pyproject.toml` | project | the hardware tools' uv project, named `<directory>-hardware`, the repository's directory name with each run of other than ASCII letters and digits a hyphen, lowercased (a package name uv accepts); an existing one whose name uv refuses is named on stderr: rename it there |
-| `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb`, with the profile's house `[board.fab]` values |
+| `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/` (its name the project's, whatever its characters), profile `jlcpcb`, with the profile's house `[board.fab]` values |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
 | each board's `NAME.kicad_dru` | project, with ee_tooling's section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
 | each board's `NAME.kicad_pro` | project | Board Setup's design rule minimums raised to the profile's, never lowered; the ERC severities set from `erc_severities.json`, each kept where the board's is stricter, and the connection grid (`docs/kicad-rules.md`) |

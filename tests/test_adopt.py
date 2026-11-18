@@ -5,6 +5,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -1968,3 +1969,16 @@ def test_submodule_path_with_a_space(tmp_path: Path) -> None:
                 "sh",
                 "hard ware/ee tooling/.githooks/commit-msg",
             ]
+
+
+@pytest.mark.parametrize("name", ["widget", "café", "board \U0001f680", 'q"uote\\'])
+def test_toml_string(name: str) -> None:
+    """A project's name in fab.toml, whatever its characters."""
+    assert tomllib.loads(f"x = {adopt.toml_string(name)}\n") == {"x": name}
+
+
+def test_fab_config_with_a_name_beyond_the_bmp(tmp_path: Path) -> None:
+    layout = repository(tmp_path, "rocket\U0001f680")
+    config = fab_config(layout)
+    assert config is not None
+    assert list(load_config(config)) == ["rocket\U0001f680"]

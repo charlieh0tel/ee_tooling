@@ -324,8 +324,10 @@ def locate(checkout: Path) -> Layout:
 
 
 def toml_string(text: str) -> str:
-    """text as a TOML basic string: JSON's escapes are TOML's."""
-    return json.dumps(text)
+    """text as a TOML basic string: JSON's escapes are TOML's, but a
+    surrogate pair's (a character beyond the BMP, which TOML takes
+    as it is)."""
+    return json.dumps(text, ensure_ascii=False)
 
 
 def toml_value(value: object) -> str:
