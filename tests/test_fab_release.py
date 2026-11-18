@@ -420,7 +420,7 @@ def test_tag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     name = "jig-20261102-1"
     assert r.tagged(name) is None
     first = r.head()
-    r.tag(name, "jig 1: JLCPCB release production/20261102-1", move=False)
+    r.tag(name, "jig 1: fab release production/20261102-1", move=False)
     assert r.tagged(name) == first
     assert git(tmp_path, "cat-file", "-t", f"refs/tags/{name}") == "tag"
     git(tmp_path, "commit", "-q", "--allow-empty", "-m", "two")
@@ -884,7 +884,7 @@ def test_release_files(
         "tagged b-20261118-1; push it with: git push origin refs/tags/b-20261118-1\n"
         f"production/20261118-1 from {commit}:\n" + "".join(f"  {f}\n" for f in files)
     )
-    assert git(root, "tag", "-n") == "b-20261118-1    b 1: JLCPCB release production/20261118-1"
+    assert git(root, "tag", "-n") == "b-20261118-1    b 1: fab release production/20261118-1"
     assert calls == RELEASE_CALLS
     assert files == [
         "b-1-bom.csv",

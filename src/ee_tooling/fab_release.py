@@ -719,7 +719,7 @@ def main() -> None:
         profile.assembly(dest, base, parts, placements, options[b.name])
         r.source(dest / f"{base}-source.tgz", commit)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
-            message = f"{b.name} {rev}: JLCPCB release {b.production / dest.name}"
+            message = f"{b.name} {rev}: fab release {b.production / dest.name}"
             r.tag(tag, message, plan is TagPlan.MOVE)
             force = " --force" if plan is TagPlan.MOVE else ""
             print(f"tagged {tag}; push it with: git push{force} origin refs/tags/{tag}")

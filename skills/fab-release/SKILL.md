@@ -79,7 +79,7 @@ anything is written.
 ## The tag
 
 It tags the commit the package was built from (the tgz's COMMIT),
-annotated, `NAME-YYYYMMDD-REV`, with the message `NAME REV: JLCPCB
+annotated, `NAME-YYYYMMDD-REV`, with the message `NAME REV: fab
 release PRODUCTION/YYYYMMDD-REV`.  It does not push the tag: it prints
 the command, `git push origin refs/tags/NAME-YYYYMMDD-REV`.  Run that
 only when the owner says to.
