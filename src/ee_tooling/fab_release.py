@@ -345,7 +345,34 @@ def load_config(text: str) -> dict[str, Board]:
         if b.name in out:
             raise ValueError(f"[[board]] {b.name!r} is there twice")
         out[b.name] = b
+    if errors := production_errors(out.values()):
+        raise ValueError(errors[0])
     return out
+
+
+def normal(path: Path) -> Path:
+    """A path from the repository root, normalized ("." for the root)."""
+    return Path(os.path.normpath(path))
+
+
+def nested(a: Path, b: Path) -> bool:
+    """Whether a and b, from the root, are the same or one holds the other."""
+    a, b = normal(a), normal(b)
+    return a == b or a.is_relative_to(b) or b.is_relative_to(a) or Path(".") in (a, b)
+
+
+def production_errors(boards: Iterable[Board]) -> list[str]:
+    """Each two boards whose production directories are the same or one
+    holds the other: a release's directory, DATE-REV, does not name its
+    board, so one board's --force would remove the other's release."""
+    listed = list(boards)
+    return [
+        f"[[board]] {a.name!r} and {b.name!r}: production {str(a.production)!r} and"
+        f" {str(b.production)!r} are the same directory, or one holds the other"
+        for i, a in enumerate(listed)
+        for b in listed[i + 1 :]
+        if nested(a.production, b.production)
+    ]
 
 
 def lfs_pointer(path: Path) -> bool:
@@ -1183,6 +1210,12 @@ def main() -> None:
                 file=sys.stderr,
             )
         if dest.exists():
+            if foreign := sorted(
+                f.name for f in dest.iterdir() if not f.name.startswith(f"{b.name}-{rev}-")
+            ):
+                sys.exit(
+                    f"{dest} holds {foreign[0]}, not this board's ({b.name}-{rev}-*): not removed"
+                )
             shutil.rmtree(dest)
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"

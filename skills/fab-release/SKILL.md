@@ -50,6 +50,10 @@ say; the fabrication notes take it.  `adopt` writes the profile's house
 values, never `fab-release`: check them.  A key it
 does not know, at any level, is an error naming it; the only tables
 allowed are `fab` and the one named by `profile`.  Paths are from the repository root.
+Each board's `production` is its own: two boards' the same, or one
+inside the other, is an error naming both (a release's directory,
+`YYYYMMDD-REV`, does not name its board), and `--force` replaces a
+release only if every file in it is the board's (`NAME-REV-*`).
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  There is no `copper` key: the copper layers, top to
 bottom, are the stackup's.  Each `sources` path is inside the repository: one that

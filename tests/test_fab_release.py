@@ -49,7 +49,7 @@ CONFIG = """
 [[board]]
 name = "main"
 directory = "hardware/main"
-production = "production"
+production = "production/main"
 sources = ["hardware/main/main.kicad_sym", "docs"]
 profile = "jlcpcb"
 
@@ -1990,3 +1990,42 @@ def test_release_warns_of_a_model_found_nowhere(
         "warning: 3D model not found, from the project or its library: R9 (x:R): 3d/R.step"
         " (library 'x' not in fp-lib-table)\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("one", "two"),
+    [("production", "production"), ("production", "production/jig"), ("./out", "out/")],
+)
+def test_config_refuses_shared_production(one: str, two: str) -> None:
+    """Two boards' releases in one directory, or one in the other's."""
+    a = BOARD.replace('production = "production"', f'production = "{one}"')
+    b = BOARD.replace('name = "b"', 'name = "c"').replace(
+        'production = "production"', f'production = "{two}"'
+    )
+    with pytest.raises(
+        ValueError,
+        match=rf"^\[\[board\]\] 'b' and 'c': production '{re.escape(str(Path(one)))}' and"
+        rf" '{re.escape(str(Path(two)))}' are the same directory, or one holds the other$",
+    ):
+        load_config(a + b)
+
+
+def test_config_separate_productions() -> None:
+    a = BOARD.replace('production = "production"', 'production = "production/b"')
+    b = BOARD.replace('name = "b"', 'name = "c"').replace(
+        'production = "production"', 'production = "production/c"'
+    )
+    assert list(load_config(a + b)) == ["b", "c"]
+
+
+def test_release_force_keeps_another_boards_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--force does not remove a release directory holding a file not this
+    board's."""
+    old = tmp_path / "repo/production/20261118-1"
+    old.mkdir(parents=True)
+    (old / "jig-1-bom.csv").write_text("another board's\n")
+    with pytest.raises(SystemExit, match=r"20261118-1 holds jig-1-bom.csv, not this board's"):
+        release(tmp_path, monkeypatch, args=("--force",))
+    assert (old / "jig-1-bom.csv").read_text() == "another board's\n"

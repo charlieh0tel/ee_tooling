@@ -63,6 +63,10 @@ electrical_test = "100% netlist test per IPC-9252"
 - An unknown key, at any level, is an error naming it, so later keys
   (`assembly`, `kind = "panel"`) are additive.
 - Only the table named by `profile` is allowed beside `fab`.
+- Each board's `production` is its own: two boards' the same, or one
+  inside the other, is an error naming both, as a release's directory,
+  `DATE-REV`, does not name its board.  `--force` removes an old release
+  only if every file in it is the board's (`NAME-REV-*`).
 - Each `sources` path is inside the repository; one that is absolute or
   leads out of it (`..`) is an error naming it.
 - House values for `[board.fab]` are written by `adopt` and the setup
@@ -450,36 +454,39 @@ Breaking changes:
 7. A library the board reads (a project library table's path, a 3D
    model's) outside the repository, or under a variable not KiCad's
    own, is refused, naming each path as written.
-8. A board with no stackup is refused (now a warning).
-9. A board without a stackup table on User.Drawings matching its stackup
-   is refused.
-10. DRC runs with the profile's current rules: a board clean today may
+8. Two boards' production directories the same, or one inside the
+   other, are an error naming both; `--force` stops on a release
+   directory holding a file not the board's (`NAME-REV-*`).
+9. A board with no stackup is refused (now a warning).
+10. A board without a stackup table on User.Drawings matching its stackup
+    is refused.
+11. DRC runs with the profile's current rules: a board clean today may
     not be.
-11. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+12. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-12. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-13. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+13. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+14. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-14. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+15. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-15. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+16. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-16. `adopt --yes` sets the board's ERC severities and connection grid.
-17. `adopt` and `adopt --check` require git-lfs.
-18. `adopt --check` fails on a plain blob of an LFS-tracked type at
+17. `adopt --yes` sets the board's ERC severities and connection grid.
+18. `adopt` and `adopt --check` require git-lfs.
+19. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-19. `adopt --yes` writes a managed section of `.gitattributes` and
+20. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-20. A push without git-lfs is refused.
-21. The release refuses a board whose inputs hold an unfetched LFS
+21. A push without git-lfs is refused.
+22. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-22. A board repository's host must support Git LFS: a push to one that
+23. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
