@@ -19,7 +19,6 @@ from ee_tooling.fab_release import (
     Board,
     Release,
     TagPlan,
-    board_variants,
     check_variants,
     cross_checks,
     gerber_differences,
@@ -30,7 +29,9 @@ from ee_tooling.fab_release import (
     load_config,
     main,
     profile_options,
+    project_variants,
     revision,
+    settings_variants,
     silkscreen_only,
     tag_plan,
     variant_names,
@@ -1118,10 +1119,16 @@ def test_config_variants_refused(variants: str, error: str) -> None:
         load_config(f"{BOARD}variants = {variants}\n")
 
 
-# A board's variants, and a schematic's symbol instance with one of its own.
+# Where KiCad records a project's variants: a .kicad_pro's list (its GUI),
+# a board's top-level list (pcbnew's AddVariant) and a footprint's
+# override, and a schematic's symbol instance's overrides.
+VARIANTS_PRO = {
+    "schematic": {"variants": [{"name": "lite", "description": "Lite"}, {"name": "full"}]},
+    "board": {"variants": "not a list"},
+}
 VARIANTS_PCB = (
     '(kicad_pcb (variants (variant (name "lite")) (variant (name "full")))'
-    ' (footprint "R" (variant (name "lite") (dnp yes))))'
+    ' (footprint "R" (variant (name "lite") (dnp yes)) (variant (name "jig") (dnp yes))))'
 )
 VARIANTS_SCH = (
     '(kicad_sch (symbol (instances (project "b" (path "/x" (reference "R1")'
@@ -1129,16 +1136,37 @@ VARIANTS_SCH = (
 )
 
 
+def test_settings_variants() -> None:
+    assert settings_variants(VARIANTS_PRO) == ["lite", "full"]
+    assert settings_variants({"schematic": {"variants": []}}) == []
+    assert settings_variants({"variants": [{"name": 1}, "x", {"name": "a"}]}) == ["a"]
+
+
 def test_variant_names() -> None:
-    assert board_variants(parse(VARIANTS_PCB)) == ["lite", "full"]
-    assert board_variants(parse("(kicad_pcb)")) == []
+    assert variant_names(parse(VARIANTS_PCB)) == ["lite", "full", "jig"]
+    assert variant_names(parse("(kicad_pcb)")) == []
     assert variant_names(parse(VARIANTS_SCH)) == ["lite", "proto"]
+
+
+@pytest.mark.parametrize(
+    ("settings", "pcb", "sch", "found"),
+    [
+        (VARIANTS_PRO, "(kicad_pcb)", "(kicad_sch)", ["lite", "full"]),
+        ({}, VARIANTS_PCB, "(kicad_sch)", ["lite", "full", "jig"]),
+        ({}, "(kicad_pcb)", VARIANTS_SCH, ["lite", "proto"]),
+        (VARIANTS_PRO, VARIANTS_PCB, VARIANTS_SCH, ["lite", "full", "jig", "proto"]),
+        ({}, "(kicad_pcb)", "(kicad_sch)", []),
+    ],
+)
+def test_project_variants(settings: object, pcb: str, sch: str, found: list[str]) -> None:
+    """Each place KiCad records a variant, alone and together, each once."""
+    assert project_variants(settings, parse(pcb), [parse(sch)]) == found
 
 
 @pytest.mark.parametrize(
     ("listed", "errors", "warnings"),
     [
-        (["lite", "full"], [], ["variants proto of the project are not built"]),
+        (["lite", "full"], [], ["variant proto of the project is not built"]),
         (["lite"], [], ["variants full, proto of the project are not built"]),
         (
             [],
@@ -1149,25 +1177,34 @@ def test_variant_names() -> None:
             ],
         ),
         (
-            ["lite", "full", "proto"],
-            ["variant 'proto' is not one of the board's"],
+            ["lite", "full", "proto", "pro"],
+            [
+                "variant 'pro' is not one of the project's (its .kicad_pro, board or schematic)",
+            ],
             [],
         ),
         (
             ["Lite", "full"],
-            ["variant 'Lite' is not one of the board's (it has 'lite')"],
-            ["variants proto of the project are not built"],
+            [
+                "variant 'Lite' is not one of the project's (its .kicad_pro, board or schematic)"
+                " (it has 'lite')"
+            ],
+            ["variant proto of the project is not built"],
         ),
     ],
 )
 def test_check_variants(listed: list[str], errors: list[str], warnings: list[str]) -> None:
-    """A listed variant the board lacks is an error; a project variant, the
-    board's or the schematic's, not listed is a warning."""
-    assert check_variants(listed, ["lite", "full"], ["lite", "proto"]) == (errors, warnings)
+    """A listed variant the project lacks is an error; a project variant
+    not listed is a warning, singular or plural."""
+    assert check_variants(listed, ["lite", "full", "proto"]) == (errors, warnings)
 
 
-def test_check_variants_none() -> None:
-    assert check_variants([], [], []) == ([], [])
+def test_check_variants_one() -> None:
+    assert check_variants([], ["lite"]) == (
+        [],
+        ["the project has variant lite, and fab.toml lists none: the default variant is built"],
+    )
+    assert check_variants([], []) == ([], [])
 
 
 def placement(ref: str, value: str = "10k", package: str = "R_0402") -> Placement:
@@ -1289,13 +1326,23 @@ def variant_release(
     outputs: dict[str, dict[str, str]],
     variants: str = VARIANTS,
     args: tuple[str, ...] = (),
+    where: str = "project",
 ) -> tuple[Path, list[list[str]]]:
-    """The fixture released with the board's variants lite and full, the
-    fab.toml's variants, and the fake's outputs changed."""
-    pcb = FIXTURE["hw/b.kicad_pcb"].replace(
-        "(kicad_pcb ", '(kicad_pcb (variants (variant (name "lite")) (variant (name "full")))\n'
-    )
-    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    """The fixture released with the project's variants lite and full,
+    the fab.toml's variants, and the fake's outputs changed.  The variants
+    are in the .kicad_pro, as KiCad's GUI keeps them, or with where
+    "board" in the board's top-level list, as pcbnew's AddVariant writes
+    it."""
+    if where == "board":
+        pcb = FIXTURE["hw/b.kicad_pcb"].replace(
+            "(kicad_pcb ",
+            '(kicad_pcb (variants (variant (name "lite")) (variant (name "full")))\n',
+        )
+        monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    else:
+        project = json.loads(FIXTURE["hw/b.kicad_pro"])
+        project["schematic"] = {"variants": [{"name": "lite"}, {"name": "full"}]}
+        monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", json.dumps(project))
     toml = FIXTURE["fab.toml"].replace(
         'profile = "jlcpcb"\n', f'profile = "jlcpcb"\nvariants = {variants}\n'
     )
@@ -1513,13 +1560,28 @@ def test_release_variants_profile_check(tmp_path: Path, monkeypatch: pytest.Monk
     assert not (tmp_path / "repo/production").exists()
 
 
-def test_release_variant_the_board_lacks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("where", ["project", "board"])
+def test_release_variant_the_project_lacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
     """Before anything runs."""
     with pytest.raises(
-        SystemExit, match=r"^b.kicad_pcb: variant 'proto' is not one of the board's$"
+        SystemExit,
+        match=r"^b: variant 'proto' is not one of the project's \(its .kicad_pro, board or"
+        r" schematic\)$",
     ):
-        variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, '["lite", "proto"]')
+        variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, '["lite", "proto"]', where=where)
     assert kicad_calls(tmp_path) == []
+
+
+def test_release_variants_from_the_board(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The variants in the board's top-level list, none in the .kicad_pro:
+    the same files as from the .kicad_pro."""
+    root, _ = variant_release(tmp_path, monkeypatch, LITE_OUTPUTS, where="board")
+    assert (root / "production/20261118-1/b-1-lite-bom.csv").exists()
+    assert "warning" not in capsys.readouterr().err
 
 
 def test_release_variants_unlisted(

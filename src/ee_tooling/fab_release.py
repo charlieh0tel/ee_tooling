@@ -404,37 +404,72 @@ def variant_names(expression: Expression) -> list[str]:
     return list(out)
 
 
-def board_variants(pcb: Expression) -> list[str]:
-    """The variants the board defines, its top-level (variants (variant (name
-    "X")))."""
-    section = child(pcb, "variants")
-    return variant_names(section) if section is not None else []
+def settings_variants(settings: object) -> list[str]:
+    """The names in a .kicad_pro's variant lists, at any depth: a key
+    "variants" whose value is a list of {"name": ...} (KiCad's GUI keeps
+    a project's variants in schematic.variants)."""
+    out: dict[str, None] = {}
+    todo = [settings]
+    while todo:
+        item = todo.pop()
+        if isinstance(item, dict):
+            found = item.get("variants")
+            if isinstance(found, list):
+                out.update(
+                    (v["name"], None)
+                    for v in found
+                    if isinstance(v, dict) and isinstance(v.get("name"), str)
+                )
+            todo += reversed(list(item.values()))
+        elif isinstance(item, list):
+            todo += reversed(item)
+    return list(out)
 
 
-def check_variants(
-    listed: Sequence[str], board: Sequence[str], schematic: Sequence[str]
-) -> tuple[list[str], list[str]]:
+def project_variants(
+    settings: object, pcb: Expression, schematic: Iterable[Expression]
+) -> list[str]:
+    """The project's variants, from every place KiCad 10.0.8 records one:
+    the .kicad_pro's list (made in the GUI), the board's top-level
+    (variants ...) (pcbnew's AddVariant), and each name a footprint's or a
+    symbol instance's (variant (name ...)) override uses, which kicad-cli
+    honors with no list naming it."""
+    names = [
+        *settings_variants(settings),
+        *variant_names(pcb),
+        *(v for sheet in schematic for v in variant_names(sheet)),
+    ]
+    return list(dict.fromkeys(names))
+
+
+def check_variants(listed: Sequence[str], project: Sequence[str]) -> tuple[list[str], list[str]]:
     """The errors and warnings of a board's variants: a listed variant the
-    board lacks is an error (kicad-cli exports the default for a name it
-    does not know); a project variant (the board's or the schematic's) not
-    listed is a warning."""
+    project lacks is an error (kicad-cli exports the default for a name it
+    does not know); a project variant not listed is a warning."""
     errors = []
     for name in listed:
-        if name in board:
+        if name in project:
             continue
-        like = [b for b in board if b.casefold() == name.casefold()]
+        like = [v for v in project if v.casefold() == name.casefold()]
         hint = f" (it has {like[0]!r})" if like else ""
-        errors.append(f"variant {name!r} is not one of the board's{hint}")
-    project = list(dict.fromkeys([*board, *schematic]))
+        errors.append(
+            f"variant {name!r} is not one of the project's (its .kicad_pro, board or"
+            f" schematic){hint}"
+        )
     unlisted = [v for v in project if v.casefold() not in {n.casefold() for n in listed}]
+    names = ", ".join(unlisted)
+    one = len(unlisted) == 1
     warnings = []
     if unlisted and not listed:
         warnings.append(
-            f"the project has variants {', '.join(unlisted)}, and fab.toml lists none:"
-            " the default variant is built"
+            f"the project has {'variant' if one else 'variants'} {names}, and fab.toml lists"
+            " none: the default variant is built"
         )
     elif unlisted:
-        warnings.append(f"variants {', '.join(unlisted)} of the project are not built")
+        warnings.append(
+            f"{'variant' if one else 'variants'} {names} of the project"
+            f" {'is' if one else 'are'} not built"
+        )
     return errors, warnings
 
 
@@ -1016,12 +1051,16 @@ def main() -> None:
             + f"write or refresh it with: stackup-table {b.pcb}"
         )
     try:
-        schematic = [v for sheet in sheets((root / b.sch).resolve()) for v in variant_names(sheet)]
+        schematic = list(sheets((root / b.sch).resolve()))
     except (OSError, ParseError) as e:
         sys.exit(f"{b.sch}: {e}")
-    errors, warnings = check_variants(b.variants, board_variants(pcb), schematic)
+    try:
+        settings = json.loads((root / b.project).read_text())
+    except (OSError, ValueError) as e:
+        sys.exit(f"{b.project}: {e}")
+    errors, warnings = check_variants(b.variants, project_variants(settings, pcb, schematic))
     if errors:
-        sys.exit("\n".join(f"{b.pcb.name}: {e}" for e in errors))
+        sys.exit("\n".join(f"{b.name}: {e}" for e in errors))
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
     # Each build: a listed variant, or the default (None).

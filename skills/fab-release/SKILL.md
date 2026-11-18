@@ -66,8 +66,11 @@ variants.
 
 - A name is letters, digits, `.`, `_` and `-`, not starting with `-`;
   names are unique ignoring case.  Otherwise an error naming it.
-- A listed variant the board's `(variants ...)` lacks is an error,
-  before anything runs: `kicad-cli` takes an unknown `--variant` as the
+- A listed variant the project lacks is an error, before anything
+  runs.  The project's variants are those its `.kicad_pro` lists (where
+  KiCad's GUI keeps them), the board's top-level `(variants ...)`, and
+  each name a footprint's or a schematic symbol's variant override
+  uses: `kicad-cli` takes an unknown `--variant` as the
   default.  A variant of the project (the board's, or one in the
   schematic's symbol instances) not listed is a warning naming it, as is
   a project with variants and none listed.

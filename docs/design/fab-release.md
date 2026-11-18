@@ -270,10 +270,15 @@ variants = ["lite", "full"]      # KiCad 10 design variants; default []
 - A name is letters, digits, `.`, `_` and `-`, not starting with `-`;
   names are unique ignoring case, as in KiCad.  Otherwise an error
   naming it.
-- The project's variants are those the board's `(variants (variant
-  (name "X")))` names, and the names in the schematic's symbol
-  instances, `(instances (project (path (variant (name "X") ...))))`.
-- A name in `variants` that the board lacks is an error, before
+- The project's variants are every name KiCad 10.0.8 records one by:
+  the `.kicad_pro`'s list (`schematic.variants`, `[{"name": "X", ...}]`:
+  where KiCad's GUI keeps them, with no list in the board), the board's
+  top-level `(variants (variant (name "X")))` (pcbnew's `AddVariant`
+  writes one), and each name a footprint's `(variant (name "X") ...)`
+  or a schematic symbol instance's `(instances (project (path (variant
+  (name "X") ...))))` override uses: `kicad-cli --variant X` honors an
+  override whose name no list holds.
+- A name in `variants` that the project lacks is an error, before
   anything is written: `kicad-cli` given an unknown `--variant` exports
   the default variant and exits 0.
 - A project variant not in `variants` is a warning naming it, as is a
