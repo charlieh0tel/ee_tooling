@@ -54,7 +54,7 @@ profile = "jlcpcb"               # a key of PROFILES
 [board.fab]                      # every key required
 ipc_class = 2                    # IPC-A-600 / IPC-6012 class
 base_material = "FR-4"
-tg = 150                         # deg C, minimum
+tg = 130                         # deg C, minimum
 electrical_test = "100% netlist test per IPC-9252"
 ```
 
@@ -399,34 +399,36 @@ Breaking changes:
 3. `[[board]]` key `copper` removed: present, it is an error.
 4. `[[board]]` key `profile` required.
 5. `[board.fab]` required, with every key.
-6. A board with no stackup is refused (now a warning).
-7. A board without a stackup table on User.Drawings matching its stackup
+6. A `sources` path outside the repository (absolute, or leading out
+   of it with `..`) is an error naming it.
+7. A board with no stackup is refused (now a warning).
+8. A board without a stackup table on User.Drawings matching its stackup
    is refused.
-8. DRC runs with the profile's current rules: a board clean today may
+9. DRC runs with the profile's current rules: a board clean today may
    not be.
-9. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
-   `NAME-REV-jlcpcb-bom.csv`.
-10. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-11. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+10. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+    `NAME-REV-jlcpcb-bom.csv`.
+11. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+12. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-12. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+13. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-13. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+14. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-14. `adopt --yes` sets the board's ERC severities and connection grid.
-15. `adopt` and `adopt --check` require git-lfs.
-16. `adopt --check` fails on a plain blob of an LFS-tracked type at
+15. `adopt --yes` sets the board's ERC severities and connection grid.
+16. `adopt` and `adopt --check` require git-lfs.
+17. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-17. `adopt --yes` writes a managed section of `.gitattributes` and
+18. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-18. A push without git-lfs is refused.
-19. The release refuses a board whose inputs hold an unfetched LFS
+19. A push without git-lfs is refused.
+20. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".

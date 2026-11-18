@@ -14,11 +14,11 @@ from typing import Any
 from ee_tooling.profiles.profile import GerberOptions, Part, Placement, write_csv
 
 # The house [board.fab] values adopt writes for a new board: IPC class 2,
-# FR-4 of Tg 150 deg C or more, and a full netlist test.
+# FR-4 of Tg 130 deg C or more, and a full netlist test.
 FAB_DEFAULTS = {
     "ipc_class": 2,
     "base_material": "FR-4",
-    "tg": 150,
+    "tg": 130,
     "electrical_test": "100% netlist test per IPC-9252",
 }
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")

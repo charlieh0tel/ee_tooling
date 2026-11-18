@@ -36,7 +36,7 @@ profile = "jlcpcb"                 # the fab: jlcpcb
 [board.fab]                        # every key required
 ipc_class = 2                      # IPC-A-600 / IPC-6012 class: 1, 2 or 3
 base_material = "FR-4"
-tg = 150                           # deg C, minimum
+tg = 130                           # deg C, minimum
 electrical_test = "100% netlist test per IPC-9252"
 
 [board.jlcpcb]                     # the profile's options, optional (jlcpcb.md)

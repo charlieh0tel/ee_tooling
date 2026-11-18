@@ -487,7 +487,7 @@ def test_fab_added_keeps_the_text() -> None:
     ]
     assert text == NO_FAB.replace(
         "require_lcsc = true\n",
-        'require_lcsc = true\n\n[board.fab]\nipc_class = 2\nbase_material = "FR-4"\ntg = 150\n'
+        'require_lcsc = true\n\n[board.fab]\nipc_class = 2\nbase_material = "FR-4"\ntg = 130\n'
         'electrical_test = "100% netlist test per IPC-9252"\n',
     ).replace(
         "[board.fab]  # ours\n",
@@ -503,7 +503,7 @@ def test_fab_added_keeps_the_text() -> None:
 def test_fab_added_at_the_end() -> None:
     text, _ = fab_added('[[board]]\nname = "b"\nprofile = "jlcpcb"\n\n\n') or ("", [])
     assert text.endswith(
-        '\n\n[board.fab]\nipc_class = 2\nbase_material = "FR-4"\ntg = 150\n'
+        '\n\n[board.fab]\nipc_class = 2\nbase_material = "FR-4"\ntg = 130\n'
         'electrical_test = "100% netlist test per IPC-9252"\n\n\n'
     )
 
