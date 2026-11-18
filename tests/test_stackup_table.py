@@ -285,6 +285,27 @@ def test_moved_by_at() -> None:
     assert corner(t) == ("60", "60")
 
 
+def test_at_with_two_tables_refused() -> None:
+    """--at would put both at one point."""
+    two = board(inside(KICAD_ROWS), inside(KICAD_ROWS, (150, 100)))
+    with pytest.raises(TableError, match=r"^2 stackup tables, and --at puts each at the one point"):
+        run(two, (60, 60))
+    assert run(two)[1] == []
+
+
+@pytest.mark.parametrize("stale", [False, True])
+def test_crlf_kept(stale: bool) -> None:
+    """A board checked out with CRLF line endings: the table added, or
+    rewritten, in CRLF too."""
+    items = [inside([["x"] * 7])] if stale else []
+    before = board(*items).replace("\n", "\r\n")
+    after, changes, _ = run(before)
+    assert changes
+    assert "\n" not in after.replace("\r\n", "")
+    assert check_stackup(parse(after)).findings == []
+    assert run(after)[1] == []
+
+
 def test_rotated() -> None:
     rotated = table(KICAD_ROWS).replace("(end 1 1)", "(end 1 1) (angle 90)", 1)
     with pytest.raises(TableError, match="rotated"):

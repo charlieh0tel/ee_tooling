@@ -27,9 +27,13 @@ place unless `-o`.
   `--at`, on User.Drawings (a move is said on stderr).  Its uuids, lock,
   border and separators are kept.
 - A stackup table that matches: left as it is, unless `--at` moves it.
+- More than one stackup table and `--at`: refused, as `--at` would put
+  each at the one point.
 
-Only the table's text in the file changes; the rest of the file is kept
-byte for byte.  A second run changes nothing.
+Only the table's text in the file changes, written in the file's line
+ending (its first line's: `\r\n` in a checkout that converts them);
+the rest of the file is kept byte for byte.  A second run changes
+nothing.
 
 ## The drawing frame
 
@@ -92,4 +96,4 @@ thickness shown in other units in the GUI's table is rewritten in mm.
 |---|---|
 | 0 | written, or up to date |
 | 1 | `--check`, and the table is missing or would change (nothing is written) |
-| 2 | the board unreadable, its paper not one KiCad 10 has, no physical stackup, no room for a new table in the frame (and no `--at`), or a rotated stackup table (replace it in KiCad) |
+| 2 | the board unreadable, its paper not one KiCad 10 has, no physical stackup, no room for a new table in the frame (and no `--at`), a rotated stackup table (replace it in KiCad), or `--at` with more than one stackup table |

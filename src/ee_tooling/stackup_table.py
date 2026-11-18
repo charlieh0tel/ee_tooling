@@ -7,10 +7,12 @@ Board Setup.  A board without one gets one, its top left corner at --at,
 else at the first of the spots (spots) where it lies inside the drawing
 sheet's frame, clear of its title block and the board outline.  Each
 stackup table it has (kicad_style_stackup.tables) whose cells or layer
-differ from what the stackup gives is rewritten where it is, or at --at;
-one on another layer is moved to User.Drawings.  A table kept where it
+differ from what the stackup gives is rewritten where it is, or at --at
+(refused with more than one table); one on another layer is moved to
+User.Drawings.  A table kept where it
 is, or put at --at, that leaves the frame is said on stderr.  Only the
-table's text in the file changes; the rest is kept byte for byte.
+table's text in the file changes, in the file's line ending; the rest is
+kept byte for byte.
 Thicknesses are in mm.
 
 Column widths are estimated from the stroke font's advances, not
@@ -19,6 +21,7 @@ GUI's by a fraction of a millimeter.
 """
 
 import argparse
+import re
 import sys
 import uuid
 from collections import Counter
@@ -396,6 +399,11 @@ def refresh(text: str, board: Expression, at: Point | None = None) -> Result:
     located = spans(text)
     edits: list[tuple[tuple[int, int], Expression]] = []
     present = tables(board)
+    if at is not None and len(present) > 1:
+        raise TableError(
+            f"{len(present)} stackup tables, and --at puts each at the one point: give no"
+            " --at, or delete all but one in KiCad"
+        )
     for table in present:
         if any(child(c, "angle") for c in children(child(table, "cells") or [], "table_cell")):
             raise TableError("a rotated stackup table: replace it in KiCad")
@@ -425,9 +433,13 @@ def refresh(text: str, board: Expression, at: Point | None = None) -> Result:
             result.notes.append(f"stackup table at {where(corner)}: {', '.join(wrong)}")
         if any(str(g[1]) == OLD_GROUP for g in children(board, "group")):
             result.notes.append(f"the old {OLD_GROUP} stays: delete it in KiCad")
+    # The file's own line ending, its first line's: KiCad's is \n, a
+    # checkout's on Windows may be \r\n.
+    newline = "\r\n" if re.match(r"[^\n]*\r\n", text) else "\n"
     for (start, end), new in sorted(edits, key=lambda e: e[0], reverse=True):
         written = write(new, 1)
         piece = written.lstrip("\t") if start != end else "\n" + written
+        piece = piece.replace("\n", newline)
         result.text = result.text[:start] + piece + result.text[end:]
     return result
 
