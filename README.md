@@ -58,5 +58,5 @@ skipped without them.  `pcbnew` belongs to the system Python, so it
 needs a venv made with `uv venv --system-site-packages --python
 /usr/bin/python3`, and that Python 3.12 or later.  CI's `kicad` job
 installs KiCad and its demos from the `kicad/kicad-10.0-releases` PPA
-and poppler, makes such a venv, and fails if any of those tests is
-skipped.
+and poppler, fails if the KiCad installed is not 10, makes such a
+venv, and fails if any of those tests is skipped.
