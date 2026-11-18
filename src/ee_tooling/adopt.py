@@ -734,6 +734,39 @@ def warn_replaced_hook(root: Path) -> None:
     )
 
 
+# A file git keeps in a hooks directory that is not a hook.
+SAMPLE_SUFFIX = ".sample"
+
+
+def warn_disabled_hooks(root: Path) -> None:
+    """Say loudly, naming each, which hooks stop running when core.hooksPath
+    becomes .githooks: those in the hooks directory git uses now (.git/hooks,
+    or another core.hooksPath such as .husky), when that is not .githooks."""
+    current = git(root, "rev-parse", "--git-path", "hooks")
+    if not current:
+        return
+    directory = (root / current).resolve()
+    if directory == (root / HOOKS_PATH).resolve() or not directory.is_dir():
+        return
+    hooks = sorted(
+        f.name
+        for f in directory.iterdir()
+        if f.is_file() and not f.name.endswith(SAMPLE_SUFFIX) and os.access(f, os.X_OK)
+    )
+    if not hooks:
+        return
+    where = (
+        directory.relative_to(root.resolve())
+        if directory.is_relative_to(root.resolve())
+        else directory
+    )
+    print(
+        f"WARNING: core.hooksPath is to be {HOOKS_PATH} (--yes), so these hooks git runs"
+        f" now from {where.as_posix()} stop running: {', '.join(hooks)}",
+        file=sys.stderr,
+    )
+
+
 def uses_ee_tooling(pyproject: Path) -> bool:
     """Whether the hardware tools' project has ee_tooling as a source; said
     on stderr if its name is not a package name uv accepts (the project's
@@ -773,6 +806,7 @@ def files(layout: Layout) -> list[File]:
         ),
     ]
     warn_replaced_hook(root)
+    warn_disabled_hooks(root)
     attributes = root / GITATTRIBUTES
     existing = read(attributes) if attributes.exists() else None
     try:

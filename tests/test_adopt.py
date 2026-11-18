@@ -1842,3 +1842,47 @@ def test_venv_through_a_link_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match=r"^hardware/\.venv is a symbolic link"):
         plan(layout)
     assert (target / "pyvenv.cfg").exists()
+
+
+def hook(directory: Path, name: str, executable: bool = True) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / name).write_text("#!/bin/sh\n")
+    (directory / name).chmod(0o755 if executable else 0o644)
+
+
+@pytest.mark.parametrize("hooks_path", [None, ".husky"])
+def test_hooks_that_stop_running_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], hooks_path: str | None
+) -> None:
+    """The hooks git runs now, from .git/hooks or another core.hooksPath:
+    each named, in every mode, as one that stops running."""
+    layout = repository(tmp_path, "main")
+    if hooks_path is None:
+        directory = tmp_path / ".git/hooks"
+    else:
+        directory = tmp_path / hooks_path
+        git("-C", str(tmp_path), "config", "core.hooksPath", hooks_path)
+    hook(directory, "pre-commit")
+    hook(directory, "post-merge")
+    hook(directory, "pre-push.sample")
+    hook(directory, "notes", executable=False)
+    where = ".git/hooks" if hooks_path is None else hooks_path
+    warning = (
+        "WARNING: core.hooksPath is to be .githooks (--yes), so these hooks git runs now from"
+        f" {where} stop running: post-merge, pre-commit\n"
+    )
+    for run in (plan, stale):
+        capsys.readouterr()
+        run(layout)
+        assert warning in capsys.readouterr().err
+
+
+def test_no_warning_once_hooks_path_is_ours(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    layout = repository(tmp_path, "main")
+    git("-C", str(tmp_path), "config", "core.hooksPath", ".githooks")
+    hook(tmp_path / ".git/hooks", "pre-commit")
+    capsys.readouterr()
+    plan(layout)
+    assert "stop running" not in capsys.readouterr().err

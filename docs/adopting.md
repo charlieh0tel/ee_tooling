@@ -322,6 +322,12 @@ and, when tracked, in the index (what every clone checks out): `--check`
 fails on it, and `--yes` sets the work tree's bit and stages the index's
 (`git update-index --chmod=+x`) for the next commit.
 
+`--yes` sets `core.hooksPath` to `.githooks`, so the hooks git runs now
+from elsewhere (`.git/hooks`, or another `core.hooksPath` such as
+`.husky`) stop running.  Every mode names each of them (an executable
+file, not a `.sample`) on stderr, in a `WARNING:` line, while
+`core.hooksPath` is not `.githooks` yet.
+
 ## Updating
 
 A change to ee_tooling is made and pushed in ee_tooling.  Then, in the
