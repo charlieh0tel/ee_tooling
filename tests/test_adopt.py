@@ -20,6 +20,7 @@ from ee_tooling.adopt import (
     Step,
     agents_text,
     apply,
+    describe,
     fab_added,
     fab_config,
     has_comment,
@@ -652,7 +653,10 @@ def test_rules_new_dru(tmp_path: Path) -> None:
     layout = rules_repository(tmp_path)
     dru = tmp_path / "hardware/main/main.kicad_dru"
     dru.unlink()
-    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    edits = [s for s in plan(layout) if isinstance(s, Edit)]
+    assert describe(edits[0], tmp_path).startswith("create hardware/main/main.kicad_dru (project;")
+    assert describe(edits[1], tmp_path).startswith("update hardware/main/main.kicad_pro (project;")
+    apply(tmp_path, edits, lambda *_: None)
     assert dru.read_text() == f"(version 1)\n{SECTION}"
 
 

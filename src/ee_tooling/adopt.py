@@ -566,7 +566,8 @@ def describe(step: Step, root: Path) -> str:
         case Remove():
             return f"remove {step.path.as_posix()} (project; {step.why})"
         case Edit():
-            return f"update {step.path.as_posix()} (project; {step.why})"
+            verb = "update" if (root / step.path).exists() else "create"
+            return f"{verb} {step.path.as_posix()} (project; {step.why})"
         case Rename():
             names = ", ".join(f"{old} -> {new}" for old, new in step.names)
             return (
