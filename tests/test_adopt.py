@@ -1982,3 +1982,20 @@ def test_fab_config_with_a_name_beyond_the_bmp(tmp_path: Path) -> None:
     config = fab_config(layout)
     assert config is not None
     assert list(load_config(config)) == ["rocket\U0001f680"]
+
+
+@pytest.mark.parametrize("mode", [[], ["--check"]])
+@pytest.mark.parametrize("name", ["AGENTS.md", "fab.toml", ".gitattributes"])
+def test_directory_where_a_file_belongs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: list[str],
+    name: str,
+) -> None:
+    """Named, not a traceback."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / name).mkdir()
+    monkeypatch.setattr(adopt, "lfs_missing", lambda: None)
+    code, _ = adopt_main(layout, monkeypatch, capsys, *mode)
+    assert code == f"{tmp_path / name}: Is a directory; nothing done"

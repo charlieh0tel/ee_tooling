@@ -1157,6 +1157,8 @@ def main() -> None:
             steps = plan(layout)
     except ValueError as e:
         sys.exit(str(e))
+    except OSError as e:
+        sys.exit(f"{e.filename}: {e.strerror}; nothing done")
     if a.check:
         for what, p in out_of_date:
             print(f"{what}: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr)

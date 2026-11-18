@@ -81,7 +81,8 @@ write or clear) stops it,
 naming the link, before anything is done (`--check` too): replace the
 link with what it links to, or remove it.
 
-A file `adopt` reads that is not UTF-8 stops it, naming the file,
+A file `adopt` reads that cannot be read (a directory where the file
+belongs, say) stops it, naming it, before anything is done.  A file `adopt` reads that is not UTF-8 stops it, naming the file,
 before anything is done; a Markdown file in a skill it moves is left as
 it is, named on stderr.
 
