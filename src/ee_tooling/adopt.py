@@ -582,6 +582,22 @@ def project_json(project: dict[str, Any]) -> str:
     return json.dumps(project, indent=2, ensure_ascii=False) + "\n"
 
 
+# KiCad's lock file for a file it has open: ~NAME.EXT.lck beside it
+# (libkicommon's "~*.lck"), for the project, the board and the schematic.
+LOCK = "~{}.lck"
+LOCKED_SUFFIXES = (".kicad_pro", ".kicad_pcb", ".kicad_sch")
+
+
+def open_in_kicad(root: Path, directory: Path, name: str) -> Path | None:
+    """The first lock file KiCad keeps for project name's files in
+    directory, from root, or None."""
+    for suffix in LOCKED_SUFFIXES:
+        lock = directory / LOCK.format(f"{name}{suffix}")
+        if (root / lock).exists():
+            return lock
+    return None
+
+
 def foreign_directory(root: Path, directory: Path) -> str | None:
     """Why directory, from root, is not the repository's own: outside it, or
     in another repository (a directory with a .git, a submodule); or
@@ -673,6 +689,11 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             )
         if erc:
             what.append(f"ERC severities and connection grid set: {'; '.join(erc)}")
+        if (found.stale or what) and (lock := open_in_kicad(root, Path(directory), name)):
+            raise ValueError(
+                f"{lock.as_posix()}: KiCad has {name} open; close it, then rerun (adopt edits"
+                f" {dru.name} and {project.name}, which KiCad would overwrite)"
+            )
         if what:
             out.append(Edit(project, project_json(settings), f"{'; '.join(what)}; {close}"))
     return out

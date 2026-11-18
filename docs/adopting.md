@@ -108,7 +108,10 @@ naming it, before any edit is planned: it edits no `.kicad_dru` or
 
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
-overwrites the change.  `--check` fails while a board's rules section
+overwrites the change.  While KiCad's lock file for the board's project,
+board or schematic (`~NAME.kicad_pro.lck`, `~NAME.kicad_pcb.lck`,
+`~NAME.kicad_sch.lck` beside it) is there and an edit is due, `adopt`
+stops, naming it.  `--check` fails while a board's rules section
 is missing or out of date, its Board Setup is below the profile's
 minimums, or its ERC severities or connection grid differ as above.  A board whose profile is not known, or whose `.kicad_pro`
 is not there, is left, said on stderr.  The boards are `fab.toml`'s,

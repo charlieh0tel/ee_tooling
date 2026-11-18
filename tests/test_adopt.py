@@ -2005,3 +2005,22 @@ def test_directory_where_a_file_belongs(
     monkeypatch.setattr(adopt, "lfs_missing", lambda _: None)
     code, _ = adopt_main(layout, monkeypatch, capsys, *mode)
     assert code == f"{tmp_path / name}: Is a directory; nothing done"
+
+
+@pytest.mark.parametrize("suffix", [".kicad_pro", ".kicad_pcb", ".kicad_sch"])
+def test_refused_while_kicad_has_the_board_open(tmp_path: Path, suffix: str) -> None:
+    """KiCad's lock file beside a file it has open: no edit planned, the
+    lock named; none once the rules are in."""
+    layout = rules_repository(tmp_path)
+    lock = tmp_path / f"hardware/main/~main{suffix}.lck"
+    lock.write_text("{}")
+    for run in (plan, stale):
+        with pytest.raises(
+            ValueError,
+            match=rf"^hardware/main/~main{re.escape(suffix)}\.lck: KiCad has main open; close it",
+        ):
+            run(layout)
+    lock.unlink()
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    lock.write_text("{}")
+    assert Path("hardware/main/main.kicad_pro") not in stale(layout)
