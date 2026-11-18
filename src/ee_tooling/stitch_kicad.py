@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pcbnew
 
+from ee_tooling.kicad_pcbnew import missing
 from ee_tooling.kicad_style_board import Point, Segment, edge, on_board, where
 from ee_tooling.kicad_style_finishing import (
     MAX_GAP,
@@ -306,10 +307,7 @@ def main() -> None:
         # Imported here, to say what to do when the venv lacks it.
         import pcbnew
     except ImportError:
-        sys.exit(
-            "pcbnew is not importable: make the venv with"
-            " uv venv --system-site-packages --python /usr/bin/python3"
-        )
+        sys.exit(missing())
     expression = parse(args.board.read_text())
     net = args.net or plane_net(expression)
     if net is None:

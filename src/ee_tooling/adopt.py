@@ -21,10 +21,10 @@ from enum import Enum
 from pathlib import Path
 
 from ee_tooling.jlcpcb_release import CONFIG
+from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON
 
 # This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
 CHECKOUT = Path(__file__).resolve().parents[2]
-SYSTEM_PYTHON = "/usr/bin/python3"
 HOOKS_PATH = ".githooks"
 AGENTS = Path("AGENTS.md")
 AGENTS_BEGIN = "<!-- ee_tooling: begin; written by ee-tooling-adopt -->"
