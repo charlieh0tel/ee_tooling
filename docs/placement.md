@@ -9,7 +9,8 @@ uv run placement-score NAME/NAME.kicad_pcb --render placed.png
 ```
 
 It reads the board with KiCad's `pcbnew`, so the venv is the one
-`adopt` makes, with system site packages (`docs/adopting.md`).
+`adopt` makes, with system site packages (`docs/adopting.md`), and a
+system Python of 3.12 or later (`docs/stitch.md`, Platforms).
 
 ## What it measures
 

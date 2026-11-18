@@ -17,6 +17,15 @@ made with `uv venv --system-site-packages --python /usr/bin/python3`
 place unless `-o`; the project file (`.kicad_pro`) must be beside the
 board written, for DRC's rules.
 
+## Platforms
+
+KiCad's `pcbnew` is in the system Python only (`/usr/bin/python3`),
+and ee_tooling needs Python 3.12 or later, so `stitch` runs only where
+the system Python is 3.12 or later with KiCad's `pcbnew`: Ubuntu 24.04
+and later, for example, but not 22.04 (3.10).  Where it is older,
+`stitch` and `placement-score` exit saying so; `kicad-style-check`,
+which reads the files itself, still runs in a venv of a newer Python.
+
 ## What it places, in order
 
 Each via goes at the clear spot nearest its mark, within `--reach`.  A
