@@ -2189,3 +2189,46 @@ def test_source_tgz_leaves_out_git_and_releases(
         names = [m.name for m in t.getmembers()]
     assert "b-1-source/./docs/notes.txt" in names or "b-1-source/docs/notes.txt" in names
     assert not [n for n in names if "/.git" in n or "production" in n or "/out" in n]
+
+
+def hierarchy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fixture's schematic in two levels: hw/sub/a.kicad_sch, and from
+    it hw/sub/b.kicad_sch and shared/c.kicad_sch, outside the board's
+    directory."""
+    monkeypatch.setitem(
+        FIXTURE, "hw/b.kicad_sch", '(kicad_sch (sheet (property "Sheetfile" "sub/a.kicad_sch")))\n'
+    )
+    monkeypatch.setitem(
+        FIXTURE,
+        "hw/sub/a.kicad_sch",
+        '(kicad_sch (sheet (property "Sheetfile" "b.kicad_sch"))'
+        ' (sheet (property "Sheetfile" "../../shared/c.kicad_sch")))\n',
+    )
+    monkeypatch.setitem(FIXTURE, "hw/sub/b.kicad_sch", "(kicad_sch)\n")
+    monkeypatch.setitem(FIXTURE, "shared/c.kicad_sch", "(kicad_sch)\n")
+
+
+def test_source_tgz_holds_every_sheet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hierarchy(monkeypatch)
+    root, _ = release(tmp_path, monkeypatch)
+    with tarfile.open(root / "production/20261118-1/b-1-source.tgz") as t:
+        names = [m.name for m in t.getmembers()]
+    for sheet in (
+        "hw/b.kicad_sch",
+        "hw/sub/a.kicad_sch",
+        "hw/sub/b.kicad_sch",
+        "shared/c.kicad_sch",
+    ):
+        assert names.count(f"b-1-source/{sheet}") == 1, sheet
+
+
+def test_release_refuses_an_uncommitted_sheet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sheet outside the board's directory, changed: uncommitted."""
+    hierarchy(monkeypatch)
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "shared/c.kicad_sch").write_text("(kicad_sch (changed))\n")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    with pytest.raises(SystemExit, match=r"uncommitted changes .*:\n ?M shared/c.kicad_sch"):
+        main()

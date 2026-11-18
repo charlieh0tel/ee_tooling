@@ -331,6 +331,12 @@ def check_netclasses(
 def sheets(root: Path) -> Iterator[Expression]:
     """A schematic's sheets, root first, each file once.  A sheet's file is
     found beside its parent's, else beside the root's."""
+    for _, sheet in sheet_files(root):
+        yield sheet
+
+
+def sheet_files(root: Path) -> Iterator[tuple[Path, Expression]]:
+    """A schematic's sheets' files (resolved) and sheets, as sheets()."""
     seen: set[Path] = set()
     todo = [root]
     while todo:
@@ -339,7 +345,7 @@ def sheets(root: Path) -> Iterator[Expression]:
             continue
         seen.add(path)
         sheet = parse(path.read_text())
-        yield sheet
+        yield path, sheet
         for sub in children(sheet, "sheet"):
             name = property_value(sub, "Sheetfile")
             if not name:

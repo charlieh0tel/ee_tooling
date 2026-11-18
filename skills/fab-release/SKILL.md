@@ -109,7 +109,10 @@ variants.
 
 `NAME-REV-source.tgz` holds the project's `.kicad_pcb`, `.kicad_sch`,
 `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
-`sym-lib-table` that exist (directories whole), then `sources`, then
+`sym-lib-table` that exist (directories whole), every sheet file of the
+schematic's hierarchy inside the repository (each also in the
+uncommitted-sources check; one outside is said on stderr), then
+`sources`, then
 the schematic and board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty`
 if built from uncommitted sources, and when it was built).  It leaves
 out `.git` and every board's production directory, wherever they fall

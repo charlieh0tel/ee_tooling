@@ -115,7 +115,9 @@ electrical_test = "100% netlist test per IPC-9252"
   variables are resolved.
 - The source tgz: the project's `.kicad_pcb`, `.kicad_sch`,
   `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
-  `sym-lib-table` that exist, `sources`, the PDFs and `COMMIT`; never
+  `sym-lib-table` that exist, every sheet file of the schematic's
+  hierarchy inside the repository (in the uncommitted-sources check
+  too), `sources`, the PDFs and `COMMIT`; never
   `.git` or a board's production directory under a source.  A
   library a board reads lives inside the repository, normally a git
   submodule (`docs/kicad-style.md`, Files); a clone beside the

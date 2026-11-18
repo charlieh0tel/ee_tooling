@@ -69,7 +69,7 @@ from ee_tooling.fabrication import (
     stackup_document,
 )
 from ee_tooling.kicad_rules import Installed, board_setup, copied_message, install, installed
-from ee_tooling.kicad_style_netclass import sheets
+from ee_tooling.kicad_style_netclass import sheet_files
 from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.profile import (
@@ -232,13 +232,16 @@ class Board:
     def project(self) -> Path:
         return self.directory / f"{self.name}.kicad_pro"
 
-    def source_paths(self, root: Path) -> list[Path]:
-        """The source tgz's files and directories, from the repository root."""
+    def source_paths(self, root: Path, sheets: Iterable[Path] = ()) -> list[Path]:
+        """The source tgz's files and directories, from the repository
+        root: the project's files, its schematic's other sheets' files
+        (sheets, from the root) not among them, and the sources."""
         candidates = [
             *(self.directory / f"{self.name}{s}" for s in PROJECT_SUFFIXES),
             *(self.directory / f for f in PROJECT_FILES),
         ]
-        return [*(c for c in candidates if (root / c).exists()), *self.sources]
+        present = [c for c in candidates if (root / c).exists()]
+        return [*present, *(s for s in sheets if s not in present), *self.sources]
 
 
 def string(where: str, table: dict[str, Any], key: str, default: str | None) -> str:
@@ -1031,6 +1034,7 @@ class Release:
         commit: str,
         variants: Sequence[str | None] = (None,),
         productions: Sequence[Path] = (),
+        sheets: Sequence[Path] = (),
     ) -> None:
         """The source tgz, with the schematic and board PDFs of each variant
         (None: the default)."""
@@ -1074,7 +1078,7 @@ class Release:
             return info
 
         with tarfile.open(out, "w:gz") as t:
-            for s in b.source_paths(self.root):
+            for s in b.source_paths(self.root, sheets):
                 t.add(self.root / s, arcname=f"{top}/{s}", filter=kept)
             for f in sorted(pdf.iterdir()):
                 t.add(f, arcname=f"{top}/pdf/{f.name}")
@@ -1188,8 +1192,18 @@ def main() -> None:
             file=sys.stderr,
         )
     try:
+        sheets_found = list(sheet_files((root / b.sch).resolve()))
+    except (OSError, ParseError) as e:
+        sys.exit(f"{b.sch}: {e}")
+    schematic = [s for _, s in sheets_found]
+    top = root.resolve()
+    sheet_paths = [p.relative_to(top) for p, _ in sheets_found if p.is_relative_to(top)]
+    for p, _ in sheets_found:
+        if not p.is_relative_to(top):
+            print(f"warning: sheet {p} is outside the repository: not a source", file=sys.stderr)
+    try:
         inputs = [
-            *b.source_paths(root),
+            *b.source_paths(root, sheet_paths),
             *(p for p in found_libraries.inside if (root / p).exists()),
         ]
         pointers = lfs_pointers(root, inputs)
@@ -1222,10 +1236,6 @@ def main() -> None:
             + f"write or refresh it with: stackup-table {b.pcb}"
         )
     try:
-        schematic = list(sheets((root / b.sch).resolve()))
-    except (OSError, ParseError) as e:
-        sys.exit(f"{b.sch}: {e}")
-    try:
         settings = json.loads((root / b.project).read_text())
     except (OSError, ValueError) as e:
         sys.exit(f"{b.project}: {e}")
@@ -1244,7 +1254,7 @@ def main() -> None:
             a.allow_dirty,
             rules,
             [x.production for x in boards.values()],
-            found_libraries.inside,
+            [*found_libraries.inside, *sheet_paths],
         )
         tag = f"{b.name}-{dest.name}"
         tagged = r.tagged(tag)
@@ -1341,6 +1351,7 @@ def main() -> None:
                 commit,
                 builds,
                 [x.production for x in boards.values()],
+                sheet_paths,
             )
         except BaseException:
             shutil.rmtree(building)
