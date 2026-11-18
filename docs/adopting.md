@@ -20,8 +20,10 @@ hardware/ee_tooling/adopt --yes    # does it
 It finds the board repository as the submodule's superproject, so it
 runs from any directory, and the submodule's parent is the hardware
 tools' uv project.  Rerun with `--yes` to bring the files it manages up
-to date; `--check` fails if one is stale, or if a file below is still to
-be migrated.  A fresh clone needs `git submodule update --init` first.
+to date; `--check` fails if one is stale ("out of date: PATH"), if a
+file below is still to be migrated ("to be migrated: PATH"), or if a
+board's rules or settings are still to be installed ("to be updated:
+PATH").  A fresh clone needs `git submodule update --init` first.
 
 The submodule's parent need not be `hardware/`.  With the submodule at
 `ee_tooling/` and the KiCad project at the repository root, the hardware

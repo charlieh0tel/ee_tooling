@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -704,3 +705,29 @@ def test_rules_left_without_a_project(tmp_path: Path, capsys: pytest.CaptureFixt
     assert (
         "hardware/main/main.kicad_pro is not there: rules not installed" in capsys.readouterr().err
     )
+
+
+def test_check_says_what_each_awaits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--check: a managed file out of date, a file to be migrated, a board's
+    rules to be updated, each said as such; it fails."""
+    layout = adopted(tmp_path, "main")
+    (tmp_path / "AGENTS.md").write_text("# Mine\n")
+    monkeypatch.setattr(adopt, "locate", lambda _: layout)
+    monkeypatch.setattr(sys, "argv", ["adopt", "--check"])
+    with pytest.raises(SystemExit) as e:
+        adopt.main()
+    assert e.value.code == 1
+    err = capsys.readouterr().err
+    run = "; run hardware/ee_tooling/adopt --yes\n"
+    assert f"out of date: AGENTS.md{run}" in err
+    assert f"to be migrated: jlcpcb.toml{run}" in err
+    assert f"to be migrated: .claude/skills/jlcpcb-release{run}" in err
+    apply(tmp_path, [s for s in plan(layout) if not isinstance(s, Edit)], lambda *_: None)
+    with pytest.raises(SystemExit):
+        adopt.main()
+    err = capsys.readouterr().err
+    assert f"to be updated: hardware/main/main.kicad_dru{run}" in err
+    assert f"to be updated: hardware/main/main.kicad_pro{run}" in err
+    assert "out of date" not in err

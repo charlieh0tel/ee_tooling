@@ -603,14 +603,24 @@ def read_config(root: Path) -> str | None:
     return path.read_text() if path.exists() else None
 
 
-def stale(layout: Layout) -> list[Path]:
-    """The managed files that differ from what would be written, the
-    project files still to be migrated, and the rules still to be
-    installed."""
+def pending(layout: Layout) -> list[tuple[str, Path]]:
+    """What --check fails on, each with what it awaits: the managed files
+    that differ from what would be written ("out of date"), the project
+    files still to be migrated ("to be migrated"), and the project files
+    whose rules or settings are still to be installed ("to be updated")."""
     managed = [f.path for f in files(layout) if f.owner is Owner.MANAGED and f.action(layout.root)]
     renamed = [s.source if isinstance(s, Rename) else s.path for s in migrations(layout)]
     rules = [s.path for s in rules_edits(layout.root, read_config(layout.root))]
-    return [*managed, *renamed, *rules]
+    return [
+        *(("out of date", p) for p in managed),
+        *(("to be migrated", p) for p in renamed),
+        *(("to be updated", p) for p in rules),
+    ]
+
+
+def stale(layout: Layout) -> list[Path]:
+    """The paths pending() names."""
+    return [p for _, p in pending(layout)]
 
 
 def main() -> None:
@@ -623,16 +633,14 @@ def main() -> None:
     try:
         layout = locate(CHECKOUT)
         if a.check:
-            out_of_date = stale(layout)
+            out_of_date = pending(layout)
         else:
             steps = plan(layout)
     except ValueError as e:
         sys.exit(str(e))
     if a.check:
-        for p in out_of_date:
-            print(
-                f"out of date: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr
-            )
+        for what, p in out_of_date:
+            print(f"{what}: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr)
         sys.exit(1 if out_of_date else 0)
     if not steps:
         print("nothing to do")
