@@ -115,7 +115,8 @@ electrical_test = "100% netlist test per IPC-9252"
   variables are resolved.
 - The source tgz: the project's `.kicad_pcb`, `.kicad_sch`,
   `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
-  `sym-lib-table` that exist, `sources`, the PDFs and `COMMIT`.  A
+  `sym-lib-table` that exist, `sources`, the PDFs and `COMMIT`; never
+  `.git` or a board's production directory under a source.  A
   library a board reads lives inside the repository, normally a git
   submodule (`docs/kicad-style.md`, Files); a clone beside the
   repository is not supported.  A library is in the archive only as one

@@ -108,6 +108,8 @@ VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
 # The Gerber map's name in the Gerber zip; the stackup and the fabrication
 # notes are there by their names after NAME-REV-.
 GERBER_README = "README.txt"
+# git's own directory (or, in a submodule or worktree, file).
+GIT_DIRECTORY = ".git"
 # git ls-files --stage's mode of a submodule (a gitlink).
 GITLINK = "160000 "
 # A release is built in its production directory, in .DATE-REV plus this,
@@ -1023,7 +1025,13 @@ class Release:
             for r in csv.DictReader(io.StringIO(raw.read_text()))
         ]
 
-    def source(self, out: Path, commit: str, variants: Sequence[str | None] = (None,)) -> None:
+    def source(
+        self,
+        out: Path,
+        commit: str,
+        variants: Sequence[str | None] = (None,),
+        productions: Sequence[Path] = (),
+    ) -> None:
         """The source tgz, with the schematic and board PDFs of each variant
         (None: the default)."""
         b = self.board
@@ -1055,9 +1063,19 @@ class Release:
                 self.path(b.pcb),
             )
         top = out.stem.removesuffix(".tar")
+        left_out = [normal(p) for p in productions]
+
+        def kept(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
+            """A source, but git's own directory and every production
+            directory (releases, this one's building directory too)."""
+            path = normal(Path(info.name).relative_to(top))
+            if GIT_DIRECTORY in path.parts or any(path.is_relative_to(p) for p in left_out):
+                return None
+            return info
+
         with tarfile.open(out, "w:gz") as t:
             for s in b.source_paths(self.root):
-                t.add(self.root / s, arcname=f"{top}/{s}")
+                t.add(self.root / s, arcname=f"{top}/{s}", filter=kept)
             for f in sorted(pdf.iterdir()):
                 t.add(f, arcname=f"{top}/pdf/{f.name}")
             info = (
@@ -1318,7 +1336,12 @@ def main() -> None:
                 parts, placements = rows[v]
                 write_csv(out / f"{bases[v]}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
                 profile.assembly(out, bases[v], parts, placements, options[b.name])
-            r.source(out / f"{base}-source.tgz", commit, builds)
+            r.source(
+                out / f"{base}-source.tgz",
+                commit,
+                builds,
+                [x.production for x in boards.values()],
+            )
         except BaseException:
             shutil.rmtree(building)
             raise

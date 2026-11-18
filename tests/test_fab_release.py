@@ -2168,3 +2168,24 @@ def test_drc_project_stops_on_an_unreadable_board(tmp_path: Path) -> None:
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
     with pytest.raises(SystemExit, match=r"^DRC's scratch copy: .*b.kicad_pcb: No such file"):
         r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules)))
+
+
+def test_source_tgz_leaves_out_git_and_releases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """sources = ["."]: the source tgz holds the repository, but .git and
+    every board's production directory (an earlier release, this one's
+    own files)."""
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', 'sources = ["."]')
+    other = '[[board]]\nname = "o"\ndirectory = "o"\nproduction = "out"\nprofile = "jlcpcb"\n'
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml + other + FIXTURE["fab.toml"].split("\n\n", 1)[1])
+    monkeypatch.setitem(FIXTURE, "out/o-1-bom.csv", "another board's release\n")
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "production/20261117-1").mkdir()
+    (root / "production/20261117-1/b-1-bom.csv").write_text("earlier\n")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    main()
+    with tarfile.open(root / "production/20261118-1/b-1-source.tgz") as t:
+        names = [m.name for m in t.getmembers()]
+    assert "b-1-source/./docs/notes.txt" in names or "b-1-source/docs/notes.txt" in names
+    assert not [n for n in names if "/.git" in n or "production" in n or "/out" in n]
