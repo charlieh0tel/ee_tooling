@@ -456,18 +456,44 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
     return out
 
 
+@dataclass(frozen=True)
+class Markers:
+    """The lines around ee_tooling's section of a file the project shares,
+    and where a file without the section gets it."""
+
+    begin: str
+    end: str
+    first: bool  # prepended (the project's lines after it win), else appended
+
+
+AGENTS_MARKERS = Markers(AGENTS_BEGIN, AGENTS_END, first=False)
+
+
+def marked_text(existing: str | None, block: str, markers: Markers) -> str:
+    """A file with ee_tooling's section, block between the markers: the
+    section replaced in place, or added where markers says; the rest of the
+    file kept."""
+    section = f"{markers.begin}\n{block.rstrip()}\n{markers.end}\n"
+    if existing is None:
+        return section
+    begin, end = existing.find(markers.begin), existing.find(markers.end)
+    if begin >= 0 and end > begin:
+        return existing[:begin] + section + existing[end + len(markers.end) :].lstrip("\n")
+    if markers.first:
+        return section + existing.lstrip("\n")
+    return existing.rstrip("\n") + "\n\n" + section
+
+
 def agents_text(existing: str | None, block: str) -> str | None:
     """AGENTS.md with ee_tooling's section, or None if it was adopted by
     hand (the house style imported outside the markers)."""
-    section = f"{AGENTS_BEGIN}\n{block.rstrip()}\n{AGENTS_END}\n"
-    if existing is None:
-        return section
-    begin, end = existing.find(AGENTS_BEGIN), existing.find(AGENTS_END)
-    if begin >= 0 and end > begin:
-        return existing[:begin] + section + existing[end + len(AGENTS_END) :].lstrip("\n")
-    if STYLE in existing:
+    if (
+        existing is not None
+        and STYLE in existing
+        and not (0 <= existing.find(AGENTS_BEGIN) < existing.find(AGENTS_END))
+    ):
         return None
-    return existing.rstrip("\n") + "\n\n" + section
+    return marked_text(existing, block, AGENTS_MARKERS)
 
 
 def uses_ee_tooling(pyproject: Path) -> bool:

@@ -10,10 +10,12 @@ from ee_tooling import adopt
 from ee_tooling.adopt import (
     AGENTS_BEGIN,
     AGENTS_END,
+    AGENTS_MARKERS,
     Command,
     Edit,
     File,
     Layout,
+    Markers,
     Owner,
     Remove,
     Rename,
@@ -25,6 +27,7 @@ from ee_tooling.adopt import (
     fab_config,
     has_comment,
     locate,
+    marked_text,
     plan,
     projects,
     stale,
@@ -92,6 +95,47 @@ def test_agents_section_replaced_in_place() -> None:
 
 def test_agents_adopted_by_hand_left_alone() -> None:
     assert agents_text("@hardware/ee_tooling/docs/kicad-style.md\n", "new\n") is None
+
+
+def test_agents_section_with_the_style_replaced() -> None:
+    """The house style imported inside the markers is ee_tooling's section."""
+    old = f"{AGENTS_BEGIN}\n@x/docs/kicad-style.md\n{AGENTS_END}\n"
+    assert agents_text(old, "new\n") == f"{AGENTS_BEGIN}\nnew\n{AGENTS_END}\n"
+
+
+def test_agents_markers_out_of_order_appended() -> None:
+    old = f"{AGENTS_END}\nown\n{AGENTS_BEGIN}\n"
+    assert agents_text(old, "new\n") == f"{old}\n{AGENTS_BEGIN}\nnew\n{AGENTS_END}\n"
+
+
+# A section that goes first, as the project's lines after it win.
+FIRST = Markers("# begin", "# end", first=True)
+
+
+@pytest.mark.parametrize(
+    ("existing", "text"),
+    [
+        (None, "# begin\nnew\n# end\n"),
+        ("own\n", "# begin\nnew\n# end\nown\n"),
+        ("\n\nown\n", "# begin\nnew\n# end\nown\n"),
+        ("# begin\nold\n# end\nown\n", "# begin\nnew\n# end\nown\n"),
+        ("mine\n# begin\nold\n# end\n\nown\n", "mine\n# begin\nnew\n# end\nown\n"),
+        ("# end\nown\n", "# begin\nnew\n# end\n# end\nown\n"),
+    ],
+)
+def test_marked_text_first(existing: str | None, text: str) -> None:
+    """Prepended to a file without the section, replaced in place in one
+    with it; a rerun changes nothing."""
+    assert marked_text(existing, "new\n", FIRST) == text
+    assert marked_text(text, "new\n", FIRST) == text
+
+
+@pytest.mark.parametrize(
+    "existing", [None, "own\n", f"# Agents\n\n{AGENTS_BEGIN}\nold\n{AGENTS_END}\n"]
+)
+def test_marked_text_rerun_changes_nothing(existing: str | None) -> None:
+    text = marked_text(existing, "new\n", AGENTS_MARKERS)
+    assert marked_text(text, "new\n", AGENTS_MARKERS) == text
 
 
 def test_fab_config(tmp_path: Path) -> None:
