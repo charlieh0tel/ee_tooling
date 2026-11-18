@@ -134,7 +134,11 @@ the submodule, every directory whose name starts with `.` (`.git`,
 names) and every other repository (a directory holding a `.git` file or
 directory: a library's submodule, a clone), so a project file in a
 release, a worktree or a library is not taken for a board, and `adopt`
-edits no other repository's `.kicad_dru` or `.kicad_pro`.
+edits no other repository's `.kicad_dru` or `.kicad_pro`.  Two projects
+of one name in different directories (`hardware/a/main.kicad_pro` and
+`hardware/b/main.kicad_pro`) stop it before `fab.toml` is written,
+naming both: `fab.toml` names a board by its project, so write it by
+hand or rename one.
 
 ## Migration
 

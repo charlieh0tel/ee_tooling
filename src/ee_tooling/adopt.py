@@ -460,10 +460,20 @@ def projects(layout: Layout) -> list[Path]:
 
 def fab_config(layout: Layout) -> str | None:
     """A starting fab.toml, one [[board]] per KiCad project under the
-    hardware directory, or None if there is none."""
+    hardware directory, or None if there is none.  ValueError naming two
+    projects of one name, which fab.toml cannot tell apart."""
     found = projects(layout)
     if not found:
         return None
+    by_name: dict[str, list[Path]] = {}
+    for project in found:
+        by_name.setdefault(project.stem, []).append(project.relative_to(layout.root))
+    for name, paths in by_name.items():
+        if len(paths) > 1:
+            raise ValueError(
+                f"KiCad projects of one name, {name!r}: {', '.join(p.as_posix() for p in paths)};"
+                f" {CONFIG} names a board by its project: write {CONFIG} by hand, or rename one"
+            )
     lines = [
         "# The boards fab-release builds; the first is the default.  Paths are",
         "# from the repository root.  Written by ee-tooling-adopt: check each",

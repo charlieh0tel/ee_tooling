@@ -2036,3 +2036,19 @@ def test_check_names_a_missing_fab_toml(tmp_path: Path) -> None:
     empty = repository(tmp_path / "empty")
     apply(empty.root, [s for s in plan(empty) if isinstance(s, File)], lambda *_: None)
     assert Path("fab.toml") not in stale(empty)
+
+
+def test_two_projects_of_one_name_refused(tmp_path: Path) -> None:
+    """hardware/a/main and hardware/b/main: refused before fab.toml is
+    written, naming both."""
+    layout = repository(tmp_path)
+    for d in ("a", "b"):
+        (tmp_path / "hardware" / d).mkdir(parents=True)
+        (tmp_path / "hardware" / d / "main.kicad_pro").write_text("{}")
+    with pytest.raises(
+        ValueError,
+        match=r"^KiCad projects of one name, 'main': hardware/a/main.kicad_pro,"
+        r" hardware/b/main.kicad_pro; fab.toml names a board by its project",
+    ):
+        plan(layout)
+    assert not (tmp_path / "fab.toml").exists()
