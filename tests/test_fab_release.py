@@ -2029,3 +2029,44 @@ def test_release_force_keeps_another_boards_files(
     with pytest.raises(SystemExit, match=r"20261118-1 holds jig-1-bom.csv, not this board's"):
         release(tmp_path, monkeypatch, args=("--force",))
     assert (old / "jig-1-bom.csv").read_text() == "another board's\n"
+
+
+@pytest.mark.parametrize(
+    ("production", "error"),
+    [
+        ("/tmp/out", "production '/tmp/out' is outside the repository"),
+        ("../out", "production '../out' is outside the repository"),
+        ("hw/../../out", "production 'hw/../../out' is outside the repository"),
+        (".", "production '.' holds 'hw', 'b''s directory"),
+        ("hw", "production 'hw' holds 'hw', 'b''s directory"),
+        ("docs", "production 'docs' holds 'docs/x', 'b''s source"),
+    ],
+)
+def test_config_refuses_a_bad_production(production: str, error: str) -> None:
+    """Outside the repository, or holding what the uncommitted-sources check
+    must see."""
+    text = BOARD.replace('production = "production"', f'production = "{production}"')
+    with pytest.raises(ValueError, match=rf"^\[\[board\]\] 'b': {re.escape(error)}$"):
+        load_config(f'{text}sources = ["docs/x"]\n')
+
+
+def test_config_production_inside_the_directory() -> None:
+    """The repository-root layout: production inside the board's directory."""
+    text = BOARD.replace('directory = "hw"', 'directory = "."')
+    assert load_config(text)["b"].production == Path("production")
+
+
+def test_release_stops_when_git_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A git call that fails stops the release, with git's message, never
+    read as clean."""
+    real = subprocess.run
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if list(args[:2]) == ["git", "status"]:
+            return subprocess.CompletedProcess(args, 128, "", "fatal: bad pathspec\n")
+        return real(args, **kwargs)  # type: ignore[call-overload,no-any-return]
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(SystemExit, match=r"^git status .* failed \(128\):\nfatal: bad pathspec\n$"):
+        release(tmp_path, monkeypatch)
+    assert not (tmp_path / "repo/production").exists()

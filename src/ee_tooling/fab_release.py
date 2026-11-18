@@ -362,17 +362,39 @@ def nested(a: Path, b: Path) -> bool:
 
 
 def production_errors(boards: Iterable[Board]) -> list[str]:
-    """Each two boards whose production directories are the same or one
-    holds the other: a release's directory, DATE-REV, does not name its
-    board, so one board's --force would remove the other's release."""
+    """A production directory outside the repository, or the same as or
+    holding a board's directory or a source (the uncommitted-sources
+    check leaves every production directory out); and each two boards
+    whose production directories are the same or one holds the other: a
+    release's directory, DATE-REV, does not name its board, so one
+    board's --force would remove the other's release."""
     listed = list(boards)
-    return [
-        f"[[board]] {a.name!r} and {b.name!r}: production {str(a.production)!r} and"
-        f" {str(b.production)!r} are the same directory, or one holds the other"
-        for i, a in enumerate(listed)
-        for b in listed[i + 1 :]
-        if nested(a.production, b.production)
+    outside = [
+        f"[[board]] {a.name!r}: production {str(a.production)!r} is outside the repository"
+        for a in listed
+        if a.production.is_absolute() or normal(a.production).parts[:1] == (os.pardir,)
     ]
+    holding = [
+        f"[[board]] {a.name!r}: production {str(a.production)!r} holds"
+        f" {str(p)!r}, {b.name!r}'s {what}"
+        for a in listed
+        for b in listed
+        for what, p in (("directory", b.directory), *(("source", s) for s in b.sources))
+        if normal(p) == normal(a.production)
+        or normal(p).is_relative_to(normal(a.production))
+        or normal(a.production) == Path(".")
+    ]
+    return (
+        outside
+        + holding
+        + [
+            f"[[board]] {a.name!r} and {b.name!r}: production {str(a.production)!r} and"
+            f" {str(b.production)!r} are the same directory, or one holds the other"
+            for i, a in enumerate(listed)
+            for b in listed[i + 1 :]
+            if nested(a.production, b.production)
+        ]
+    )
 
 
 def lfs_pointer(path: Path) -> bool:
@@ -700,7 +722,7 @@ class Release:
 
     def submodules(self) -> list[Path]:
         """The repository's submodules (gitlinks), from its root."""
-        listed = self.run("git", "ls-files", "--stage").stdout.splitlines()
+        listed = self.git("ls-files", "--stage").splitlines()
         return [Path(line.split("\t", 1)[1]) for line in listed if line.startswith(GITLINK)]
 
     def library_paths(self, inside: Iterable[Path]) -> list[Path]:
@@ -752,13 +774,10 @@ class Release:
         ]
         # A submodule's changes, its new commits, modified or untracked
         # content, whatever its ignore setting in .gitmodules.
-        status = self.run(
-            "git", "status", "--porcelain", "--ignore-submodules=none", "--", *paths
-        ).stdout.strip()
+        status = self.git("status", "--porcelain", "--ignore-submodules=none", "--", *paths).strip()
         if status and not allow_dirty:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
-        commit = self.run("git", "rev-parse", "--short", "HEAD").stdout.strip()
-        return commit + ("-dirty" if status else "")
+        return self.git("rev-parse", "--short", "HEAD").strip() + ("-dirty" if status else "")
 
     def tagged(self, name: str) -> str | None:
         """The full hash of the commit tag `name` is on, or None."""
@@ -766,7 +785,14 @@ class Release:
         return r.stdout.strip() if r.returncode == 0 else None
 
     def head(self) -> str:
-        return self.run("git", "rev-parse", "HEAD").stdout.strip()
+        return self.git("rev-parse", "HEAD").strip()
+
+    def git(self, *args: str) -> str:
+        """git's output; a failure stops the release, with git's message."""
+        r = self.run("git", *args)
+        if r.returncode != 0:
+            sys.exit(f"git {' '.join(args)} failed ({r.returncode}):\n{r.stderr}")
+        return r.stdout
 
     def tag(self, name: str, message: str, move: bool) -> None:
         """An annotated tag on HEAD; move replaces one of that name."""

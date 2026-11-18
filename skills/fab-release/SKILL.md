@@ -53,7 +53,10 @@ allowed are `fab` and the one named by `profile`.  Paths are from the repository
 Each board's `production` is its own: two boards' the same, or one
 inside the other, is an error naming both (a release's directory,
 `YYYYMMDD-REV`, does not name its board), and `--force` replaces a
-release only if every file in it is the board's (`NAME-REV-*`).
+release only if every file in it is the board's (`NAME-REV-*`).  A
+`production` is inside the repository and neither the same as nor
+holding a board's `directory` or a `sources` path; inside a board's
+directory is allowed.
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  There is no `copper` key: the copper layers, top to
 bottom, are the stackup's.  Each `sources` path is inside the repository: one that
