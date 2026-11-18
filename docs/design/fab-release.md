@@ -7,15 +7,12 @@ core with profiles, required per-board fab values, the house BOM in the
 core, rules added by the release (not refused when stale), no `kicad`
 profile yet, no alias for the old command, a flag day, DNP parts at
 Qty 0 in the house BOM, and a fitted part with no LCSC number a warning
-unless the board requires LCSC numbers.  Decided, additive and after
-the flag day: KiCad 10 design variants, an optional `variants` list per
-board, with a BOM, CPL, IPC-2581 and ODB++ per variant and the Gerbers
-and fab documents shared.  Deferred: the fab notes and the
-no-extra-cost via rules.  Open: should a variant whose Gerbers differ
-(a `${VARIANT}` marking on the silkscreen) get a Gerber zip of its own,
-not be refused?  Should a variant that overrides a part's Footprint
-field be served (KiCad 10 allows it; the board holds one footprint per
-reference), and how?
+unless the board requires LCSC numbers.  Decided, in the flag day:
+KiCad 10 design variants, an optional `variants` list per board, with a
+BOM, CPL, IPC-2581 and ODB++ per variant and the Gerbers and fab
+documents shared; a variant that overrides a part's Footprint field
+is refused.  Deferred: the fab notes and the no-extra-cost via rules.
+Open: a variant whose Gerbers differ from the others'.
 
 ## Names
 
@@ -213,8 +210,8 @@ class Profile(Protocol):
 ## Design variants
 
 KiCad 10 design variants: one schematic and one board, several builds
-that differ in which parts are fitted and in their fields.  Additive:
-a board with no `variants` key releases as above, file for file.
+that differ in which parts are fitted and in their fields.  A board
+with no `variants` key releases as above, file for file.
 
 ```toml
 [[board]]
@@ -288,10 +285,9 @@ Checks per variant, beyond the core's:
 Parts are read from `kicad-cli`'s BOM export per variant, never from
 the netlist: a netlist's `comp` holds every variant's overrides in its
 `(variants (variant (name "X") (property (name "dnp") ...)))` (in XML,
-`<variants>`), so a
-reader of every `property` under `comp` takes a part DNP in one variant
-as DNP in all.  `review_netlist.py` reads only a `comp`'s direct
-children, which hold the default variant.
+`<variants>`), so a reader of every `property` under `comp` takes a
+part DNP in one variant as DNP in all.  `review_netlist.py` reads only
+a `comp`'s direct children, which hold the default variant.
 
 ## Fab notes
 
@@ -352,10 +348,9 @@ Breaking changes:
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
 
-Design variants are not on this list: the `variants` key is new and
-optional, and a board without it gets the files above unchanged.  The
-flag day fixes the names with VARIANT (the second table above) and
-`assembly`'s `stem`, so variants land later without renaming a file.
+Design variants land in the same merge and are not on this list: the
+`variants` key is new and optional, and a board without it gets the
+files above unchanged.
 
 ## Order of work
 
@@ -377,17 +372,20 @@ Then one PR, breaking, merged as one:
 6. Copper layers from the stackup; refuse a board with none.
 7. `[board.fab]` required.
 8. The house BOM; JLCPCB's files take its name; the Gerber zip's name.
-9. User.Drawings in the Gerbers, the map and the board PDF; the
-   documents in the Gerber zip.
-10. Refuse a board without a matching stackup table.
-11. The rules in sections; DRC on a scratch
+9. Design variants: the `variants` key and its name checks; the
+   per-variant exports and files; the shared Gerbers compared across
+   variants; the per-variant cross-checks.
+10. User.Drawings in the Gerbers, the map and the board PDF; the
+    documents in the Gerber zip.
+11. Refuse a board without a matching stackup table.
+12. The rules in sections; DRC on a scratch
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
-12. `adopt` sets the ERC severities and connection grid.
-13. Release 0.4.0; tag after CI.
+13. `adopt` sets the ERC severities and connection grid.
+14. Release 0.4.0; tag after CI.
 
-Later, not breaking: design variants, in a patch release after 0.4.0;
-`fab-setup`; the fab notes; the no-extra-cost via rules.
+Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
+rules.
 
 ## Adversarial review
 
@@ -397,7 +395,7 @@ Later, not breaking: design variants, in a patch release after 0.4.0;
   JLCPCB by habit.
 - The Gerber zip's new contents are unchecked against JLCPCB's parser:
   User.Drawings may be taken as a layer, the text files rejected.  A
-  quote upload, with no order, checks it before step 9 merges.
+  quote upload, with no order, checks it before step 10 merges.
 - DRC in the editor and in the release differ until `adopt --yes`; the
   release warns.
 - Board Setup is raised, never lowered: a board moved to a looser fab
@@ -415,10 +413,13 @@ Later, not breaking: design variants, in a patch release after 0.4.0;
   build of the base design needs a variant of its own in KiCad.
 - Variants: the shared Gerbers refuse a board whose silkscreen names
   its variant, a common build marking; the owner moves it to a label or
-  a Fab layer, or a Gerber zip per variant is added later (open).
+  a Fab layer.  A Gerber zip per variant is not foreclosed.
 - Variants: a footprint swap per variant (a different package in one
-  land pattern) is refused; serving it needs the board's footprint
-  checked against each variant's (open).
+  land pattern) is refused; serving it later needs the board's
+  footprint checked against each variant's.
+- Variants in the flag day: the merge grows by a step, and its first
+  user is a board migrating at the same time, so a fault in either is
+  found together.
 - Variants: listing a variant takes a release's work per variant: a BOM,
   placement, IPC-2581, ODB++, two PDFs and a Gerber comparison each.
   ODB++ and IPC-2581 repeat the copper per variant; the production
