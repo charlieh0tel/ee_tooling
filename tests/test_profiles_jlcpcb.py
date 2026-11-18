@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.fab_release import Board, Part, Placement, Release
+from ee_tooling.fab_release import Board, Release
 from ee_tooling.profiles.jlcpcb import Parts, jlcpcb_bom, jlcpcb_cpl
+from ee_tooling.profiles.profile import Part, Placement
 
 PARTS = Parts(
     rotation={"C1": -90.0, "C2": 180.0},

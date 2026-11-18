@@ -10,12 +10,8 @@ import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from ee_tooling.profiles import GerberOptions
-
-if TYPE_CHECKING:
-    from ee_tooling.fab_release import Part, Placement
+from ee_tooling.profiles.profile import GerberOptions, Part, Placement
 
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
@@ -43,7 +39,7 @@ class Parts:
         return cls.load(importlib.resources.files("ee_tooling").joinpath("parts.toml").read_text())
 
 
-def jlcpcb_bom(parts: Iterable["Part"]) -> tuple[list[list[str]], dict[str, str], list[str]]:
+def jlcpcb_bom(parts: Iterable[Part]) -> tuple[list[list[str]], dict[str, str], list[str]]:
     """The parts in JLCPCB's columns, grouped by Value, Footprint and LCSC
     in the order of each group's first part, as kicad-cli's --group-by
     groups them.  kicad-cli groups on the fields' text before text variables
@@ -69,7 +65,7 @@ def jlcpcb_bom(parts: Iterable["Part"]) -> tuple[list[list[str]], dict[str, str]
 
 
 def jlcpcb_cpl(
-    placements: Iterable["Placement"], refs: dict[str, str], corrections: Parts
+    placements: Iterable[Placement], refs: dict[str, str], corrections: Parts
 ) -> tuple[list[list[str]], set[str]]:
     """The placements in JLCPCB's columns, for the parts in refs.
 
@@ -117,7 +113,7 @@ class Jlcpcb:
         return cls(Parts.builtin())
 
     def assembly(
-        self, dest: Path, base: str, parts: list["Part"], placements: list["Placement"]
+        self, dest: Path, base: str, parts: list[Part], placements: list[Placement]
     ) -> list[Path]:
         """Its BOM, without not-fitted parts, and its CPL of the BOM's parts,
         with its corrections."""

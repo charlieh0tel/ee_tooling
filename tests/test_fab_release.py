@@ -23,8 +23,8 @@ from ee_tooling.fab_release import (
     revision,
     tag_plan,
 )
-from ee_tooling.profiles import GerberOptions
 from ee_tooling.profiles.jlcpcb import Jlcpcb, Parts
+from ee_tooling.profiles.profile import GerberOptions
 
 CONFIG = """
 [[board]]

@@ -35,7 +35,6 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -52,8 +51,8 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
-from ee_tooling.profiles import GerberOptions, Profile
-from ee_tooling.profiles.jlcpcb import Jlcpcb
+from ee_tooling.profiles import DEFAULT, PROFILES
+from ee_tooling.profiles.profile import GerberOptions, Part, Placement
 from ee_tooling.sexpr import Expression, ParseError, parse
 
 CONFIG = "jlcpcb.toml"
@@ -99,12 +98,6 @@ IPC2581_BOM = (
     ("--bom-col-mfg-pn", "MPN"),
     ("--bom-col-mfg", "Manufacturer"),
 )
-
-# Each profile's maker, by its name: a release makes its profile before
-# anything is checked or written, as loading the profile's data can fail.
-PROFILES: dict[str, Callable[[], Profile]] = {Jlcpcb.name: Jlcpcb.builtin}
-# jlcpcb.toml's boards are all JLCPCB's.
-PROFILE = Jlcpcb.name
 
 
 @dataclass(frozen=True)
@@ -157,29 +150,6 @@ def load_config(text: str) -> dict[str, Board]:
         )
         for b in boards
     }
-
-
-@dataclass(frozen=True)
-class Part:
-    """A fitted part, one per reference, from the schematic's BOM."""
-
-    reference: str
-    value: str
-    footprint: str  # LIBRARY:NAME
-    lcsc: str  # its LCSC field; "" if none
-
-
-@dataclass(frozen=True)
-class Placement:
-    """A fitted footprint's place on the board, from KiCad's position file."""
-
-    reference: str
-    value: str
-    package: str  # the footprint's name
-    x: float  # mm, KiCad's absolute coordinates (y negative)
-    y: float
-    rotation: float  # degrees
-    side: str  # KiCad's: top or bottom
 
 
 def revision(pcb_text: str) -> str | None:
@@ -514,7 +484,7 @@ def main() -> None:
         pcb = parse(pcb_text)
     except ParseError as e:
         sys.exit(f"{b.pcb}: {e}")
-    profile = PROFILES[PROFILE]()
+    profile = PROFILES[DEFAULT]()
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp))
         commit = r.check(a.allow_dirty)
