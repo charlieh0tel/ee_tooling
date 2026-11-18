@@ -153,7 +153,9 @@ by hand and is left alone.
 In `AGENTS.md` and `.gitattributes` a marker is a whole line (a marker
 quoted within a line is the project's text).  With no marker line the
 section is added; with one begin line, then one end line, the lines
-between them are replaced.  Any other arrangement (an end before the
+between them are replaced, and everything before the begin line and
+after the end line is kept byte for byte (a blank line after the
+section too).  Any other arrangement (an end before the
 begin, a begin with no end, two of either) stops `adopt`, naming the
 file, before anything is written: fix the markers by hand.
 

@@ -104,7 +104,9 @@ def test_agents_appended_to_own_text() -> None:
 
 def test_agents_section_replaced_in_place() -> None:
     old = f"# Agents\n\n{AGENTS_BEGIN}\nold\n{AGENTS_END}\n\n## After\n"
-    assert agents_text(old, "new\n") == f"# Agents\n\n{AGENTS_BEGIN}\nnew\n{AGENTS_END}\n## After\n"
+    new = f"# Agents\n\n{AGENTS_BEGIN}\nnew\n{AGENTS_END}\n\n## After\n"
+    assert agents_text(old, "new\n") == new
+    assert agents_text(new, "new\n") == new
 
 
 def test_agents_adopted_by_hand_left_alone() -> None:
@@ -178,9 +180,11 @@ FIRST = Markers("# begin", "# end", first=True)
     [
         (None, "# begin\nnew\n# end\n"),
         ("own\n", "# begin\nnew\n# end\nown\n"),
-        ("\n\nown\n", "# begin\nnew\n# end\nown\n"),
+        ("\n\nown\n", "# begin\nnew\n# end\n\n\nown\n"),
         ("# begin\nold\n# end\nown\n", "# begin\nnew\n# end\nown\n"),
-        ("mine\n# begin\nold\n# end\n\nown\n", "mine\n# begin\nnew\n# end\nown\n"),
+        ("mine\n# begin\nold\n# end\n\nown\n", "mine\n# begin\nnew\n# end\n\nown\n"),
+        ("# begin\nold\n# end\n\n\n", "# begin\nnew\n# end\n\n\n"),
+        ("# begin\nold\n# end", "# begin\nnew\n# end\n"),
         ("own # begin\n", "# begin\nnew\n# end\nown # begin\n"),
         ("# begin \nold\n# end\t\nown\n", "# begin\nnew\n# end\nown\n"),
     ],
@@ -1741,3 +1745,17 @@ def test_leftover_scratch_files(tmp_path: Path, capsys: pytest.CaptureFixture[st
     apply(tmp_path, steps, lambda *_: None)
     assert not left.exists() and other.exists()
     assert stale(layout) == []
+
+
+def test_blank_line_after_the_section_kept(tmp_path: Path) -> None:
+    """A blank line the project put after the end marker: --check passes and
+    --yes leaves it."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    for name in ("AGENTS.md", ".gitattributes"):
+        path = tmp_path / name
+        path.write_text(path.read_text() + "\n# the project's own\n")
+    assert stale(layout) == []
+    before = {n: (tmp_path / n).read_text() for n in ("AGENTS.md", ".gitattributes")}
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    assert {n: (tmp_path / n).read_text() for n in before} == before

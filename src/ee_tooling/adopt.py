@@ -668,17 +668,20 @@ def marked_span(text: str, markers: Markers) -> tuple[int, int] | None:
 def marked_text(existing: str | None, block: str, markers: Markers) -> str:
     """A file with ee_tooling's section, block between the markers: the
     section replaced in place, or added where markers says; the rest of the
-    file kept.  ValueError, from marked_span, if the markers are not where
-    they belong."""
+    file kept byte for byte (but a file without the section, appended to,
+    gets one blank line before it).  ValueError, from marked_span, if the
+    markers are not where they belong."""
     section = f"{markers.begin}\n{block.rstrip()}\n{markers.end}\n"
     if existing is None:
         return section
     span = marked_span(existing, markers)
     if span is not None:
         begin, end = span
-        return existing[:begin] + section + existing[end:].lstrip("\n")
+        after = existing[end:]
+        # The end line's own line ending is the section's.
+        return existing[:begin] + section + after.removeprefix("\r\n").removeprefix("\n")
     if markers.first:
-        return section + existing.lstrip("\n")
+        return section + existing
     return existing.rstrip("\n") + "\n\n" + section
 
 
