@@ -1,3 +1,5 @@
+import errno
+import os
 import shutil
 import subprocess
 import sys
@@ -22,6 +24,7 @@ from ee_tooling.stackup_table import (
     stackup_rows,
     text_width,
 )
+from ee_tooling.stackup_table import main as stackup_table_main
 
 # A two-layer board as KiCad 10 writes one, with SETUP's stackup and a
 # 40 x 30 mm outline at (10, 20), that kicad-cli 10 reads.
@@ -395,3 +398,29 @@ def test_kicad_reads_it(tmp_path: Path) -> None:
     assert rows(t) == KICAD_ROWS and corner(t) == (f"{50 + GAP:g}", "20")
     r = stackup_table(str(pcb), "--check")
     assert r.returncode == 0, r.stdout
+
+
+def test_failed_write_leaves_the_board(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A write that fails (a full disk) leaves the board as it was, and no
+    scratch file; one that succeeds keeps the board's mode."""
+    pcb = tmp_path / "b.kicad_pcb"
+    pcb.write_text(board())
+    pcb.chmod(0o640)
+
+    def full(*_: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(sys, "argv", ["stackup-table", str(pcb)])
+    with monkeypatch.context() as m:
+        m.setattr(os, "replace", full)
+        with pytest.raises(SystemExit) as e:
+            stackup_table_main()
+    assert e.value.code == 2
+    assert "No space left on device" in capsys.readouterr().err
+    assert pcb.read_text() == board()
+    assert [p.name for p in tmp_path.iterdir()] == ["b.kicad_pcb"]
+    stackup_table_main()
+    assert pcb.read_text() != board()
+    assert pcb.stat().st_mode & 0o777 == 0o640

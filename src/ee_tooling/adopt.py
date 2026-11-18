@@ -14,7 +14,6 @@ import importlib.resources
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ee_tooling.atomic import write_text
 from ee_tooling.fab_release import CONFIG, DRU, FAB, GONE_KEYS, string, strings
 from ee_tooling.git_environment import environment
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
@@ -838,18 +838,8 @@ def describe(step: Step, root: Path) -> str:
 
 
 def write(target: Path, text: str) -> None:
-    """target's text replaced whole or not at all: written beside it, then
-    renamed over it, its mode kept (a new file's from the umask)."""
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.adopt")
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        if target.exists():
-            temporary.chmod(stat.S_IMODE(target.stat().st_mode))
-        os.replace(temporary, target)
-    finally:
-        temporary.unlink(missing_ok=True)
+    """target's text replaced whole or not at all (atomic.write_text)."""
+    write_text(target, text)
 
 
 def writable(path: Path) -> bool:

@@ -33,7 +33,9 @@ place unless `-o`.
 Only the table's text in the file changes, written in the file's line
 ending (its first line's: `\r\n` in a checkout that converts them);
 the rest of the file is kept byte for byte.  A second run changes
-nothing.
+nothing.  The file is written beside the board and renamed over it, its
+mode kept, so a write that fails (a full disk) leaves the board as it
+was.
 
 ## The drawing frame
 

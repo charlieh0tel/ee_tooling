@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
+from ee_tooling.atomic import write_bytes
 from ee_tooling.drawing_sheet import Sheet, SheetError, custom_sheet, sheet
 from ee_tooling.fabrication import (
     COPPER,
@@ -489,7 +490,7 @@ def main() -> None:
     out = a.output or a.board
     if result.changes or out != a.board:
         try:
-            out.write_bytes(result.text.encode("utf-8"))
+            write_bytes(out, result.text.encode("utf-8"))
         except OSError as e:
             fail(f"{out}: {e}")
     for change in result.changes:
