@@ -37,6 +37,7 @@ import csv
 import datetime
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -282,7 +283,7 @@ def fab(where: str, table: object) -> Fab:
     ipc_class, tg = table["ipc_class"], table["tg"]
     if type(ipc_class) is not int or ipc_class not in IPC_CLASSES:
         raise ValueError(f"{where}: 'ipc_class' is not one of {', '.join(map(str, IPC_CLASSES))}")
-    if type(tg) not in (int, float) or tg <= 0:
+    if type(tg) not in (int, float) or not math.isfinite(tg) or tg <= 0:
         raise ValueError(f"{where}: 'tg' is not a temperature, deg C")
     for key in ("base_material", "electrical_test"):
         if not isinstance(table[key], str) or not table[key].strip():
@@ -315,7 +316,8 @@ def board(table: dict[str, Any], number: int) -> Board:
         if key in table:
             raise ValueError(f"{where}: {key!r} is gone: {why}")
     # Beside its own keys, a board has a table of its profile's options.
-    options = table.get("profile")
+    # Its type checked first: the profile names a table, a key.
+    options = string(where, table, "profile", None)
     known = {*STRING_KEYS, *LIST_KEYS, FAB, options}
     if unknown := sorted(set(table) - known):
         raise ValueError(f"{where}: unknown key {', '.join(repr(k) for k in unknown)}")

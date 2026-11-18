@@ -127,6 +127,11 @@ def test_config_missing_key(key: str) -> None:
             " stackup$",
         ),
         (f"{BOARD}sources = [1]\n", r"'sources' is not a list of strings$"),
+        (
+            BOARD.replace('"jlcpcb"', '["jlcpcb"]'),
+            r"^\[\[board\]\] 'b': 'profile' is not a string$",
+        ),
+        (BOARD.replace('"jlcpcb"', "{ x = 1 }"), r"^\[\[board\]\] 'b': 'profile' is not a string$"),
         *(
             (
                 f'{BOARD}sources = ["{x}"]\n',
@@ -198,6 +203,8 @@ def fab_table(**changes: object) -> str:
         ({"ipc_class": "true"}, "'ipc_class' is not one of 1, 2, 3"),
         ({"tg": 0}, "'tg' is not a temperature, deg C"),
         ({"tg": '"150"'}, "'tg' is not a temperature, deg C"),
+        ({"tg": "nan"}, "'tg' is not a temperature, deg C"),
+        ({"tg": "inf"}, "'tg' is not a temperature, deg C"),
         ({"base_material": '" "'}, "'base_material' is not a string, or is empty"),
         ({"electrical_test": 1}, "'electrical_test' is not a string, or is empty"),
     ],
