@@ -119,6 +119,9 @@ BUILDING = ".building"
 # The work directory's subdirectory DRC's scratch copy of the project is
 # in, and the suffix of a project's custom rules.
 DRC_PROJECT = "project"
+# The work directory's subdirectory of the scratch copy of the project, as
+# the board has it, that every other kicad-cli command reads.
+EXPORT_PROJECT = "board"
 # In DRC's scratch copy, the project's files copied, by suffix to its name
 # (kicad-cli reads them; a link would let anything KiCad writes beside
 # them reach the board's), and those left out (KiCad's cache, which it
@@ -724,6 +727,9 @@ class Release:
         self.board = board
         self.work = work
         self.copper = copper  # the board's copper layers, top to bottom, from its stackup
+        # The scratch copy of the board's project kicad-cli reads, once
+        # check has made it.
+        self.inputs: Path | None = None
 
     @property
     def layers(self) -> list[str]:
@@ -739,23 +745,35 @@ class Release:
             sys.exit(f"kicad-cli {' '.join(args)} failed:\n{r.stdout}{r.stderr}")
 
     def path(self, p: Path) -> str:
+        """A board file's path for kicad-cli: in the scratch copy of the
+        project kicad-cli reads (inputs), once check has made it."""
+        if self.inputs is not None and p.parent == self.board.directory:
+            return str(self.inputs / p.name)
         return str(self.root / p)
 
     def drc_project(self, rules: Installed) -> Path:
-        """A scratch copy of the board's project with the rules installed;
-        return its .kicad_pcb.  The project's own files are copied
-        (DRC_COPIED), its .kicad_dru and .kicad_pro written, and every
-        other entry of its directory linked, at the board directory's own path from the
+        """A scratch copy of the board's project with the rules installed
+        (scratch_project); return its .kicad_pcb."""
+        project = json.dumps(rules.project, indent=2) + "\n"
+        return self.scratch_project(DRC_PROJECT, rules.dru, project) / self.board.pcb.name
+
+    def scratch_project(self, name: str, dru: str | None, project: str | None) -> Path:
+        """A scratch copy of the board's project, in the work directory's
+        subdirectory name, with dru and project as its .kicad_dru and
+        .kicad_pro (none if None); return its directory.  The project's
+        own files are copied (DRC_COPIED), and every other entry of its
+        directory linked, at the board directory's own path from the
         repository's root under the scratch directory, beside a link to
         every other entry of each of its ancestors up to the root: so a
         library path relative to the project (${KIPRJMOD}/../lib), which
         DRC checks footprints against, finds what it finds for the board
         (a library is inside the repository: main refuses one outside).
-        The board's own files are not written."""
+        kicad-cli writes NAME.kicad_prl beside the project it reads (every
+        command, 10.0.8): here, never in the board's directory."""
         b = self.board
         root = self.root.resolve()
         source = (root / b.directory).resolve()
-        top = self.work / DRC_PROJECT
+        top = self.work / name
         scratch = top / source.relative_to(root)
         scratch.mkdir(parents=True)
         copied = {f"{b.name}{s}" for s in DRC_COPIED}
@@ -781,9 +799,11 @@ class Release:
             for entry in entries:
                 if entry.name != here.name:
                     (mirror / entry.name).symlink_to(entry)
-        (scratch / f"{b.name}{DRU}").write_text(rules.dru)
-        (scratch / b.project.name).write_text(json.dumps(rules.project, indent=2) + "\n")
-        return scratch / b.pcb.name
+        if dru is not None:
+            (scratch / f"{b.name}{DRU}").write_text(dru)
+        if project is not None:
+            (scratch / b.project.name).write_text(project)
+        return scratch
 
     def submodules(self) -> list[Path]:
         """The repository's submodules (gitlinks), from its root."""
@@ -812,6 +832,9 @@ class Release:
         committed sources and libraries (inside the repository), less the
         production directories; return the commit."""
         b = self.board
+        own = [self.root / b.directory / f"{b.name}{s}" for s in (DRU, ".kicad_pro")]
+        dru, project = (f.read_text() if f.exists() else None for f in own)
+        self.inputs = self.scratch_project(EXPORT_PROJECT, dru, project)
         erc = self.work / "erc.rpt"
         if self.run(
             "kicad-cli", "sch", "erc", "--exit-code-violations", "-o", str(erc), self.path(b.sch)

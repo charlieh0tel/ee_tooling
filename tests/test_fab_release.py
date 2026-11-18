@@ -473,6 +473,9 @@ if "--variant" in args:
     variant = f"{key} @{args[args.index('--variant') + 1]}"
     key = variant if variant in outputs else key
 out = pathlib.Path(args[args.index("-o") + 1])
+# As kicad-cli 10.0.8 does: NAME.kicad_prl beside the project it reads.
+board = pathlib.Path(args[-1])
+board.with_suffix(".kicad_prl").write_text("{}\\n")
 for name, text in outputs[key].items():
     (out / name if name else out).write_text(text)
 sys.exit(5 if key in os.environ.get("FAKE_FAIL", "").split(",") else 0)
@@ -736,7 +739,7 @@ def kicad_calls(tmp_path: Path) -> list[list[str]]:
 
 
 RELEASE_CALLS = [
-    ["sch", "erc", "--exit-code-violations", "-o", "WORK/erc.rpt", "ROOT/hw/b.kicad_sch"],
+    ["sch", "erc", "--exit-code-violations", "-o", "WORK/erc.rpt", "WORK/board/hw/b.kicad_sch"],
     [
         "pcb",
         "drc",
@@ -755,7 +758,7 @@ RELEASE_CALLS = [
         "Reference,Value,Footprint,LCSC,MPN,Manufacturer,Datasheet,${DNP}",
         "-o",
         "WORK/bom.csv",
-        "ROOT/hw/b.kicad_sch",
+        "WORK/board/hw/b.kicad_sch",
     ],
     [
         "pcb",
@@ -770,7 +773,7 @@ RELEASE_CALLS = [
         "--exclude-dnp",
         "-o",
         "WORK/pos.csv",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/board/hw/b.kicad_pcb",
     ],
     [
         "pcb",
@@ -784,7 +787,7 @@ RELEASE_CALLS = [
         "--check-zones",
         "-o",
         "WORK/gerbers",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/board/hw/b.kicad_pcb",
     ],
     [
         "pcb",
@@ -803,7 +806,7 @@ RELEASE_CALLS = [
         "absolute",
         "-o",
         "WORK/gerbers/",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/board/hw/b.kicad_pcb",
     ],
     [
         "pcb",
@@ -818,7 +821,7 @@ RELEASE_CALLS = [
         "--check-zones",
         "-o",
         "ROOT/production/.20261118-1.building/b-1-odb.tgz",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/board/hw/b.kicad_pcb",
     ],
     [
         "pcb",
@@ -841,9 +844,9 @@ RELEASE_CALLS = [
         "LCSC",
         "-o",
         "ROOT/production/.20261118-1.building/b-1-ipc2581.zip",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/board/hw/b.kicad_pcb",
     ],
-    ["sch", "export", "pdf", "-o", "WORK/pdf/b-schematic.pdf", "ROOT/hw/b.kicad_sch"],
+    ["sch", "export", "pdf", "-o", "WORK/pdf/b-schematic.pdf", "WORK/board/hw/b.kicad_sch"],
     [
         "pcb",
         "export",
@@ -855,7 +858,7 @@ RELEASE_CALLS = [
         "Edge.Cuts",
         "-o",
         "WORK/pdf/b-board.pdf",
-        "ROOT/hw/b.kicad_pcb",
+        "WORK/board/hw/b.kicad_pcb",
     ],
 ]
 
@@ -986,6 +989,7 @@ def test_release_files(
         f"production/20261118-1 from {commit}:\n" + "".join(f"  {f}\n" for f in files)
     )
     assert git(root, "tag", "-n") == "b-20261118-1    b 1: fab release production/20261118-1"
+    assert git(root, "status", "--porcelain") == "?? production/"
     assert calls == RELEASE_CALLS
     assert files == [
         "b-1-bom.csv",

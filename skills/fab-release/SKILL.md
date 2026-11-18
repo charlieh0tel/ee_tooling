@@ -198,7 +198,9 @@ only when the owner says to.
 
 ## What it writes
 
-`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  It is built
+`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  `kicad-cli` reads scratch copies of the
+project, never the board's own files (it writes `NAME.kicad_prl` beside
+what it reads).  It is built
 in `PRODUCTION/.YYYYMMDD-REV.building/` and put in place, replacing an
 old release (`--force`), only after the last export: a failure leaves
 the old release and the tag as they were, and no partial directory.  With

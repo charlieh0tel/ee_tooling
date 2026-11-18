@@ -294,6 +294,12 @@ class Profile(Protocol):
   path relative to the project (`${KIPRJMOD}/../lib`) must find what it
   finds for the board.  A library is inside the repository (refused
   otherwise), so nothing above the root is needed.
+- Every other `kicad-cli` command (ERC, the exports) reads a second
+  scratch copy, made the same way with the board's own `.kicad_dru` and
+  `.kicad_pro`: `kicad-cli` (10.0.8) writes `NAME.kicad_prl` beside the
+  project it reads, every command, so on the board's own files it would
+  leave an untracked file that the next release's uncommitted-sources
+  check refuses.
 - `jlcpcb.kicad_dru` holds the limits and house sections only: the
   price section's no-extra-cost via rules are deferred, and are not in
   it.
