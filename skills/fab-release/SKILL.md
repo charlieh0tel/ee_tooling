@@ -93,9 +93,9 @@ variants.
   as DRC's schematic parity does not compare variants: a part DNP in the
   build's BOM and
   fitted on its board (a placement export with `--exclude-dnp` and one
-  without), or the reverse, a different Value, or a different footprint
-  (a variant's Footprint override: one board has one footprint per
-  reference) refuses the release, naming the variant and the part.  Run
+  without), or the reverse, a different Value, or a different footprint,
+  `LIBRARY:NAME` against the board file's (a variant's Footprint
+  override: one board has one footprint per reference) refuses the release, naming the variant and the part.  Run
   Update PCB from Schematic.  Whether a part is fitted is KiCad's DNP
   attribute (a BOM export with `--exclude-dnp`), never a field named DNP.
 - Each variant's Gerbers are exported and compared with the first's,

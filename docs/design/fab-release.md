@@ -438,8 +438,10 @@ Checks per build, the default's too, beyond the core's:
   Schematic syncs them.
 - A part whose Value differs between the two exports is refused, for
   the same reason.
-- A part whose BOM Footprint differs from the board's footprint is
-  refused (the footprint override above).
+- A part whose BOM Footprint (`LIBRARY:NAME`) differs from its
+  footprint's on the board (the board file's, placed or not) is refused
+  (the footprint override above), another library's footprint of the
+  same name too.
 
 Parts are read from `kicad-cli`'s BOM export per variant, never from
 the netlist: a netlist's `comp` holds every variant's overrides in its

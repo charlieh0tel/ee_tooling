@@ -674,17 +674,37 @@ def check_variants(listed: Sequence[str], project: Sequence[str]) -> tuple[list[
     return errors, warnings
 
 
+def board_footprints(pcb: Expression) -> dict[str, str]:
+    """The board's footprints' LIBRARY:NAME, by reference."""
+    return {
+        str(ref[2]): str(footprint[1])
+        for footprint in children(pcb, "footprint")
+        for ref in children(footprint, "property")
+        if ref[1:2] == ["Reference"] and len(ref) > 2 and len(footprint) > 1
+    }
+
+
 def cross_checks(
-    parts: Iterable[Part], fitted: Iterable[Placement], placed: Iterable[Placement]
+    parts: Iterable[Part],
+    fitted: Iterable[Placement],
+    placed: Iterable[Placement],
+    footprints: dict[str, str] | None = None,
 ) -> list[str]:
-    """Where a variant's schematic (its BOM's parts) and board (its
-    placements: those fitted, and all placed, DNP too) differ: a part DNP in
-    one and fitted in the other, a different Value, or a different
-    footprint (a variant's Footprint override)."""
+    """Where a build's schematic (its BOM's parts) and board (its
+    placements: those fitted, and all placed, DNP too; its footprints'
+    LIBRARY:NAME, by reference) differ: a part DNP in one and fitted in the
+    other, a different Value, or a different footprint (a variant's
+    Footprint override), the library too, whether placed or not."""
     on_board = {p.reference: p for p in placed}
     fitted_refs = {p.reference for p in fitted}
     out = []
     for p in parts:
+        board_id = (footprints or {}).get(p.reference)
+        if board_id is not None and p.footprint != board_id:
+            out.append(
+                f"{p.reference}: Footprint {p.footprint!r} in the schematic, {board_id!r}"
+                " on the board: a variant cannot change a footprint"
+            )
         found = on_board.get(p.reference)
         if found is None:
             continue
@@ -696,7 +716,7 @@ def cross_checks(
             out.append(
                 f"{p.reference}: Value {p.value!r} in the schematic, {found.value!r} on the board"
             )
-        if p.footprint.split(":", 1)[-1] != found.package:
+        if board_id is None and p.footprint.split(":", 1)[-1] != found.package:
             out.append(
                 f"{p.reference}: Footprint {p.footprint!r} in the schematic, {found.package!r}"
                 " on the board: a variant cannot change a footprint"
@@ -1515,7 +1535,9 @@ def main() -> None:
         refusals = []
         for v in builds:
             parts, placements = r.parts(v), r.placements(v)
-            found_problems = cross_checks(parts, placements, r.placements(v, True))
+            found_problems = cross_checks(
+                parts, placements, r.placements(v, True), board_footprints(pcb)
+            )
             found_problems += profile.check(parts, placements, options[b.name])
             for w in profile.warnings(parts, placements, options[b.name]):
                 print(f"warning: {w if v is None else f'variant {v}: {w}'}", file=sys.stderr)

@@ -20,6 +20,7 @@ from ee_tooling.fab_release import (
     Board,
     Release,
     TagPlan,
+    board_footprints,
     check_variants,
     cross_checks,
     gerber_differences,
@@ -2668,3 +2669,43 @@ def test_release_cross_checks_the_default_build(
     with pytest.raises(SystemExit, match=r"^R2: fitted in the schematic, DNP on the board\n"):
         release(tmp_path, monkeypatch)
     assert not (tmp_path / "repo/production").exists()
+
+
+@pytest.mark.parametrize(
+    ("footprint", "placed", "problems"),
+    [
+        ("lib:R_0402", True, []),
+        (
+            "other:R_0402",
+            True,
+            [
+                "R1: Footprint 'other:R_0402' in the schematic, 'lib:R_0402' on the board:"
+                " a variant cannot change a footprint"
+            ],
+        ),
+        (
+            "lib:R_0603",
+            False,
+            [
+                "R1: Footprint 'lib:R_0603' in the schematic, 'lib:R_0402' on the board:"
+                " a variant cannot change a footprint"
+            ],
+        ),
+    ],
+)
+def test_cross_checks_footprint_library(footprint: str, placed: bool, problems: list[str]) -> None:
+    """The board's LIBRARY:NAME, for a part placed or not (excluded from
+    position files): another library's footprint of the same name too."""
+    found = [placement("R1")] if placed else []
+    assert (
+        cross_checks([Part("R1", "10k", footprint, "")], found, found, {"R1": "lib:R_0402"})
+        == problems
+    )
+
+
+def test_board_footprints() -> None:
+    pcb = parse(
+        '(kicad_pcb (footprint "lib:R" (property "Reference" "R1"))'
+        ' (footprint "lib:C" (property "Value" "1u") (property "Reference" "C1")))'
+    )
+    assert board_footprints(pcb) == {"R1": "lib:R", "C1": "lib:C"}
