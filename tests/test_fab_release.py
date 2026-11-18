@@ -20,10 +20,11 @@ from ee_tooling.fab_release import (
     TagPlan,
     load_config,
     main,
+    profile_options,
     revision,
     tag_plan,
 )
-from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb
+from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import GerberOptions
 
 CONFIG = """
@@ -98,6 +99,34 @@ def test_config_errors(text: str, error: str) -> None:
     """Each bad config is an error naming what is wrong."""
     with pytest.raises(ValueError, match=error):
         load_config(text)
+
+
+def test_config_profile_options() -> None:
+    """The profile's table, beside the board's keys, unchecked until the
+    profile checks it."""
+    b = load_config(f"{BOARD}[board.jlcpcb]\nrequire_lcsc = true\nlater = 1\n")["b"]
+    assert b.options == {"require_lcsc": True, "later": 1}
+    assert load_config(BOARD)["b"].options == {}
+    with pytest.raises(ValueError, match=r"^\[\[board\]\] 'b': 'jlcpcb' is not a table$"):
+        load_config(f"{BOARD}jlcpcb = true\n")
+
+
+@pytest.mark.parametrize(
+    ("table", "error"),
+    [
+        ("later = 1", "unknown key 'later'"),
+        ('require_lcsc = "yes"', "'require_lcsc' is not true or false"),
+    ],
+)
+def test_profile_options_refused(table: str, error: str) -> None:
+    boards = load_config(f"{BOARD}[board.jlcpcb]\n{table}\n")
+    with pytest.raises(ValueError, match=rf"^\[\[board\]\] 'b': \[board.jlcpcb\]: {error}$"):
+        profile_options(boards, {"jlcpcb": Jlcpcb(CORRECTIONS)})
+
+
+def test_profile_options_default() -> None:
+    boards = load_config(BOARD)
+    assert profile_options(boards, {"jlcpcb": Jlcpcb(CORRECTIONS)}) == {"b": Options()}
 
 
 def test_config_board_without_name() -> None:
@@ -456,12 +485,14 @@ def release(
     monkeypatch: pytest.MonkeyPatch,
     builtin: Callable[[type[Corrections]], Corrections] = builtin_corrections,
     args: tuple[str, ...] = (),
+    config: str = "",
 ) -> tuple[Path, list[list[str]]]:
     """Release the fixture board with the fake kicad-cli, builtin for
-    Corrections.builtin and args after --date; return the repository and
-    kicad-cli's calls, the root as ROOT and the work directory as WORK."""
+    Corrections.builtin, args after --date and config added to its
+    fab.toml; return the repository and kicad-cli's calls, the root as ROOT
+    and the work directory as WORK."""
     root = tmp_path / "repo"
-    for name, text in FIXTURE.items():
+    for name, text in {**FIXTURE, "fab.toml": FIXTURE["fab.toml"] + config}.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_text(text)
     for k, v in IDENTITY.items():
@@ -485,8 +516,17 @@ def release(
     monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", *args])
     monkeypatch.chdir(root)
     main()
+    return root, kicad_calls(tmp_path)
+
+
+def kicad_calls(tmp_path: Path) -> list[list[str]]:
+    """The fake kicad-cli's calls in release(tmp_path, ...), the root as
+    ROOT and the work directory as WORK."""
+    log, work, root = tmp_path / "kicad-cli.log", tmp_path / "tmp", tmp_path / "repo"
+    if not log.exists():
+        return []
     text = re.sub(re.escape(str(work)) + r"/[^/\"]+", "WORK", log.read_text())
-    return root, [json.loads(line) for line in text.replace(str(root), "ROOT").splitlines()]
+    return [json.loads(line) for line in text.replace(str(root), "ROOT").splitlines()]
 
 
 RELEASE_CALLS = [
@@ -498,6 +538,32 @@ RELEASE_CALLS = [
         "--exit-code-violations",
         "-o",
         "WORK/drc.rpt",
+        "ROOT/hw/b.kicad_pcb",
+    ],
+    [
+        "sch",
+        "export",
+        "bom",
+        "--exclude-dnp",
+        "--fields",
+        "Reference,Value,Footprint,LCSC",
+        "-o",
+        "WORK/bom.csv",
+        "ROOT/hw/b.kicad_sch",
+    ],
+    [
+        "pcb",
+        "export",
+        "pos",
+        "--format",
+        "csv",
+        "--units",
+        "mm",
+        "--side",
+        "both",
+        "--exclude-dnp",
+        "-o",
+        "WORK/pos.csv",
         "ROOT/hw/b.kicad_pcb",
     ],
     [
@@ -568,32 +634,6 @@ RELEASE_CALLS = [
         "LCSC",
         "-o",
         "ROOT/production/20261118-1/b-1-ipc2581.zip",
-        "ROOT/hw/b.kicad_pcb",
-    ],
-    [
-        "sch",
-        "export",
-        "bom",
-        "--exclude-dnp",
-        "--fields",
-        "Reference,Value,Footprint,LCSC",
-        "-o",
-        "WORK/bom.csv",
-        "ROOT/hw/b.kicad_sch",
-    ],
-    [
-        "pcb",
-        "export",
-        "pos",
-        "--format",
-        "csv",
-        "--units",
-        "mm",
-        "--side",
-        "both",
-        "--exclude-dnp",
-        "-o",
-        "WORK/pos.csv",
         "ROOT/hw/b.kicad_pcb",
     ],
     ["sch", "export", "pdf", "-o", "WORK/pdf/b-schematic.pdf", "ROOT/hw/b.kicad_sch"],
@@ -786,3 +826,31 @@ def test_release_stops_on_bad_parts_before_anything(
         release(tmp_path, monkeypatch, broken, ("--force",))
     assert not (tmp_path / "kicad-cli.log").exists()
     assert old.read_text() == "kept\n"
+
+
+def test_release_refused_by_its_profile_before_anything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """require_lcsc with a fitted part with no LCSC number stops the release
+    after the checks and the BOM and placement exports, before a --force
+    replaces the release, and names the parts."""
+    old = tmp_path / "repo/production/20261118-1/old.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    with pytest.raises(SystemExit, match=r"^no LCSC part number for TP1,TP2 \(require_lcsc\)$"):
+        release(
+            tmp_path, monkeypatch, args=("--force",), config="[board.jlcpcb]\nrequire_lcsc = true\n"
+        )
+    assert kicad_calls(tmp_path) == RELEASE_CALLS[:4]
+    assert old.read_text() == "kept\n"
+    assert git(tmp_path / "repo", "tag") == ""
+
+
+def test_release_stops_on_bad_options_before_anything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(
+        SystemExit, match=r"fab.toml: \[\[board\]\] 'b': \[board.jlcpcb\]: unknown key 'x'$"
+    ):
+        release(tmp_path, monkeypatch, config="[board.jlcpcb]\nx = 1\n")
+    assert kicad_calls(tmp_path) == []

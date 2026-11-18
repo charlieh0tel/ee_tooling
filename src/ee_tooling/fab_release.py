@@ -36,7 +36,7 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -53,7 +53,7 @@ from ee_tooling.fabrication import (
     stackup_document,
 )
 from ee_tooling.profiles import PROFILES
-from ee_tooling.profiles.profile import GerberOptions, Part, Placement
+from ee_tooling.profiles.profile import GerberOptions, Part, Placement, Profile
 from ee_tooling.sexpr import Expression, ParseError, parse
 
 CONFIG = "fab.toml"
@@ -122,6 +122,7 @@ class Board:
     production: Path  # where its YYYYMMDD-REV/ releases go, from the repository root
     sources: tuple[Path, ...]  # in the source tgz after the project's files, from the root
     profile: str  # its fab's, a key of PROFILES
+    options: dict[str, Any] = field(default_factory=dict)  # [board.<profile>], unchecked
 
     @property
     def pcb(self) -> Path:
@@ -175,7 +176,9 @@ def board(table: dict[str, Any], number: int) -> Board:
     where = f"[[board]] {number}"
     name = string(where, table, "name", None)
     where = f"[[board]] {name!r}"
-    if unknown := sorted(set(table) - set(STRING_KEYS) - set(LIST_KEYS)):
+    # Beside its own keys, a board has a table of its profile's options.
+    options = table.get("profile")
+    if unknown := sorted(set(table) - set(STRING_KEYS) - set(LIST_KEYS) - {options}):
         raise ValueError(f"{where}: unknown key {', '.join(repr(k) for k in unknown)}")
     text = {k: string(where, table, k, d) for k, d in STRING_KEYS.items()}
     lists = {k: strings(where, table, k, d) for k, d in LIST_KEYS.items()}
@@ -183,6 +186,8 @@ def board(table: dict[str, Any], number: int) -> Board:
         raise ValueError(
             f"{where}: profile {text['profile']!r} is not one of {', '.join(PROFILES)}"
         )
+    if not isinstance(table.get(text["profile"], {}), dict):
+        raise ValueError(f"{where}: {text['profile']!r} is not a table")
     return Board(
         name=name,
         directory=Path(text["directory"]),
@@ -190,6 +195,7 @@ def board(table: dict[str, Any], number: int) -> Board:
         production=Path(text["production"]),
         sources=tuple(Path(s) for s in lists["sources"]),
         profile=text["profile"],
+        options=table.get(text["profile"], {}),
     )
 
 
@@ -513,11 +519,29 @@ def repository_root() -> Path:
     return Path(r.stdout.strip())
 
 
+def profile_options(boards: dict[str, Board], profiles: dict[str, Profile[Any]]) -> dict[str, Any]:
+    """Each board's options, by name, checked by its profile; ValueError
+    naming a bad key."""
+    out = {}
+    for b in boards.values():
+        try:
+            out[b.name] = profiles[b.profile].options(b.options)
+        except ValueError as e:
+            raise ValueError(f"[[board]] {b.name!r}: [board.{b.profile}]: {e}") from e
+    return out
+
+
 def main() -> None:
     root = repository_root()
     try:
         boards = load_config((root / CONFIG).read_text())
     except (OSError, tomllib.TOMLDecodeError, ValueError) as e:
+        sys.exit(f"{root / CONFIG}: {e}")
+    # Made before anything is checked or written: loading a profile's data can fail.
+    profiles = {p: PROFILES[p]() for p in dict.fromkeys(b.profile for b in boards.values())}
+    try:
+        options = profile_options(boards, profiles)
+    except ValueError as e:
         sys.exit(f"{root / CONFIG}: {e}")
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
@@ -543,7 +567,7 @@ def main() -> None:
         pcb = parse(pcb_text)
     except ParseError as e:
         sys.exit(f"{b.pcb}: {e}")
-    profile = PROFILES[b.profile]()
+    profile = profiles[b.profile]
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp))
         commit = r.check(a.allow_dirty)
@@ -552,6 +576,9 @@ def main() -> None:
         plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
         if plan is TagPlan.REFUSE:
             sys.exit(f"tag {tag} is on {(tagged or '')[:7]}, not {commit}; use --retag to move it")
+        parts, placements = r.parts(), r.placements()
+        if refusals := profile.check(parts, placements, options[b.name]):
+            sys.exit("\n".join(refusals))
         if dest.exists():
             shutil.rmtree(dest)
         dest.mkdir(parents=True)
@@ -564,7 +591,7 @@ def main() -> None:
         r.fabrication(dest, base, label, pcb, files)
         r.odb(dest / f"{base}-odb.tgz")
         r.ipc2581(dest / f"{base}-ipc2581.zip", profile.distributor)
-        profile.assembly(dest, base, r.parts(), r.placements())
+        profile.assembly(dest, base, parts, placements, options[b.name])
         r.source(dest / f"{base}-source.tgz", commit)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
             message = f"{b.name} {rev}: JLCPCB release {b.production / dest.name}"

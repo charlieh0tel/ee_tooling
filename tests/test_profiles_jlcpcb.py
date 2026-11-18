@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.fab_release import Board, Release
-from ee_tooling.profiles.jlcpcb import Corrections, jlcpcb_bom, jlcpcb_cpl
+from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options, jlcpcb_bom, jlcpcb_cpl
 from ee_tooling.profiles.profile import Part, Placement
 
 CORRECTIONS = Corrections(
@@ -131,3 +131,25 @@ def test_builtin_corrections() -> None:
     assert corrections.rotation
     assert all(len(v) == 2 for v in corrections.offset.values())
     assert not set(corrections.unchecked) & (set(corrections.rotation) | set(corrections.offset))
+
+
+@pytest.mark.parametrize(
+    ("require_lcsc", "lcsc", "refusals"),
+    [
+        (False, "", []),
+        (True, "C1525", []),
+        (True, "", ["no LCSC part number for R1,R2 (require_lcsc)"]),
+    ],
+)
+def test_check_require_lcsc(require_lcsc: bool, lcsc: str, refusals: list[str]) -> None:
+    parts = [
+        Part("C1", "100n", "lib:C", "C1525"),
+        *(Part(r, "0R", "lib:R", lcsc) for r in ("R1", "R2")),
+    ]
+    assert Jlcpcb(CORRECTIONS).check(parts, [], Options(require_lcsc)) == refusals
+
+
+def test_options() -> None:
+    profile = Jlcpcb(CORRECTIONS)
+    assert profile.options({}) == Options(require_lcsc=False)
+    assert profile.options({"require_lcsc": True}) == Options(require_lcsc=True)

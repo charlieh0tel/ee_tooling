@@ -33,19 +33,24 @@ copper = ["F.Cu", "B.Cu"]          # copper layers, top to bottom
 production = "production"          # where YYYYMMDD-REV/ goes
 sources = ["docs"]                 # added to the source tgz; optional, default []
 profile = "jlcpcb"                 # the fab: jlcpcb
+
+[board.jlcpcb]                     # the profile's options, optional (jlcpcb.md)
+require_lcsc = true
 ```
 
-Every key but `sources` is required.  A key it does not know, at any
-level, is an error naming it.  Paths are from the repository root.
+Every key but `sources` and the profile's table is required.  A key it
+does not know, at any level, is an error naming it; the only table
+allowed is the one named by `profile`.  Paths are from the repository root.
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  The source tgz holds the project's `.kicad_pcb`,
 `.kicad_sch`, `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`,
 `fp-lib-table` and `sym-lib-table` that exist, then `sources`.
 
-It stops unless ERC is clean, DRC (with schematic parity) is clean, and
+It stops unless ERC is clean, DRC (with schematic parity) is clean,
 the board's directory and `sources` have no uncommitted changes
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
-`-dirty`).
+`-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before
+anything is written.
 
 ## The tag
 

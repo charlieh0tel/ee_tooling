@@ -184,9 +184,9 @@ class Profile(Protocol):
         ...
         # checks [board.<name>]; raises ValueError naming a bad key
 
-    def check(self, release: Release) -> list[str]:
+    def check(self, parts: list[Part], placements: list[Placement], options: Any) -> list[str]:
         ...
-        # refusals beyond the core's
+        # refusals beyond the core's, before anything is written
 
     def assembly(
         self,
@@ -201,8 +201,10 @@ class Profile(Protocol):
 ```
 
 - `base` is the file stem, `NAME-REV`, or `NAME-REV-VARIANT` for a
-  variant; the core calls `assembly` once per build.  `options` is
-  what `options` returned for the board (`require_lcsc`).
+  variant; the core calls `check` and `assembly` once per build.
+  `options` is what `options` returned for the board (`require_lcsc`).
+  `check` takes the rows, not the release: `profile.py` imports nothing
+  from ee_tooling.
 - `PROFILES` maps a profile's name to its constructor, not to an
   instance.  The release builds the profile before anything else, so a
   bad `parts.toml` stops the run before `--force` removes an old

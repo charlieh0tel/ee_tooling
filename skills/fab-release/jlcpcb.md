@@ -2,6 +2,17 @@
 
 A board with `profile = "jlcpcb"` in `fab.toml` (`SKILL.md`).
 
+## Options
+
+```toml
+[board.jlcpcb]
+require_lcsc = true    # default false
+```
+
+- `require_lcsc`: a fitted part with no LCSC number refuses the release,
+  naming each, before anything is written.  Without it, such a part is a
+  warning naming it.
+
 ## Its files
 
 | File | Use |
@@ -10,8 +21,7 @@ A board with `profile = "jlcpcb"` in `fab.toml` (`SKILL.md`).
 | `NAME-REV-bom.csv` | assembly BOM: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
 | `NAME-REV-cpl.csv` | assembly placement: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM, with `parts.toml`'s corrections |
 
-IPC-2581's distributor is LCSC, its part number the `LCSC` field.  A
-fitted part with no LCSC number is a warning naming it.
+IPC-2581's distributor is LCSC, its part number the `LCSC` field.
 
 The Gerber zip is the PCB order's upload: JLCPCB's help forum says it
 takes Gerbers, not ODB++

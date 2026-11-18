@@ -8,8 +8,9 @@ import math
 import sys
 import tomllib
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import Any
 
 from ee_tooling.profiles.profile import GerberOptions, Part, Placement
 
@@ -37,6 +38,13 @@ class Corrections:
     @classmethod
     def builtin(cls) -> "Corrections":
         return cls.load(importlib.resources.files("ee_tooling").joinpath("parts.toml").read_text())
+
+
+@dataclass(frozen=True)
+class Options:
+    """A board's [board.jlcpcb] options."""
+
+    require_lcsc: bool = False  # a fitted part with no LCSC number refuses the release
 
 
 def jlcpcb_bom(parts: Iterable[Part]) -> tuple[list[list[str]], dict[str, str], list[str]]:
@@ -112,8 +120,31 @@ class Jlcpcb:
         """The profile with parts.toml's corrections."""
         return cls(Corrections.builtin())
 
+    def options(self, table: dict[str, Any]) -> Options:
+        """[board.jlcpcb]: require_lcsc, a boolean, default false."""
+        known = {f.name for f in fields(Options)}
+        if unknown := sorted(set(table) - known):
+            raise ValueError(f"unknown key {', '.join(repr(k) for k in unknown)}")
+        for key, found in table.items():
+            if not isinstance(found, bool):
+                raise ValueError(f"{key!r} is not true or false")
+        return Options(**table)
+
+    def check(self, parts: list[Part], placements: list[Placement], options: Options) -> list[str]:
+        """With require_lcsc, a fitted part with no LCSC number refuses the
+        release, naming each."""
+        _, _, missing = jlcpcb_bom(parts)
+        if options.require_lcsc and missing:
+            return [f"no LCSC part number for {', '.join(missing)} (require_lcsc)"]
+        return []
+
     def assembly(
-        self, dest: Path, base: str, parts: list[Part], placements: list[Placement]
+        self,
+        dest: Path,
+        base: str,
+        parts: list[Part],
+        placements: list[Placement],
+        options: Options,
     ) -> list[Path]:
         """Its BOM, without not-fitted parts, and its CPL of the BOM's parts,
         with its corrections."""

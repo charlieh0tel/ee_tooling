@@ -3,7 +3,7 @@ internal, not public API."""
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -41,15 +41,29 @@ class Placement:
     side: str  # KiCad's: top or bottom
 
 
-class Profile(Protocol):
-    """What a release shapes for one fab."""
+class Profile[Options](Protocol):
+    """What a release shapes for one fab; Options, its board options."""
 
-    name: str  # names its files
+    name: str  # fab.toml's profile value; names its files
     gerbers: GerberOptions  # its Gerber and drill export
     distributor: tuple[str, str] | None  # IPC-2581: the part-number field, the distributor
 
+    def options(self, table: dict[str, Any]) -> Options:
+        """A board's [board.<name>] table, checked; ValueError naming a bad
+        key."""
+        ...
+
+    def check(self, parts: list[Part], placements: list[Placement], options: Options) -> list[str]:
+        """Its refusals of the release, beyond the core's; none, to go on."""
+        ...
+
     def assembly(
-        self, dest: Path, base: str, parts: list[Part], placements: list[Placement]
+        self,
+        dest: Path,
+        base: str,
+        parts: list[Part],
+        placements: list[Placement],
+        options: Options,
     ) -> list[Path]:
         """Writes its BOM and placement of the parts into dest, NAME-REV
         being base; returns them."""
