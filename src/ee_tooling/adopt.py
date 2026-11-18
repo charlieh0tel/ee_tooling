@@ -68,8 +68,8 @@ LFS_PULL = ("git", "lfs", "pull")
 # blobs at HEAD, and how to store them through Git LFS from now on.
 NOT_IN_LFS = "not stored through Git LFS"
 RENORMALIZE = (
-    "with git-lfs's filters set (adopt --yes sets them), run git add --renormalize . in a"
-    " clean work tree, and commit"
+    "with git-lfs's filters set ({submodule}/adopt --yes sets them), run git add"
+    " --renormalize . in a clean work tree, and commit"
 )
 # What a hand-adopted AGENTS.md has: the house style's import line.
 STYLE = "docs/kicad-style.md"
@@ -243,16 +243,18 @@ def executable(root: Path, path: Path) -> bool:
     return not staged or staged.split()[0] == EXECUTABLE_MODE
 
 
-def lfs_missing() -> str | None:
-    """Why git-lfs cannot run here, or None if it can."""
+def lfs_missing(submodule: Path) -> str | None:
+    """Why git-lfs cannot run here, or None if it can: git's error's first
+    line, and the doc's path from the board repository's root."""
     r = subprocess.run(
         ["git", "lfs", "version"], env=environment(), capture_output=True, text=True, check=False
     )
     if r.returncode == 0:
         return None
+    error = next(iter(r.stderr.strip().splitlines()), str(r.returncode))
     return (
-        f"git-lfs is missing (git lfs version: {r.stderr.strip() or r.returncode}); install"
-        " the distribution's git-lfs package (docs/adopting.md)"
+        f"git-lfs is missing (git lfs version: {error}); install the distribution's git-lfs"
+        f" package ({submodule.as_posix()}/docs/adopting.md)"
     )
 
 
@@ -294,11 +296,12 @@ def lfs_unfetched(root: Path) -> bool:
 FSCK_FINDING = "pointer: "
 
 
-def fsck_message(report: str) -> str:
+def fsck_message(report: str, submodule: Path) -> str:
     """--check's message for plain_blobs's report: the files and the fix
     when each line names a file, or that fsck itself failed."""
     if all(line.startswith(FSCK_FINDING) for line in report.splitlines()):
-        return f"{report}\n{NOT_IN_LFS}: the files above; {RENORMALIZE}"
+        fix = RENORMALIZE.format(submodule=submodule.as_posix())
+        return f"{report}\n{NOT_IN_LFS}: the files above; {fix}"
     return (
         f"{report}\ngit lfs fsck --pointers HEAD failed (its error is above): fix that, then rerun"
     )
@@ -669,7 +672,7 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
                 f"Board Setup raised to {profile.name}'s minimums: {'; '.join(found.raised)}"
             )
         if erc:
-            what.append(f"ERC severities and connection grid set ({len(erc)} values)")
+            what.append(f"ERC severities and connection grid set: {'; '.join(erc)}")
         if what:
             out.append(Edit(project, project_json(settings), f"{'; '.join(what)}; {close}"))
     return out
@@ -1147,10 +1150,10 @@ def main() -> None:
     mode.add_argument("--check", action="store_true", help="fail if a managed file is stale")
     a = ap.parse_args()
 
-    if (why := lfs_missing()) is not None:
-        sys.exit(why)
     try:
         layout = locate(CHECKOUT)
+        if (why := lfs_missing(layout.submodule)) is not None:
+            sys.exit(why)
         if a.check:
             out_of_date = pending(layout)
         else:
@@ -1165,7 +1168,7 @@ def main() -> None:
         # git-lfs's own report, apart from pending()'s paths: it names the files.
         report = plain_blobs(layout.root)
         if report is not None:
-            print(fsck_message(report), file=sys.stderr)
+            print(fsck_message(report, layout.submodule), file=sys.stderr)
         sys.exit(1 if out_of_date or report is not None else 0)
     if not steps:
         print("nothing to do")
@@ -1180,8 +1183,8 @@ def main() -> None:
             why = ""
             if tuple(e.cmd) == LFS_PULL:
                 why = (
-                    "; the Git LFS files stay pointers until it runs: rerun adopt --yes with the"
-                    " remote in reach"
+                    "; the Git LFS files stay pointers until it runs: rerun"
+                    f" {layout.submodule.as_posix()}/adopt --yes with the remote in reach"
                 )
             sys.exit(f"{' '.join(e.cmd)} failed ({e.returncode}){why}")
     else:

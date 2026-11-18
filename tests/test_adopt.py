@@ -945,7 +945,7 @@ def test_rules_installed(tmp_path: Path) -> None:
             " board.design_settings.rules.min_track_width: none -> 0.1;"
             " board.design_settings.rules.min_via_annular_width: none -> 0.05;"
             " board.design_settings.rules.min_via_diameter: none -> 0.25;"
-            f" ERC severities and connection grid set ({len(ERC_CHANGES)} values);"
+            f" ERC severities and connection grid set: {'; '.join(ERC_CHANGES)};"
             " close the board in KiCad first",
         ),
     ]
@@ -1107,19 +1107,23 @@ def test_lfs_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     git_only.mkdir()
     (git_only / "git").symlink_to(shutil.which("git") or "git")
     monkeypatch.setenv("PATH", str(git_only))
-    why = lfs_missing()
-    assert why is not None
-    assert why.startswith("git-lfs is missing (git lfs version: git: 'lfs' is not a git command.")
-    assert why.endswith("); install the distribution's git-lfs package (docs/adopting.md)")
+    why = lfs_missing(SUBMODULE)
+    assert why == (
+        "git-lfs is missing (git lfs version: git: 'lfs' is not a git command. See 'git"
+        " --help'.); install the distribution's git-lfs package"
+        " (hardware/ee_tooling/docs/adopting.md)"
+    )
 
 
 @pytest.mark.parametrize("mode", [[], ["--yes"], ["--check"]])
 def test_every_mode_refused_without_git_lfs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: list[str]
 ) -> None:
-    """Before the repository is looked at."""
-    monkeypatch.setattr(adopt, "lfs_missing", lambda: "git-lfs is missing")
-    monkeypatch.setattr(adopt, "locate", lambda _: pytest.fail("located"))
+    """Before anything but finding the repository."""
+    monkeypatch.setattr(adopt, "lfs_missing", lambda _: "git-lfs is missing")
+    monkeypatch.setattr(adopt, "locate", lambda _: Layout(tmp_path, SUBMODULE))
+    monkeypatch.setattr(adopt, "plan", lambda _: pytest.fail("planned"))
+    monkeypatch.setattr(adopt, "pending", lambda _: pytest.fail("checked"))
     monkeypatch.setattr(sys, "argv", ["ee-tooling-adopt", *mode])
     with pytest.raises(SystemExit, match=r"^git-lfs is missing$"):
         adopt.main()
@@ -1127,7 +1131,7 @@ def test_every_mode_refused_without_git_lfs(
 
 @needs_lfs
 def test_lfs_found() -> None:
-    assert lfs_missing() is None
+    assert lfs_missing(SUBMODULE) is None
 
 
 def commit(root: Path, message: str, *add: str) -> None:
@@ -1223,8 +1227,9 @@ def test_lfs_migration(
         assert "should have been a pointer but was not" in err
     assert "main.kicad_pcb" not in err
     assert err.endswith(
-        "not stored through Git LFS: the files above; with git-lfs's filters set (adopt --yes"
-        " sets them), run git add --renormalize . in a clean work tree, and commit\n"
+        "not stored through Git LFS: the files above; with git-lfs's filters set"
+        " (hardware/ee_tooling/adopt --yes sets them), run git add --renormalize . in a clean"
+        " work tree, and commit\n"
     )
     git("-C", str(tmp_path), "add", "--renormalize", ".")
     commit(tmp_path, "renormalize")
@@ -1316,8 +1321,8 @@ def test_lfs_pull_out_of_reach(
     layout = lfs_clone(tmp_path)
     git("-C", str(layout.root), "remote", "set-url", "origin", (tmp_path / "gone.git").as_uri())
     assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] == (
-        "git lfs pull failed (2); the Git LFS files stay pointers until it runs: rerun adopt"
-        " --yes with the remote in reach"
+        "git lfs pull failed (2); the Git LFS files stay pointers until it runs: rerun"
+        " hardware/ee_tooling/adopt --yes with the remote in reach"
     )
     assert (layout.root / ".githooks/pre-push").exists()
 
@@ -1679,16 +1684,17 @@ def test_fsck_message() -> None:
         'pointer: unexpectedGitObject: "a.zip" (treeish 1234) should have been a pointer but'
         " was not"
     )
-    assert adopt.fsck_message(found).endswith(
-        "\nnot stored through Git LFS: the files above; with git-lfs's filters set (adopt --yes"
-        " sets them), run git add --renormalize . in a clean work tree, and commit"
+    assert adopt.fsck_message(found, SUBMODULE).endswith(
+        "\nnot stored through Git LFS: the files above; with git-lfs's filters set"
+        " (hardware/ee_tooling/adopt --yes sets them), run git add --renormalize . in a clean"
+        " work tree, and commit"
     )
     failed = "fatal: bad object HEAD"
-    assert adopt.fsck_message(failed) == (
+    assert adopt.fsck_message(failed, SUBMODULE) == (
         "fatal: bad object HEAD\ngit lfs fsck --pointers HEAD failed (its error is above): fix"
         " that, then rerun"
     )
-    assert "renormalize" not in adopt.fsck_message(f"{found}\n{failed}")
+    assert "renormalize" not in adopt.fsck_message(f"{found}\n{failed}", SUBMODULE)
 
 
 @pytest.mark.parametrize(
@@ -1996,6 +2002,6 @@ def test_directory_where_a_file_belongs(
     """Named, not a traceback."""
     layout = repository(tmp_path, "main")
     (tmp_path / name).mkdir()
-    monkeypatch.setattr(adopt, "lfs_missing", lambda: None)
+    monkeypatch.setattr(adopt, "lfs_missing", lambda _: None)
     code, _ = adopt_main(layout, monkeypatch, capsys, *mode)
     assert code == f"{tmp_path / name}: Is a directory; nothing done"

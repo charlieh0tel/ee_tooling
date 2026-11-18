@@ -76,7 +76,10 @@ overwrites the change.
    Severity), kept where the board's is stricter (`ignore`, then
    `warning`, then `error`); a check the file does not name is kept as
    the board has it; and `schematic.connection_grid_size` set to the
-   file's (Formatting, Connection grid).
+   file's (Formatting, Connection grid).  The dry run and `--yes` name
+   each value changed, old and new: a connection grid of 25 mil made 50
+   with `endpoint_off_grid` an error turns the endpoints off the new grid
+   into ERC errors.
 
 A key added to a `.kicad_pro` object whose keys are in sorted order, as
 KiCad saves them, goes in its sorted place, so KiCad's next save does

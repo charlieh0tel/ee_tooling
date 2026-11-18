@@ -30,7 +30,8 @@ clone needs `git submodule update --init` first.
 
 Every mode needs git-lfs (the distribution's `git-lfs` package): with
 `git lfs version` failing, `adopt` stops before anything else, saying
-so.  It installs nothing itself.
+so with git's first line and this doc's path from the repository's
+root.  It installs nothing itself.
 
 Its git commands run in the board repository (or the submodule) by
 directory: the variables naming a repository (`git rev-parse
