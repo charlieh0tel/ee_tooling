@@ -348,6 +348,16 @@ become groups chosen per board, and whether a value the board and
   severity where it is stricter (ignore, warning, error), and
   `schematic.connection_grid_size`.  `adopt --check` fails on a missing
   key.
+- `adopt` finds the projects (`*.kicad_pro`) under the hardware
+  directory, skipping the submodule, as now, and also every production
+  directory (`production/`, which `adopt` assigns, and each `production`
+  an existing `jlcpcb.toml` or `fab.toml` names) and every directory
+  whose name starts with `.` (`.venv`, `.git`, `.claude/`, whose
+  worktrees hold copies of the board's project).  So a project file in
+  a release, or in a worktree, is not taken for a board.  It matters
+  most with the KiCad project at the repository root (a supported
+  layout: `docs/adopting.md`, `test_root_layout`), where the hardware
+  directory is the root.  Today's `adopt.py` skips only the submodule.
 - `fab-setup`: adds a board or sets a value (`fab-setup add NAME
   [--profile P]`, `fab-setup set BOARD KEY VALUE`, `--interactive`),
   editing `fab.toml` with `tomlkit` (a new dependency) to keep its
@@ -410,7 +420,8 @@ Then one PR, breaking, merged as one:
 
 4. `fab.toml`, `fab-release`, `profile` and its options; unknown keys
    refused; `jlcpcb-release` removed.
-5. `adopt`: write and migrate `fab.toml`; move the skill.
+5. `adopt`: write and migrate `fab.toml`; move the skill; skip the
+   production directories and hidden directories when finding projects.
 6. `sources` limited to the repository.  Docs:
    `skills/fab-release/SKILL.md` says what the source tgz holds, and
    that it leaves out libraries outside the repository and their 3D
