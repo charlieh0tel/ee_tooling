@@ -143,6 +143,10 @@ class Jlcpcb:
             out.append(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
         return out
 
+    def outputs(self, base: str) -> list[str]:
+        """Its BOM and its CPL."""
+        return [f"{base}-{self.name}-bom.csv", f"{base}-{self.name}-cpl.csv"]
+
     def assembly(
         self,
         dest: Path,
@@ -153,8 +157,8 @@ class Jlcpcb:
     ) -> list[Path]:
         """Its BOM, without not-fitted parts, and its CPL of the BOM's parts,
         with its corrections; check has found each placed."""
-        bom_csv = dest / f"{base}-{self.name}-bom.csv"
-        cpl_csv = dest / f"{base}-{self.name}-cpl.csv"
+        bom_name, cpl_name = self.outputs(base)
+        bom_csv, cpl_csv = dest / bom_name, dest / cpl_name
         bom, refs, missing = jlcpcb_bom(parts)
         write_csv(bom_csv, BOM_HEADER, bom)
         if missing:

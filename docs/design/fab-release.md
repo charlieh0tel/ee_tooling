@@ -236,6 +236,10 @@ class Profile(Protocol):
         ...
         # refusals beyond the core's, before anything is written
 
+    def outputs(self, base: str) -> list[str]:
+        ...
+        # the names of the files assembly writes
+
     def assembly(
         self,
         dest: Path,
@@ -335,6 +339,10 @@ variants = ["lite", "full"]      # KiCad 10 design variants; default []
 - A name in `variants` that the project lacks is an error, before
   anything is written: `kicad-cli` given an unknown `--variant` exports
   the default variant and exits 0.
+- Two listed variants whose files would share a name (`a` and
+  `a-jlcpcb`: `NAME-REV-a-jlcpcb-bom.csv`, each profile naming its own
+  files by `outputs(base)`) are refused, naming both, before anything is
+  written.
 - A project variant not in `variants` is a warning naming it, as is a
   project with variants and no `variants` key.
 - One release builds every listed variant: one commit, one production

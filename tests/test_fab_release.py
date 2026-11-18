@@ -28,6 +28,7 @@ from ee_tooling.fab_release import (
     lfs_pointers,
     load_config,
     main,
+    output_clash,
     profile_options,
     project_variants,
     release_name_problem,
@@ -2239,3 +2240,28 @@ def test_release_refuses_an_uncommitted_sheet(
     monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
     with pytest.raises(SystemExit, match=r"uncommitted changes .*:\n ?M shared/c.kicad_sch"):
         main()
+
+
+def test_output_clash() -> None:
+    """Variants a and a-jlcpcb: a's JLCPCB BOM is a-jlcpcb's house BOM."""
+    profile = Jlcpcb(CORRECTIONS)
+    assert output_clash("b", "1", ["a", "a-jlcpcb"], False, profile) == (
+        "variants a and a-jlcpcb would both write b-1-a-jlcpcb-bom.csv: rename one"
+    )
+    assert output_clash("b", "1", ["a", "a-x"], True, profile) is None
+    assert output_clash("b", "1", [None], False, profile) is None
+
+
+def test_release_refuses_variants_whose_files_clash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = json.loads(FIXTURE["hw/b.kicad_pro"])
+    project["schematic"] = {"variants": [{"name": "a"}, {"name": "a-jlcpcb"}]}
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", json.dumps(project))
+    toml = FIXTURE["fab.toml"].replace(
+        'profile = "jlcpcb"\n', 'profile = "jlcpcb"\nvariants = ["a", "a-jlcpcb"]\n'
+    )
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    with pytest.raises(SystemExit, match=r"^variants a and a-jlcpcb would both write"):
+        release(tmp_path, monkeypatch)
+    assert not (tmp_path / "repo/production").exists()

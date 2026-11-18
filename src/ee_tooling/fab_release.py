@@ -653,6 +653,30 @@ class TagPlan(Enum):
     REFUSE = "on another commit, and no --retag"
 
 
+# A build's files after its stem, but the Gerber zip and the profile's.
+BUILD_OUTPUTS = ("odb.tgz", "ipc2581.zip", BOM)
+
+
+def output_clash(
+    name: str, rev: str, builds: Sequence[str | None], split: bool, profile: Profile[Any]
+) -> str | None:
+    """Two builds that would write a file of one name (variants "a" and
+    "a-jlcpcb": NAME-REV-a-jlcpcb-bom.csv), named; None if none."""
+    owner: dict[str, str | None] = {}
+    for v in builds:
+        base = f"{name}-{rev}" if v is None else f"{name}-{rev}-{v}"
+        names = [
+            *(f"{base}-{x}" for x in BUILD_OUTPUTS),
+            *profile.outputs(base),
+            *([gerber_zip(base, profile)] if split else []),
+        ]
+        for n in names:
+            if n in owner and owner[n] != v:
+                return f"variants {owner[n]} and {v} would both write {n}: rename one"
+            owner[n] = v
+    return None
+
+
 def release_name_problem(root: Path, name: str, date: str, rev: str) -> str | None:
     """What is wrong with a release's directory name, DATE-REV, and its tag,
     NAME-DATE-REV: the directory one path component, the tag a name git
@@ -1301,6 +1325,8 @@ def main() -> None:
                 " its own",
                 file=sys.stderr,
             )
+        if clash := output_clash(b.name, rev, builds, split, profile):
+            sys.exit(clash)
         if dest.exists():
             if foreign := sorted(
                 f.name for f in dest.iterdir() if not f.name.startswith(f"{b.name}-{rev}-")

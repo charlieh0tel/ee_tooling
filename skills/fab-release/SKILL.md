@@ -72,7 +72,10 @@ release, one production directory, one tag, whose message names the
 variants.
 
 - A name is letters, digits, `.`, `_` and `-`, not starting with `-`;
-  names are unique ignoring case.  Otherwise an error naming it.
+  names are unique ignoring case.  Otherwise an error naming it.  Two
+  variants whose files would share a name (`a` and `a-jlcpcb`:
+  `NAME-REV-a-jlcpcb-bom.csv`) are refused, naming both, before
+  anything is written.
 - A listed variant the project lacks is an error, before anything
   runs.  The project's variants are those its `.kicad_pro` lists (where
   KiCad's GUI keeps them), the board's top-level `(variants ...)`, and
