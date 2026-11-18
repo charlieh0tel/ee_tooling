@@ -518,14 +518,14 @@ FAKE_GERBERS = {
             "DesignRules": [{"Layers": "Outer", "PadToPad": 0.2, "MinLineWidth": 0.15}],
         }
     ),
-    "b-F_Cu.gtl": "G04 F.Cu*\n",
-    "b-In1_Cu.g1": "G04 In1.Cu*\n",
-    "b-B_Cu.gbl": "G04 B.Cu*\n",
-    "b-F_Mask.gts": "G04 F.Mask*\n",
-    "b-B_Mask.gbs": "G04 B.Mask*\n",
-    "b-F_Silkscreen.gto": "G04 F.Silkscreen*\n",
-    "b-User_Drawings.gbr": "G04 User.Drawings*\n",
-    "b-Edge_Cuts.gm1": "G04 Edge.Cuts*\n",
+    "b-F_Cu.gtl": "G04 F.Cu*\nX1000Y2000D02*\n",
+    "b-In1_Cu.g1": "G04 In1.Cu*\nX2000Y2000D02*\n",
+    "b-B_Cu.gbl": "G04 B.Cu*\nX3000Y2000D02*\n",
+    "b-F_Mask.gts": "G04 F.Mask*\nX4000Y2000D02*\n",
+    "b-B_Mask.gbs": "G04 B.Mask*\nX5000Y2000D02*\n",
+    "b-F_Silkscreen.gto": "G04 F.Silkscreen*\nX6000Y2000D02*\n",
+    "b-User_Drawings.gbr": "G04 User.Drawings*\nX7000Y2000D02*\n",
+    "b-Edge_Cuts.gm1": "G04 Edge.Cuts*\nX8000Y2000D02*\n",
 }
 FAKE_DRILL = {
     "b-PTH.drl": "M48\n; #@! TF.FileFunction,Plated,1,3,PTH\nMETRIC\nT1C0.300\n%\n",
@@ -1418,7 +1418,22 @@ def test_release_variants(
     """Variants whose Gerbers are the same: one Gerber zip and the shared
     documents as without variants, and per variant its BOMs, CPL, ODB++,
     IPC-2581 and PDFs, each from kicad-cli with --variant."""
-    root, calls = variant_release(tmp_path, monkeypatch, LITE_OUTPUTS)
+
+    # Each variant's Gerbers: the same drawing, other comments and dates.
+    def dated(variant: str, second: int) -> dict[str, str]:
+        job = json.loads(FAKE_GERBERS["b-job.gbrjob"])
+        job["Header"] = {"CreationDate": f"2026-11-18T12:00:0{second}"}
+        return {
+            **{k: f"G04 {variant} {k}*\n{v}" for k, v in FAKE_GERBERS.items()},
+            "b-job.gbrjob": json.dumps(job),
+        }
+
+    outputs = {
+        **LITE_OUTPUTS,
+        "pcb export gerbers @lite": dated("lite", 1),
+        "pcb export gerbers @full": dated("full", 2),
+    }
+    root, calls = variant_release(tmp_path, monkeypatch, outputs)
     dest = root / "production/20261118-1"
     files = sorted(f.name for f in dest.iterdir())
     assert files == sorted(
