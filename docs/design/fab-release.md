@@ -210,10 +210,11 @@ become groups chosen per board, and whether a value the board and
 ## Migration
 
 A flag day: the breaking commits land on `main` in one merge and are
-released as 0.3.0.  The release before it, `v0.2.0` or a later
-0.2.x, is the pin for a board repository not yet migrated.  A board
-repository cannot release from the merge until it runs `adopt --yes`, checks `[board.fab]`, draws the stackup
-table and passes DRC under the profile's rules.
+released as 0.4.0.  The last release before it (`v0.2.0` or any
+later release before 0.4.0) is the pin for a board repository not yet
+migrated.  A board repository cannot release from the merge until it
+runs `adopt --yes`, checks `[board.fab]`, draws the stackup table and
+passes DRC under the profile's rules.
 
 Breaking changes:
 
@@ -270,7 +271,7 @@ Then one PR, breaking, merged as one:
     copy with them; `adopt` installs them and raises Board Setup; the
     stale warning.
 12. `adopt` sets the ERC severities and connection grid.
-13. Release 0.3.0; tag after CI.
+13. Release 0.4.0; tag after CI.
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
