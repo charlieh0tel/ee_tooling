@@ -151,3 +151,37 @@ def install(
         changes,
         found.copied(section),
     )
+
+
+# The house ERC severities and connection grid, a .kicad_pro fragment; and
+# KiCad's ERC severities, least strict first.
+ERC_SETTINGS = "rules/erc_severities.json"
+SEVERITIES = ("ignore", "warning", "error")
+
+
+def erc_set(project: dict[str, Any], house: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The project with house's ERC severities, each kept where the
+    project's is stricter (SEVERITIES), and house's other values (the
+    connection grid) set; and what changed, as "a.b: old -> new"."""
+    out = copy.deepcopy(project)
+    changes: list[str] = []
+
+    def walk(have: dict[str, Any], want: dict[str, Any], where: str) -> None:
+        for key, value in want.items():
+            path = f"{where}{key}"
+            if isinstance(value, dict):
+                if not isinstance(have.get(key), dict):
+                    have[key] = {}
+                walk(have[key], value, f"{path}.")
+                continue
+            old = have.get(key)
+            if value in SEVERITIES and old in SEVERITIES:
+                if SEVERITIES.index(old) >= SEVERITIES.index(value):
+                    continue
+            elif old == value:
+                continue
+            have[key] = value
+            changes.append(f"{path}: {'none' if old is None else old} -> {value}")
+
+    walk(out, house, "")
+    return out, changes

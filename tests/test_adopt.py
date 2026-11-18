@@ -27,7 +27,7 @@ from ee_tooling.adopt import (
     stale,
 )
 from ee_tooling.fab_release import load_config
-from ee_tooling.kicad_rules import installed
+from ee_tooling.kicad_rules import ERC_SETTINGS, erc_set, installed, resource
 from ee_tooling.profiles.jlcpcb import Jlcpcb, Options
 
 SUBMODULE = Path("hardware/ee_tooling")
@@ -564,8 +564,19 @@ def test_adopt_stops_on_fab_it_cannot_add(tmp_path: Path) -> None:
 OWN_RULE = '(rule "Mine"\n\t(constraint track_width (min 0.2mm)))\n'
 LOW_SETUP = {
     "board": {"design_settings": {"rules": {"min_clearance": 0.05, "min_hole_clearance": 0.3}}},
+    "erc": {
+        "rule_severities": {
+            "four_way_junction": "error",
+            "endpoint_off_grid": "ignore",
+            "my_own_check": "ignore",
+        }
+    },
     "meta": {"filename": "main.kicad_pro"},
+    "schematic": {"connection_grid_size": 25.0},
 }
+# What the house ERC settings change in LOW_SETUP: each severity it lacks or
+# has laxer, and the grid; not four_way_junction, stricter there.
+ERC_CHANGES = erc_set(LOW_SETUP, json.loads(resource(ERC_SETTINGS)))[1]
 SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
 
 
@@ -599,6 +610,7 @@ def test_rules_installed(tmp_path: Path) -> None:
             "Board Setup raised to jlcpcb's minimums:"
             " board.design_settings.rules.min_clearance: 0.05 -> 0.1;"
             " board.design_settings.rules.min_copper_edge_clearance: none -> 0.2;"
+            f" ERC severities and connection grid set ({len(ERC_CHANGES)} values);"
             " close the board in KiCad first",
         ),
     ]
@@ -611,6 +623,12 @@ def test_rules_installed(tmp_path: Path) -> None:
         "min_copper_edge_clearance": 0.2,
     }
     assert project["meta"] == LOW_SETUP["meta"]
+    severities = project["erc"]["rule_severities"]
+    assert severities["four_way_junction"] == "error"
+    assert severities["endpoint_off_grid"] == "error"
+    assert severities["field_name_whitespace"] == "warning"
+    assert severities["my_own_check"] == "ignore"
+    assert project["schematic"]["connection_grid_size"] == 50.0
     assert stale(layout) == []
     assert not [s for s in plan(layout) if isinstance(s, Edit)]
 

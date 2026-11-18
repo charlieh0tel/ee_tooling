@@ -52,10 +52,12 @@ overwrites the change.
 2. `NAME.kicad_pro`: each of `board.design_settings.rules` raised to at
    least its value in `jlcpcb_board_setup.json` (Board Setup, Design
    Rules, Constraints), never lowered.
-3. `NAME.kicad_pro`: each of `erc.rule_severities` and
-   `schematic.connection_grid_size` set to its value in
+3. `NAME.kicad_pro`: each of `erc.rule_severities` set to its value in
    `erc_severities.json` (Schematic Setup, Electrical Rules, Violation
-   Severity; Formatting, Connection grid), by hand.
+   Severity), kept where the board's is stricter (`ignore`, then
+   `warning`, then `error`); a check the file does not name is kept as
+   the board has it; and `schematic.connection_grid_size` set to the
+   file's (Formatting, Connection grid).
 
 `fab-release` runs DRC on a scratch copy of the project (its directory's
 files copied, its directories linked) with the same rules installed and

@@ -24,7 +24,16 @@ from typing import Any
 
 from ee_tooling.fab_release import CONFIG, DRU, FAB, GONE_KEYS, string, strings
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
-from ee_tooling.kicad_rules import Dru, board_setup, install, installed, raised
+from ee_tooling.kicad_rules import (
+    ERC_SETTINGS,
+    Dru,
+    board_setup,
+    erc_set,
+    install,
+    installed,
+    raised,
+    resource,
+)
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.jlcpcb import Jlcpcb
 
@@ -367,8 +376,9 @@ def project_json(project: dict[str, Any]) -> str:
 
 
 def rules_edits(root: Path, config: str | None) -> list[Edit]:
-    """What installs each board's profile's rules in its .kicad_dru and
-    raises its Board Setup in its .kicad_pro, by fab.toml's text (config),
+    """What installs each board's profile's rules in its .kicad_dru, raises
+    its Board Setup in its .kicad_pro and sets its ERC severities (kept
+    where stricter) and connection grid there, by fab.toml's text (config),
     each checked once edited.  A board whose profile is not known, or whose
     .kicad_pro is not there, is left, said on stderr.  ValueError naming
     what cannot be done."""
@@ -396,6 +406,7 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             continue
         section = installed(profile.name, profile.rules, options)
         least = board_setup(profile.rules)
+        house = json.loads(resource(ERC_SETTINGS))
         by_hand = "install the rules by hand"
         try:
             settings = json.loads((root / project).read_text())
@@ -406,7 +417,12 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             found = install(existing, settings, section, least)
         except ValueError as e:
             raise ValueError(f"{dru.as_posix()}: {e}; {by_hand}") from e
-        if Dru.split(found.dru).section != section or raised(found.project, least)[1]:
+        settings, erc = erc_set(found.project, house)
+        if (
+            Dru.split(found.dru).section != section
+            or raised(settings, least)[1]
+            or erc_set(settings, house)[1]
+        ):
             raise ValueError(f"[[board]] {name!r}: the rules are not where they belong; {by_hand}")
         if found.copied:
             print(
@@ -419,15 +435,15 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             out.append(
                 Edit(dru, found.dru, f"ee_tooling's {profile.name} rules installed; {close}")
             )
+        what = []
         if found.raised:
-            out.append(
-                Edit(
-                    project,
-                    project_json(found.project),
-                    f"Board Setup raised to {profile.name}'s minimums: {'; '.join(found.raised)};"
-                    f" {close}",
-                )
+            what.append(
+                f"Board Setup raised to {profile.name}'s minimums: {'; '.join(found.raised)}"
             )
+        if erc:
+            what.append(f"ERC severities and connection grid set ({len(erc)} values)")
+        if what:
+            out.append(Edit(project, project_json(settings), f"{'; '.join(what)}; {close}"))
     return out
 
 

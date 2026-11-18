@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,8 +8,10 @@ from ee_tooling import kicad_rules
 from ee_tooling.kicad_rules import (
     BEGIN,
     END,
+    ERC_SETTINGS,
     Dru,
     board_setup,
+    erc_set,
     install,
     installed,
     raised,
@@ -180,3 +183,45 @@ def test_install() -> None:
     assert again.dru == found.dru
     assert not again.stale
     assert again.raised == []
+
+
+def test_erc_set_keeps_the_stricter() -> None:
+    """ignore < warning < error: the board's kept where stricter; anything
+    else, the grid too, set to the house's; the board's own others kept."""
+    house = {
+        "erc": {"rule_severities": {"a": "warning", "b": "warning", "c": "error", "d": "warning"}},
+        "schematic": {"connection_grid_size": 50.0},
+    }
+    project: dict[str, Any] = {
+        "erc": {"rule_severities": {"a": "error", "b": "ignore", "d": "odd", "e": "ignore"}},
+        "schematic": {"connection_grid_size": 25.0},
+    }
+    out, changes = erc_set(project, house)
+    assert out == {
+        "erc": {
+            "rule_severities": {
+                "a": "error",
+                "b": "warning",
+                "d": "warning",
+                "e": "ignore",
+                "c": "error",
+            }
+        },
+        "schematic": {"connection_grid_size": 50.0},
+    }
+    assert changes == [
+        "erc.rule_severities.b: ignore -> warning",
+        "erc.rule_severities.c: none -> error",
+        "erc.rule_severities.d: odd -> warning",
+        "schematic.connection_grid_size: 25.0 -> 50.0",
+    ]
+    assert erc_set(out, house) == (out, [])
+    assert project["erc"]["rule_severities"]["b"] == "ignore"
+
+
+def test_erc_set_house() -> None:
+    """The house file: every value a severity, and the grid."""
+    house = json.loads(resource(ERC_SETTINGS))
+    assert set(house["erc"]["rule_severities"].values()) <= {"ignore", "warning", "error"}
+    out, _ = erc_set({}, house)
+    assert out == house
