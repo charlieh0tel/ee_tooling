@@ -641,6 +641,7 @@ def adopted(tmp_path: Path, *projects: str) -> Layout:
         "---\nname: jlcpcb-release\n---\nuv run jlcpcb-release; see jlcpcb.toml\n"
     )
     (skill / "notes.txt").write_text("jlcpcb-release\n")
+    commit(tmp_path, "adopted", "jlcpcb.toml")
     return layout
 
 
@@ -707,6 +708,7 @@ def test_migrate_root_layout(tmp_path: Path) -> None:
         '[[board]]\nname = "main"\ndirectory = "."\ncopper = ["F.Cu", "B.Cu"]\n'
         'production = "production"\n'
     )
+    commit(tmp_path, "jlcpcb.toml", "jlcpcb.toml")
     layout = Layout(tmp_path, Path("ee_tooling"))
     apply(tmp_path, plan(layout), lambda *_: None)
     assert load_config((tmp_path / "fab.toml").read_text())["main"].directory == Path(".")
@@ -1439,3 +1441,35 @@ def test_projects_skip_other_repositories(tmp_path: Path) -> None:
     config = fab_config(layout)
     assert config is not None
     assert "demo" not in config
+
+
+@pytest.mark.parametrize(
+    ("state", "kept"),
+    [("untracked", "not committed"), ("modified", "with uncommitted changes")],
+)
+def test_migration_keeps_a_config_git_would_lose(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], state: str, kept: str
+) -> None:
+    """jlcpcb.toml not committed as it is: fab.toml written from it, it
+    kept and said so; --check fails until then, and passes after, naming it
+    on stderr."""
+    layout = repository(tmp_path, "main")
+    old = tmp_path / "jlcpcb.toml"
+    old.write_text(OLD_CONFIG)
+    if state == "modified":
+        commit(tmp_path, "jlcpcb.toml", "jlcpcb.toml")
+        old.write_text(OLD_CONFIG + "# mine\n")
+    text = old.read_text()
+    assert Path("jlcpcb.toml") in stale(layout)
+    steps = plan(layout)
+    assert Remove(Path("jlcpcb.toml"), "migrated to fab.toml", kept) in steps
+    apply(tmp_path, steps, lambda *_: None)
+    out = capsys.readouterr().out
+    assert (
+        f"keep jlcpcb.toml (project; migrated to fab.toml; {kept}: remove it yourself once the"
+        " new file is checked)\n"
+    ) in out
+    assert old.read_text() == text
+    assert load_config((tmp_path / "fab.toml").read_text())["main"].sources == (Path("docs"),)
+    assert stale(layout) == []
+    assert "jlcpcb.toml and fab.toml: jlcpcb.toml is not read; remove it" in capsys.readouterr().err

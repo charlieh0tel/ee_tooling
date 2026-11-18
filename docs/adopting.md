@@ -103,7 +103,11 @@ time `adopt` changes files the project owns:
 
 - `jlcpcb.toml`, with no `fab.toml`: `fab.toml` is written from its
   boards, each key kept and `profile = "jlcpcb"` added, and
-  `jlcpcb.toml` is removed.  Each board gets the profile's house
+  `jlcpcb.toml` is removed if git holds it as it is (committed, with no
+  uncommitted change).  Otherwise it is kept, and `--yes` says so: its
+  comments and edits would be lost for good.  `--check` names it ("to be
+  migrated") until `fab.toml` is written, then passes, saying on stderr
+  that it is not read: remove it yourself once `fab.toml` is checked.  Each board gets the profile's house
   `[board.fab]` values.  `copper` is dropped: the copper layers are
   the stackup's.  Its comments are not carried over, said once on
   stderr if it has any; nor is a key `fab.toml` does not have, each

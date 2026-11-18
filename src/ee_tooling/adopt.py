@@ -125,10 +125,12 @@ class Command:
 
 @dataclass(frozen=True)
 class Remove:
-    """A project file ee_tooling no longer reads, from the repository root."""
+    """A project file ee_tooling no longer reads, from the repository root,
+    removed unless git does not hold it as it is."""
 
     path: Path
     why: str  # what replaced it
+    kept: str | None = None  # why it is kept instead: git would not have it back
 
 
 @dataclass(frozen=True)
@@ -432,6 +434,16 @@ def migrated_config(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def unsaved(root: Path, path: Path) -> str | None:
+    """Why git could not give path back if it were removed (untracked, or
+    with uncommitted changes), or None."""
+    if not git(root, "ls-files", "--", path.as_posix()):
+        return "not committed"
+    if git(root, "status", "--porcelain", "--", path.as_posix()):
+        return "with uncommitted changes"
+    return None
+
+
 def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
     """What moves the project files ee_tooling renamed to their new names
     (a file's new text is among files()), and adds the keys fab.toml
@@ -452,7 +464,7 @@ def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
         if (root / new).exists():
             print(f"{old} and {new}: {old} is not read; remove it", file=sys.stderr)
         elif old == OLD_CONFIG:
-            out.append(Remove(old, f"migrated to {new}"))
+            out.append(Remove(old, f"migrated to {new}", unsaved(root, old)))
         else:
             out.append(Rename(old, new, RENAMED))
     return out
@@ -753,6 +765,11 @@ def describe(step: Step, root: Path) -> str:
             where = f" (in {step.directory.as_posix()})" if step.directory != Path() else ""
             return f"run {' '.join(step.args)}{where}"
         case Remove():
+            if step.kept is not None:
+                return (
+                    f"keep {step.path.as_posix()} (project; {step.why}; {step.kept}:"
+                    " remove it yourself once the new file is checked)"
+                )
             return f"remove {step.path.as_posix()} (project; {step.why})"
         case Edit():
             verb = "update" if (root / step.path).exists() else "create"
@@ -778,7 +795,8 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
             case Command():
                 run(step.args, root / step.directory)
             case Remove():
-                (root / step.path).unlink()
+                if step.kept is None:
+                    (root / step.path).unlink()
             case Edit():
                 (root / step.path).write_text(step.text)
             case Rename():
