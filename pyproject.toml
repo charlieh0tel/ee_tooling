@@ -1,6 +1,6 @@
 [project]
 name = "ee-tooling"
-version = "0.2.1"
+version = "0.2.2"
 description = "Tools, agent skills and house style for KiCad boards made at JLCPCB"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
