@@ -110,6 +110,9 @@ VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
 GERBER_README = "README.txt"
 # git ls-files --stage's mode of a submodule (a gitlink).
 GITLINK = "160000 "
+# A release is built in its production directory, in .DATE-REV plus this,
+# then put in place of the old one.
+BUILDING = ".building"
 # The work directory's subdirectory DRC's scratch copy of the project is
 # in, and the suffix of a project's custom rules.
 DRC_PROJECT = "project"
@@ -1242,42 +1245,53 @@ def main() -> None:
                 sys.exit(
                     f"{dest} holds {foreign[0]}, not this board's ({b.name}-{rev}-*): not removed"
                 )
+        # Built beside the old release, which a failure leaves as it was.
+        building = dest.parent / f".{dest.name}{BUILDING}"
+        if building.exists():
+            shutil.rmtree(building)
+        building.mkdir(parents=True)
+        try:
+            out = building
+            base = f"{b.name}-{rev}"
+            label = f"{b.name} {rev}"
+            # Each build's file stem: NAME-REV, or NAME-REV-VARIANT.
+            bases = {v: base if v is None else f"{base}-{v}" for v in builds}
+            zips = {v: gerber_zip(bases[v] if split else base, profile) for v in builds}
+            named = list(dict.fromkeys(zips.values()))
+            title = (
+                f"{label}: the files in {named[0]}"
+                if len(named) == 1
+                else f"{label}: the files in each of {', '.join(named)}"
+            )
+            map_text = gerber_map(title, files)
+            stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
+            stackup_text, notes_text = r.fabrication(
+                label, pcb, files, directories[builds[0]], stackup_name, map_name
+            )
+            # In the zip, the notes name the documents by their names there.
+            _, zip_notes = r.fabrication(
+                label, pcb, files, directories[builds[0]], STACKUP, GERBER_README
+            )
+            documents = {GERBER_README: map_text, STACKUP: stackup_text, NOTES: zip_notes}
+            for v in builds if split else builds[:1]:
+                write_gerber_zip(out / zips[v], directories[v], documents)
+            (out / map_name).write_text(map_text)
+            (out / stackup_name).write_text(stackup_text)
+            (out / f"{base}-{NOTES}").write_text(notes_text)
+            for v in builds:
+                r.odb(out / f"{bases[v]}-odb.tgz", v)
+                r.ipc2581(out / f"{bases[v]}-ipc2581.zip", profile.distributor, v)
+            for v in builds:
+                parts, placements = rows[v]
+                write_csv(out / f"{bases[v]}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
+                profile.assembly(out, bases[v], parts, placements, options[b.name])
+            r.source(out / f"{base}-source.tgz", commit, builds)
+        except BaseException:
+            shutil.rmtree(building)
+            raise
+        if dest.exists():
             shutil.rmtree(dest)
-        dest.mkdir(parents=True)
-        base = f"{b.name}-{rev}"
-        label = f"{b.name} {rev}"
-        # Each build's file stem: NAME-REV, or NAME-REV-VARIANT.
-        bases = {v: base if v is None else f"{base}-{v}" for v in builds}
-        zips = {v: gerber_zip(bases[v] if split else base, profile) for v in builds}
-        named = list(dict.fromkeys(zips.values()))
-        title = (
-            f"{label}: the files in {named[0]}"
-            if len(named) == 1
-            else f"{label}: the files in each of {', '.join(named)}"
-        )
-        map_text = gerber_map(title, files)
-        stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
-        stackup_text, notes_text = r.fabrication(
-            label, pcb, files, directories[builds[0]], stackup_name, map_name
-        )
-        # In the zip, the notes name the documents by their names there.
-        _, zip_notes = r.fabrication(
-            label, pcb, files, directories[builds[0]], STACKUP, GERBER_README
-        )
-        documents = {GERBER_README: map_text, STACKUP: stackup_text, NOTES: zip_notes}
-        for v in builds if split else builds[:1]:
-            write_gerber_zip(dest / zips[v], directories[v], documents)
-        (dest / map_name).write_text(map_text)
-        (dest / stackup_name).write_text(stackup_text)
-        (dest / f"{base}-{NOTES}").write_text(notes_text)
-        for v in builds:
-            r.odb(dest / f"{bases[v]}-odb.tgz", v)
-            r.ipc2581(dest / f"{bases[v]}-ipc2581.zip", profile.distributor, v)
-        for v in builds:
-            parts, placements = rows[v]
-            write_csv(dest / f"{bases[v]}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
-            profile.assembly(dest, bases[v], parts, placements, options[b.name])
-        r.source(dest / f"{base}-source.tgz", commit, builds)
+        building.rename(dest)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
             message = f"{b.name} {rev}: fab release {b.production / dest.name}"
             if b.variants:

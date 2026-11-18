@@ -791,7 +791,7 @@ RELEASE_CALLS = [
         "tgz",
         "--check-zones",
         "-o",
-        "ROOT/production/20261118-1/b-1-odb.tgz",
+        "ROOT/production/.20261118-1.building/b-1-odb.tgz",
         "ROOT/hw/b.kicad_pcb",
     ],
     [
@@ -814,7 +814,7 @@ RELEASE_CALLS = [
         "--bom-col-dist",
         "LCSC",
         "-o",
-        "ROOT/production/20261118-1/b-1-ipc2581.zip",
+        "ROOT/production/.20261118-1.building/b-1-ipc2581.zip",
         "ROOT/hw/b.kicad_pcb",
     ],
     ["sch", "export", "pdf", "-o", "WORK/pdf/b-schematic.pdf", "ROOT/hw/b.kicad_sch"],
@@ -2070,3 +2070,23 @@ def test_release_stops_when_git_fails(tmp_path: Path, monkeypatch: pytest.Monkey
     with pytest.raises(SystemExit, match=r"^git status .* failed \(128\):\nfatal: bad pathspec\n$"):
         release(tmp_path, monkeypatch)
     assert not (tmp_path / "repo/production").exists()
+
+
+@pytest.mark.parametrize("key", ["pcb export odb", "sch export pdf"])
+def test_release_failing_export_keeps_the_old_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, key: str
+) -> None:
+    """An export failing after the checks, with --force: the old release
+    as it was, no partial directory, the tag where it was."""
+    root, _ = release(tmp_path, monkeypatch)
+    dest = root / "production/20261118-1"
+    before = {f.name: f.read_bytes() for f in dest.iterdir()}
+    tagged = git(root, "rev-parse", "b-20261118-1^{commit}")
+    git(root, "commit", "-q", "--allow-empty", "-m", "later")
+    monkeypatch.setenv("FAKE_FAIL", key)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    with pytest.raises(SystemExit, match=rf"^kicad-cli {key} "):
+        main()
+    assert {f.name: f.read_bytes() for f in dest.iterdir()} == before
+    assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
+    assert git(root, "rev-parse", "b-20261118-1^{commit}") == tagged

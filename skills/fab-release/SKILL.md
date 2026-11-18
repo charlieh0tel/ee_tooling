@@ -187,7 +187,10 @@ only when the owner says to.
 
 ## What it writes
 
-`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  With
+`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  It is built
+in `PRODUCTION/.YYYYMMDD-REV.building/` and put in place, replacing an
+old release (`--force`), only after the last export: a failure leaves
+the old release and the tag as they were, and no partial directory.  With
 `variants`, the BOMs, CPL, ODB++ and IPC-2581 are per variant,
 `NAME-REV-VARIANT-...`, and the Gerber zip too where the silkscreens
 differ (Design variants):

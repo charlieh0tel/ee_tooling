@@ -72,6 +72,10 @@ electrical_test = "100% netlist test per IPC-9252"
   uncommitted-sources check leaves every production directory out);
   inside a board's directory is allowed (the repository-root layout).
   Every git call of the check stops the release on a failure.
+- A release is built in `PRODUCTION/.DATE-REV.building/` (hidden: the
+  uncommitted-sources check and `adopt`'s project search skip it) and
+  replaces the old one (`--force`) only after the last export; a failure
+  removes the building directory and leaves the old release and its tag.
 - Each `sources` path is inside the repository; one that is absolute or
   leads out of it (`..`) is an error naming it.
 - House values for `[board.fab]` are written by `adopt` and the setup
