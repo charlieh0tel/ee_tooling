@@ -231,7 +231,9 @@ plain, `*.png filter=lfs diff=lfs merge=lfs -text` adds a type.  A
 type stored at HEAD as a plain blob, not a pointer, fails it, named in
 git-lfs's words ("should have been a pointer but was not"), with the
 fix: with git-lfs's filters set, `git add --renormalize .` in a clean
-work tree (it stages every tracked file's changes), and a commit.  It
+work tree (it stages every tracked file's changes), and a commit.  When
+fsck fails otherwise (its output naming no file: a damaged repository,
+say), `--check` says that fsck failed, with its error, and no fix.  It
 examines HEAD's tree alone: history and uncommitted files pass, and it
 needs no Git LFS object fetched and no filter set, so CI checks out
 without `lfs: true`.  A repository with no commit passes.  The hooks

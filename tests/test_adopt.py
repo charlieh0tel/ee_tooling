@@ -1597,3 +1597,21 @@ def test_write_whole_or_not_at_all(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert target.read_text() == "new\n"
     assert target.stat().st_mode & 0o777 == 0o640
     assert [p.name for p in tmp_path.iterdir()] == ["b.kicad_pro"]
+
+
+def test_fsck_message() -> None:
+    """Files named: the fix; fsck's own failure: said as such."""
+    found = (
+        'pointer: unexpectedGitObject: "a.zip" (treeish 1234) should have been a pointer but'
+        " was not"
+    )
+    assert adopt.fsck_message(found).endswith(
+        "\nnot stored through Git LFS: the files above; with git-lfs's filters set (adopt --yes"
+        " sets them), run git add --renormalize . in a clean work tree, and commit"
+    )
+    failed = "fatal: bad object HEAD"
+    assert adopt.fsck_message(failed) == (
+        "fatal: bad object HEAD\ngit lfs fsck --pointers HEAD failed (its error is above): fix"
+        " that, then rerun"
+    )
+    assert "renormalize" not in adopt.fsck_message(f"{found}\n{failed}")

@@ -263,6 +263,21 @@ def lfs_unfetched(root: Path) -> bool:
     )
 
 
+# How git lfs fsck --pointers starts each line naming a file whose blob is
+# not a canonical pointer (a plain blob, a pointer written otherwise).
+FSCK_FINDING = "pointer: "
+
+
+def fsck_message(report: str) -> str:
+    """--check's message for plain_blobs's report: the files and the fix
+    when each line names a file, or that fsck itself failed."""
+    if all(line.startswith(FSCK_FINDING) for line in report.splitlines()):
+        return f"{report}\n{NOT_IN_LFS}: the files above; {RENORMALIZE}"
+    return (
+        f"{report}\ngit lfs fsck --pointers HEAD failed (its error is above): fix that, then rerun"
+    )
+
+
 def plain_blobs(root: Path) -> str | None:
     """git lfs fsck --pointers's report of the files of a type Git LFS
     tracks stored at HEAD as plain blobs, or None if there are none or no
@@ -973,7 +988,7 @@ def main() -> None:
         # git-lfs's own report, apart from pending()'s paths: it names the files.
         report = plain_blobs(layout.root)
         if report is not None:
-            print(f"{report}\n{NOT_IN_LFS}: the files above; {RENORMALIZE}", file=sys.stderr)
+            print(fsck_message(report), file=sys.stderr)
         sys.exit(1 if out_of_date or report is not None else 0)
     if not steps:
         print("nothing to do")
