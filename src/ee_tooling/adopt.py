@@ -4,11 +4,13 @@ Runs from the board repository's ee_tooling submodule (its `adopt`
 script), whatever the directory.  Without --yes it prints what it would
 do; with --yes it does it; with --check it fails if a file it manages
 differs from what this ee_tooling would write.  It never overwrites a
-file the project owns once written.
+file the project owns once written, but to migrate one ee_tooling
+renamed (jlcpcb.toml, the release's skill).
 """
 
 import argparse
 import importlib.resources
+import json
 import math
 import os
 import re
@@ -20,7 +22,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from ee_tooling.fab_release import CONFIG
+from ee_tooling.fab_release import CONFIG, string, strings
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 from ee_tooling.profiles.jlcpcb import Jlcpcb
 
@@ -36,6 +38,15 @@ STYLE = "docs/kicad-style.md"
 PROFILE = Jlcpcb.name
 # The release's skill in a board repository, from the root.
 SKILL = Path(".claude/skills/fab-release/SKILL.md")
+# Where adopt puts a lone board's releases, from the root.
+PRODUCTION = Path("production")
+# What ee_tooling renamed, in a board repository: the release's old config
+# and its old [[board]] keys, the old skill's directory, and the names in
+# it, old to new.
+OLD_CONFIG = Path("jlcpcb.toml")
+OLD_KEYS = ("name", "directory", "copper", "production", "sources")
+OLD_SKILL = Path(".claude/skills/jlcpcb-release")
+RENAMED = (("jlcpcb-release", "fab-release"), (str(OLD_CONFIG), CONFIG))
 
 
 class Owner(Enum):
@@ -72,7 +83,25 @@ class Command:
     directory: Path = Path()
 
 
-Step = File | Command
+@dataclass(frozen=True)
+class Remove:
+    """A project file ee_tooling no longer reads, from the repository root."""
+
+    path: Path
+    why: str  # what replaced it
+
+
+@dataclass(frozen=True)
+class Rename:
+    """A project directory ee_tooling renamed, from the repository root,
+    with the names ee_tooling renamed renamed in its Markdown files."""
+
+    source: Path
+    target: Path
+    names: tuple[tuple[str, str], ...]  # old, new
+
+
+Step = File | Command | Remove | Rename
 
 
 @dataclass(frozen=True)
@@ -123,40 +152,135 @@ def copper_layers(pcb_text: str) -> list[str]:
     return sorted(names, key=depth)
 
 
+def toml_string(text: str) -> str:
+    """text as a TOML basic string: JSON's escapes are TOML's."""
+    return json.dumps(text)
+
+
+def board_lines(
+    name: str, directory: str, copper: list[str], production: str, sources: list[str]
+) -> list[str]:
+    """A [[board]] of fab.toml, with adopt's profile."""
+    return [
+        "",
+        "[[board]]",
+        f"name = {toml_string(name)}",
+        f"directory = {toml_string(directory)}",
+        f"copper = [{', '.join(toml_string(c) for c in copper)}]",
+        f"production = {toml_string(production)}",
+        f"sources = [{', '.join(toml_string(s) for s in sources)}]",
+        f"profile = {toml_string(PROFILE)}",
+    ]
+
+
+def productions(layout: Layout) -> list[Path]:
+    """The production directories, from the root: adopt's, and each that
+    jlcpcb.toml or fab.toml names."""
+    out = [PRODUCTION]
+    for config in (OLD_CONFIG, Path(CONFIG)):
+        path = layout.root / config
+        if not path.exists():
+            continue
+        try:
+            boards = tomllib.loads(path.read_text()).get("board", [])
+        except tomllib.TOMLDecodeError as e:
+            print(f"{config}: {e}; its production directories not skipped", file=sys.stderr)
+            continue
+        out += [
+            Path(b["production"])
+            for b in boards
+            if isinstance(b, dict) and isinstance(b.get("production"), str)
+        ]
+    return out
+
+
+def projects(layout: Layout) -> list[Path]:
+    """The KiCad projects (*.kicad_pro) under the hardware directory, but
+    in the submodule, a production directory or a hidden directory (.git,
+    .venv, .claude's worktrees)."""
+    root = layout.root
+    skip = {root / layout.submodule, *(root / p for p in productions(layout))}
+    found = []
+    for here, directories, names in (root / layout.hardware).walk():
+        directories[:] = [d for d in directories if not d.startswith(".") and here / d not in skip]
+        found += [here / n for n in names if n.endswith(".kicad_pro")]
+    return sorted(found)
+
+
 def fab_config(layout: Layout) -> str | None:
     """A starting fab.toml, one [[board]] per KiCad project under the
     hardware directory, or None if there is none."""
-    projects = sorted(
-        p
-        for p in (layout.root / layout.hardware).rglob("*.kicad_pro")
-        if not p.is_relative_to(layout.root / layout.submodule)
-    )
-    if not projects:
+    found = projects(layout)
+    if not found:
         return None
     lines = [
         "# The boards fab-release builds; the first is the default.  Paths are",
         "# from the repository root.  Written by ee-tooling-adopt: check each",
         "# board's production directory and add its sources.",
     ]
-    for project in projects:
+    for project in found:
         # One board owns production/; several each get their own directory.
-        production = "production" if len(projects) == 1 else f"production/{project.stem}"
+        production = PRODUCTION if len(found) == 1 else PRODUCTION / project.stem
         pcb = project.with_suffix(".kicad_pcb")
         copper = copper_layers(pcb.read_text()) if pcb.exists() else []
         if not copper:
             why = "no copper layers in it" if pcb.exists() else "not there"
             print(f"{pcb.relative_to(layout.root)}: {why}; copper left empty", file=sys.stderr)
-        lines += [
-            "",
-            "[[board]]",
-            f'name = "{project.stem}"',
-            f'directory = "{project.parent.relative_to(layout.root).as_posix()}"',
-            f"copper = [{', '.join(f'"{c}"' for c in copper)}]",
-            f'production = "{production}"',
-            "sources = []",
-            f'profile = "{PROFILE}"',
-        ]
+        lines += board_lines(
+            project.stem,
+            project.parent.relative_to(layout.root).as_posix(),
+            copper,
+            production.as_posix(),
+            [],
+        )
     return "\n".join(lines) + "\n"
+
+
+def migrated_config(text: str) -> str:
+    """fab.toml from jlcpcb.toml's text: its boards, each with adopt's
+    profile.  Its comments are not carried over, nor its keys fab.toml does
+    not have, each named on stderr.  ValueError naming a bad key."""
+    old = tomllib.loads(text)
+    lines = [
+        "# The boards fab-release builds; the first is the default.  Paths are",
+        f"# from the repository root.  Migrated from {OLD_CONFIG} by ee-tooling-adopt.",
+    ]
+    for key in sorted(set(old) - {"board"}):
+        print(f"{OLD_CONFIG}: {key!r} not carried over to {CONFIG}", file=sys.stderr)
+    boards = old.get("board", [])
+    if not isinstance(boards, list) or not all(isinstance(b, dict) for b in boards):
+        raise ValueError("no [[board]]")
+    for number, table in enumerate(boards, 1):
+        where = f"[[board]] {number}"
+        name = string(where, table, "name", None)
+        where = f"[[board]] {name!r}"
+        for key in sorted(set(table) - set(OLD_KEYS)):
+            print(f"{OLD_CONFIG}: {where}: {key!r} not carried over to {CONFIG}", file=sys.stderr)
+        lines += board_lines(
+            name,
+            string(where, table, "directory", None),
+            strings(where, table, "copper", None),
+            string(where, table, "production", None),
+            strings(where, table, "sources", []),
+        )
+    return "\n".join(lines) + "\n"
+
+
+def migrations(layout: Layout) -> list[Remove | Rename]:
+    """What moves the project files ee_tooling renamed to their new names;
+    a file's new text is among files()."""
+    root = layout.root
+    out: list[Remove | Rename] = []
+    for old, new in ((OLD_CONFIG, Path(CONFIG)), (OLD_SKILL, SKILL.parent)):
+        if not (root / old).exists():
+            continue
+        if (root / new).exists():
+            print(f"{old} and {new}: {old} is not read; remove it", file=sys.stderr)
+        elif old == OLD_CONFIG:
+            out.append(Remove(old, f"migrated to {new}"))
+        else:
+            out.append(Rename(old, new, RENAMED))
+    return out
 
 
 def agents_text(existing: str | None, block: str) -> str | None:
@@ -193,7 +317,6 @@ def files(layout: Layout) -> list[File]:
         File(
             Path(".github/workflows/ee-tooling.yml"), layout.fill("ee-tooling.yml"), Owner.MANAGED
         ),
-        File(SKILL, layout.fill("fab-release-skill.md"), Owner.PROJECT),
         File(
             layout.hardware / "pyproject.toml",
             layout.fill("hardware-pyproject.toml"),
@@ -206,11 +329,23 @@ def files(layout: Layout) -> list[File]:
         print(f"{AGENTS}: adopted by hand; left as it is", file=sys.stderr)
     else:
         out.append(File(AGENTS, text, Owner.MANAGED))
-    config = fab_config(layout)
-    if config is None:
+    # A skill to be renamed (migrations()) is not written anew.
+    if not (root / OLD_SKILL).exists() or (root / SKILL.parent).exists():
+        out.append(File(SKILL, layout.fill("fab-release-skill.md"), Owner.PROJECT))
+    if (root / CONFIG).exists():
+        return out
+    if (root / OLD_CONFIG).exists():
+        try:
+            config = migrated_config((root / OLD_CONFIG).read_text())
+        except (tomllib.TOMLDecodeError, ValueError) as e:
+            raise ValueError(f"{OLD_CONFIG}: {e}; fix it, or write {CONFIG} by hand") from e
+        out.append(File(Path(CONFIG), config, Owner.PROJECT))
+        return out
+    new = fab_config(layout)
+    if new is None:
         print(f"no KiCad project under {layout.hardware}; no {CONFIG}", file=sys.stderr)
     else:
-        out.append(File(Path(CONFIG), config, Owner.PROJECT))
+        out.append(File(Path(CONFIG), new, Owner.PROJECT))
     return out
 
 
@@ -218,6 +353,7 @@ def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
     steps: list[Step] = [f for f in files(layout) if f.action(root)]
+    steps += migrations(layout)
     venv = root / hardware / ".venv"
     reason = unsupported()
     if reason is not None:
@@ -251,6 +387,14 @@ def describe(step: Step, root: Path) -> str:
         case Command():
             where = f" (in {step.directory.as_posix()})" if step.directory != Path() else ""
             return f"run {' '.join(step.args)}{where}"
+        case Remove():
+            return f"remove {step.path.as_posix()} (project; {step.why})"
+        case Rename():
+            names = ", ".join(f"{old} -> {new}" for old, new in step.names)
+            return (
+                f"move {step.source.as_posix()}/ to {step.target.as_posix()}/"
+                f" (project; {names} in its .md files)"
+            )
 
 
 def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path], None]) -> None:
@@ -265,6 +409,15 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                     target.chmod(0o755)
             case Command():
                 run(step.args, root / step.directory)
+            case Remove():
+                (root / step.path).unlink()
+            case Rename():
+                (root / step.source).rename(root / step.target)
+                for f in sorted((root / step.target).rglob("*.md")):
+                    text = f.read_text()
+                    for old, new in step.names:
+                        text = text.replace(old, new)
+                    f.write_text(text)
 
 
 def run_command(args: Sequence[str], directory: Path) -> None:
@@ -274,8 +427,11 @@ def run_command(args: Sequence[str], directory: Path) -> None:
 
 
 def stale(layout: Layout) -> list[Path]:
-    """The managed files that differ from what would be written."""
-    return [f.path for f in files(layout) if f.owner is Owner.MANAGED and f.action(layout.root)]
+    """The managed files that differ from what would be written, and the
+    project files still to be migrated."""
+    managed = [f.path for f in files(layout) if f.owner is Owner.MANAGED and f.action(layout.root)]
+    renamed = [s.path if isinstance(s, Remove) else s.source for s in migrations(layout)]
+    return [*managed, *renamed]
 
 
 def main() -> None:
@@ -287,16 +443,18 @@ def main() -> None:
 
     try:
         layout = locate(CHECKOUT)
+        if a.check:
+            out_of_date = stale(layout)
+        else:
+            steps = plan(layout)
     except ValueError as e:
         sys.exit(str(e))
     if a.check:
-        out_of_date = stale(layout)
         for p in out_of_date:
             print(
                 f"out of date: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr
             )
         sys.exit(1 if out_of_date else 0)
-    steps = plan(layout)
     if not steps:
         print("nothing to do")
     elif a.yes:

@@ -20,8 +20,8 @@ hardware/ee_tooling/adopt --yes    # does it
 It finds the board repository as the submodule's superproject, so it
 runs from any directory, and the submodule's parent is the hardware
 tools' uv project.  Rerun with `--yes` to bring the files it manages up
-to date; `--check` fails if one is stale.  A fresh clone needs
-`git submodule update --init` first.
+to date; `--check` fails if one is stale, or if a file below is still to
+be migrated.  A fresh clone needs `git submodule update --init` first.
 
 The submodule's parent need not be `hardware/`.  With the submodule at
 `ee_tooling/` and the KiCad project at the repository root, the hardware
@@ -43,6 +43,29 @@ missing, then the project's.
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
 | `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb` |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
+
+It finds the KiCad projects (`*.kicad_pro`) under `hardware/`, skipping
+the submodule, every directory whose name starts with `.` (`.git`,
+`.venv`, `.claude/`'s worktrees) and every production directory
+(`production/`, and each `production` that `jlcpcb.toml` or `fab.toml`
+names), so a project file in a release or a worktree is not taken for a
+board.
+
+## Migration
+
+A repository adopted before `fab.toml` is migrated by `--yes`, the one
+time `adopt` changes files the project owns:
+
+- `jlcpcb.toml`, with no `fab.toml`: `fab.toml` is written from its
+  boards, each key kept and `profile = "jlcpcb"` added, and
+  `jlcpcb.toml` is removed.  Its comments are not carried over, nor a
+  key `fab.toml` does not have, each named on stderr.  A `jlcpcb.toml`
+  that does not parse, or lacks a key, stops `adopt`, naming it.
+- `.claude/skills/jlcpcb-release/`, with no `.claude/skills/fab-release/`:
+  moved there, and `jlcpcb-release` and `jlcpcb.toml` in its `.md` files
+  renamed `fab-release` and `fab.toml`.
+- With both the old and the new there, the old is left as it is, named
+  on stderr.
 
 The `AGENTS.md` section imports `docs/kicad-style.md`, says how the
 submodule and venv are kept, and says: before writing new tooling in
@@ -67,6 +90,8 @@ What it runs, each only when needed:
 
 ## What is left to do
 
+- After a migration, check `fab.toml` and the moved skill, and look for
+  `jlcpcb-release` and `jlcpcb.toml` elsewhere in the repository.
 - `fab.toml`: each board's production directory, `sources` and profile, and
   its copper layers if the board file was missing
   (`skills/fab-release/SKILL.md` gives the keys).

@@ -12,12 +12,16 @@ from ee_tooling.adopt import (
     File,
     Layout,
     Owner,
+    Remove,
+    Rename,
+    Step,
     agents_text,
     apply,
     copper_layers,
     fab_config,
     locate,
     plan,
+    projects,
     stale,
 )
 from ee_tooling.fab_release import load_config
@@ -56,11 +60,11 @@ def repository(tmp_path: Path, *projects: str) -> Layout:
     return Layout(tmp_path, SUBMODULE)
 
 
-def commands(steps: Sequence[File | Command]) -> list[tuple[str, ...]]:
+def commands(steps: Sequence[Step]) -> list[tuple[str, ...]]:
     return [s.args for s in steps if isinstance(s, Command)]
 
 
-def written(steps: Sequence[File | Command]) -> dict[str, Owner]:
+def written(steps: Sequence[Step]) -> dict[str, Owner]:
     return {s.path.as_posix(): s.owner for s in steps if isinstance(s, File)}
 
 
@@ -293,3 +297,159 @@ def test_locate_not_a_submodule(tmp_path: Path) -> None:
     git("init", "-q", str(tmp_path))
     with pytest.raises(ValueError, match="not a submodule"):
         locate(tmp_path)
+
+
+# A jlcpcb.toml as jlcpcb-release read it, with a comment and a key
+# fab.toml does not have.
+OLD_CONFIG = """\
+# my boards
+[[board]]
+name = "main"
+directory = "hardware/main"
+copper = ["F.Cu", "B.Cu"]
+production = "production/main"
+sources = ["docs"]
+colour = "red"
+
+[[board]]
+name = "jig"
+directory = "hardware/jig"
+copper = ["F.Cu", "B.Cu"]
+production = "production/jig"
+"""
+
+
+def adopted(tmp_path: Path, *projects: str) -> Layout:
+    """A repository adopted before fab.toml: jlcpcb.toml and the old skill."""
+    layout = repository(tmp_path, *projects)
+    (tmp_path / "jlcpcb.toml").write_text(OLD_CONFIG)
+    skill = tmp_path / ".claude/skills/jlcpcb-release"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: jlcpcb-release\n---\nuv run jlcpcb-release; see jlcpcb.toml\n"
+    )
+    (skill / "notes.txt").write_text("jlcpcb-release\n")
+    return layout
+
+
+def test_migrate_several_boards(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """jlcpcb.toml becomes fab.toml, its boards and keys kept, each with
+    profile jlcpcb; its comments and unknown keys are not carried over, each
+    key named; the old skill moves, its names renamed in its .md files."""
+    layout = adopted(tmp_path, "main", "jig")
+    steps = plan(layout)
+    assert written(steps)["fab.toml"] is Owner.PROJECT
+    assert ".claude/skills/fab-release/SKILL.md" not in written(steps)
+    assert [s for s in steps if isinstance(s, Remove | Rename)] == [
+        Remove(Path("jlcpcb.toml"), "migrated to fab.toml"),
+        Rename(
+            Path(".claude/skills/jlcpcb-release"),
+            Path(".claude/skills/fab-release"),
+            (("jlcpcb-release", "fab-release"), ("jlcpcb.toml", "fab.toml")),
+        ),
+    ]
+    assert "'colour' not carried over to fab.toml" in capsys.readouterr().err
+    assert {Path("jlcpcb.toml"), Path(".claude/skills/jlcpcb-release")} <= set(stale(layout))
+    apply(tmp_path, steps, lambda *_: None)
+    assert not (tmp_path / "jlcpcb.toml").exists()
+    text = (tmp_path / "fab.toml").read_text()
+    assert "# my boards" not in text
+    assert "colour" not in text
+    boards = load_config(text)
+    assert list(boards) == ["main", "jig"]
+    assert boards["main"].sources == (Path("docs"),)
+    assert boards["main"].production == Path("production/main")
+    assert boards["jig"].copper == ("F.Cu", "B.Cu")
+    assert {b.profile for b in boards.values()} == {"jlcpcb"}
+    skill = tmp_path / ".claude/skills/fab-release"
+    assert not (tmp_path / ".claude/skills/jlcpcb-release").exists()
+    assert (skill / "SKILL.md").read_text() == (
+        "---\nname: fab-release\n---\nuv run fab-release; see fab.toml\n"
+    )
+    assert (skill / "notes.txt").read_text() == "jlcpcb-release\n"
+    assert stale(layout) == []
+    assert [s for s in plan(layout) if not isinstance(s, Command)] == []
+
+
+def test_migrate_one_board(tmp_path: Path) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "jlcpcb.toml").write_text(OLD_CONFIG.split("\n\n")[0] + "\n")
+    apply(tmp_path, plan(layout), lambda *_: None)
+    boards = load_config((tmp_path / "fab.toml").read_text())
+    assert list(boards) == ["main"]
+    assert boards["main"].directory == Path("hardware/main")
+    assert (tmp_path / ".claude/skills/fab-release/SKILL.md").exists()
+
+
+def test_migrate_root_layout(tmp_path: Path) -> None:
+    """The KiCad project at the root, directory "."."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "main.kicad_pro").write_text("{}")
+    (tmp_path / "main.kicad_pcb").write_text(PCB)
+    (tmp_path / "jlcpcb.toml").write_text(
+        '[[board]]\nname = "main"\ndirectory = "."\ncopper = ["F.Cu", "B.Cu"]\n'
+        'production = "production"\n'
+    )
+    layout = Layout(tmp_path, Path("ee_tooling"))
+    apply(tmp_path, plan(layout), lambda *_: None)
+    assert load_config((tmp_path / "fab.toml").read_text())["main"].directory == Path(".")
+    assert not (tmp_path / "jlcpcb.toml").exists()
+
+
+def test_already_migrated(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """fab.toml and the new skill there: nothing migrated, an old file left
+    beside them named on stderr, and --check passes."""
+    layout = adopted(tmp_path, "main")
+    apply(tmp_path, plan(layout), lambda *_: None)
+    capsys.readouterr()
+    (tmp_path / "jlcpcb.toml").write_text(OLD_CONFIG)
+    steps = plan(layout)
+    assert [s for s in steps if not isinstance(s, Command)] == []
+    assert "jlcpcb.toml and fab.toml: jlcpcb.toml is not read" in capsys.readouterr().err
+    assert stale(layout) == []
+
+
+def test_neither_config(tmp_path: Path) -> None:
+    """No jlcpcb.toml and no fab.toml: fab.toml is written from the
+    projects, nothing removed."""
+    steps = plan(repository(tmp_path, "main"))
+    assert written(steps)["fab.toml"] is Owner.PROJECT
+    assert not [s for s in steps if isinstance(s, Remove | Rename)]
+
+
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        ("[[board\n", "jlcpcb.toml: .*fix it, or write fab.toml by hand"),
+        ('[[board]]\nname = "x"\n', r"jlcpcb.toml: \[\[board\]\] 'x': no 'directory'"),
+        ("board = 1\n", r"jlcpcb.toml: no \[\[board\]\]"),
+    ],
+)
+def test_migrate_refuses_a_bad_config(tmp_path: Path, text: str, error: str) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "jlcpcb.toml").write_text(text)
+    with pytest.raises(ValueError, match=error):
+        plan(layout)
+
+
+def test_projects_skip_production_and_hidden(tmp_path: Path) -> None:
+    """A project in a production directory (adopt's, or one a config
+    names), or a hidden directory, is not a board."""
+    layout = repository(tmp_path, "main")
+    copies = [
+        "hardware/.claude/worktrees/w/hardware/main",
+        "hardware/main/.history/main",
+        "production/20261118-1/main",
+        "hardware/releases/x/main",
+    ]
+    for c in copies:
+        (tmp_path / c).mkdir(parents=True)
+        (tmp_path / c / "main.kicad_pro").write_text("{}")
+    assert projects(layout) == [
+        tmp_path / "hardware/main/main.kicad_pro",
+        tmp_path / "hardware/releases/x/main/main.kicad_pro",
+    ]
+    (tmp_path / "jlcpcb.toml").write_text(
+        '[[board]]\nname = "main"\nproduction = "hardware/releases"\n'
+    )
+    assert projects(layout) == [tmp_path / "hardware/main/main.kicad_pro"]
