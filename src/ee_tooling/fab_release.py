@@ -23,8 +23,9 @@ IPC-2581 are per variant, NAME-REV-VARIANT-..., as is the Gerber zip where
 the variants' silkscreens differ.
 
 NAME is the KiCad project, REV its board's title-block revision; the
-board's profile (profiles/) names the fab whose files these are.  ERC and
-DRC must be clean and the release's sources committed, unless --allow-dirty.
+board's profile (profiles/) names the fab whose files these are.  The
+board must have a stackup and a stackup table matching it, ERC and DRC
+must be clean and the release's sources committed, unless --allow-dirty.
 The commit it was built from gets an annotated tag NAME-YYYYMMDD-REV, which
 it does not push: it prints the command.  A build from uncommitted sources
 is not tagged; a tag already on another commit stops it, unless --retag.
@@ -67,6 +68,7 @@ from ee_tooling.fabrication import (
     stackup_document,
 )
 from ee_tooling.kicad_style_netclass import sheets
+from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.profile import (
     KICAD_GERBERS,
@@ -879,6 +881,11 @@ def main() -> None:
     copper = copper_layers(found)
     if not copper:
         sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
+    if table := check_stackup(pcb).findings:
+        sys.exit(
+            "".join(f"{b.pcb.name}: {f.message}\n" for f in table)
+            + f"write or refresh it with: stackup-table {b.pcb}"
+        )
     try:
         schematic = [v for sheet in sheets((root / b.sch).resolve()) for v in variant_names(sheet)]
     except (OSError, ParseError) as e:

@@ -33,10 +33,12 @@ from ee_tooling.fab_release import (
     tag_plan,
     variant_names,
 )
-from ee_tooling.fabrication import Fab, GerberFile
+from ee_tooling.fabrication import Fab, GerberFile, stackup
+from ee_tooling.kicad_style_stackup import HEADER
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
-from ee_tooling.sexpr import parse
+from ee_tooling.sexpr import parse, quote
+from ee_tooling.stackup_table import layer_names, stackup_rows
 
 CONFIG = """
 [[board]]
@@ -614,6 +616,25 @@ electrical_test = "100% netlist test per IPC-9252"
     "hw/fp-lib-table": "(fp_lib_table)\n",
     "docs/notes.txt": "notes\n",
 }
+
+
+def stackup_table(pcb: str) -> str:
+    """A stackup table matching the board's stackup, as kicad-style-check
+    reads one: a table headed HEADER on User.Drawings."""
+    board = parse(pcb)
+    found = stackup(board)
+    assert found is not None
+    texts = [list(HEADER), *stackup_rows(found, layer_names(board))]
+    cells = " ".join(f"(table_cell {quote(c)})" for row in texts for c in row)
+    return f'(table (column_count {len(HEADER)}) (layer "Dwgs.User") (cells {cells}))'
+
+
+def with_stackup_table(pcb: str) -> str:
+    """The board's text with a stackup table matching its stackup."""
+    return pcb.rstrip().removesuffix(")") + f"\n  {stackup_table(pcb)})\n"
+
+
+FIXTURE["hw/b.kicad_pcb"] = with_stackup_table(FIXTURE["hw/b.kicad_pcb"])
 
 
 def builtin_corrections(cls: type[Corrections]) -> Corrections:
@@ -1495,3 +1516,47 @@ def test_release_variants_unlisted(
         "warning: the project has variants lite, full, and fab.toml lists none:"
         " the default variant is built\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("change", "errors"),
+    [
+        (
+            lambda pcb: pcb[: pcb.index("\n  (table ")] + ")\n",
+            ["no stackup table (Place > Add Stackup Table) on User.Drawings"],
+        ),
+        (
+            lambda pcb: pcb.replace('(table_cell "0.2 mm")', '(table_cell "0.25 mm")'),
+            ["stackup table: dielectric 1: thickness '0.25 mm', not 0.2; out of date: replace it"],
+        ),
+        (
+            lambda pcb: pcb.replace('(layer "Dwgs.User")', '(layer "Cmts.User")'),
+            ["stackup table on Cmts.User, not User.Drawings"],
+        ),
+        (
+            lambda pcb: pcb.replace(
+                '(layer "In1.Cu" (type "copper") (thickness 0.0175))',
+                '(layer "In1.Cu" (type "copper") (thickness 0.0175))\n'
+                '      (layer "In2.Cu" (type "copper") (thickness 0.0175))',
+            ),
+            ["stackup table: 7 rows, the stackup 8 layers; out of date: replace it"],
+        ),
+    ],
+)
+def test_release_refuses_a_board_without_a_matching_stackup_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: Callable[[str], str],
+    errors: list[str],
+) -> None:
+    """kicad-style-check's stackup table rules, naming stackup-table as the
+    fix, before anything is checked or written."""
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", change(FIXTURE["hw/b.kicad_pcb"]))
+    with pytest.raises(SystemExit) as e:
+        release(tmp_path, monkeypatch)
+    message = str(e.value)
+    for error in errors:
+        assert f"b.kicad_pcb: {error}" in message
+    assert message.endswith("\nwrite or refresh it with: stackup-table hw/b.kicad_pcb")
+    assert kicad_calls(tmp_path) == []
+    assert not (tmp_path / "repo/production").exists()

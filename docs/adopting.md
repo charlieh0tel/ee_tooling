@@ -103,7 +103,9 @@ What it runs, each only when needed:
 - `fab.toml`: each board's production directory, `sources`, profile and
   `[board.fab]` values (`skills/fab-release/SKILL.md` gives the keys).
 - Each board's stackup, in Board Setup, Physical Stackup: the release
-  takes the copper layers from it, and refuses a board without one.
+  takes the copper layers from it, and refuses a board without one; and
+  its stackup table on User.Drawings, which `stackup-table` writes: the
+  release refuses a board without one matching the stackup.
 - The skill's ordering checklist and part corrections.
 - Any other CI job that runs ee_tooling's tools needs `submodules: true`
   on its checkout.

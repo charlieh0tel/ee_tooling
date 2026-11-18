@@ -78,7 +78,8 @@ wires versus labels are not checked.
 - The table matching the stackup: a row per layer or dielectric
   sublayer, and each material, thickness (any of KiCad's units), Er and
   loss tangent the stackup gives.  `stackup-table` writes or refreshes
-  the table (`docs/stackup-table.md`).
+  the table (`docs/stackup-table.md`).  `fab-release` refuses a board
+  these rules find, whatever its waivers.
 
 ### Routing: kicad_style_routing.py
 

@@ -111,7 +111,10 @@ models of parts from such a library are missing from it.  A library the
 archive must hold goes inside the repository (a submodule) and in
 `sources`.
 
-It stops unless ERC is clean, DRC (with schematic parity) is clean,
+It stops unless the board has a stackup and a stackup table on
+User.Drawings matching it (kicad-style-check's rules, waivers not
+honored: `stackup-table` writes or refreshes the table), ERC is clean,
+DRC (with schematic parity) is clean,
 the board's directory and `sources` have no uncommitted changes
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
 `-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before
@@ -139,7 +142,9 @@ only when the owner says to.
 2. Set the board's stackup in Board Setup, Physical Stackup, if it has
    none: the release takes the copper layers from it, and refuses a
    board without one.
-3. Commit the board and its sources.
+3. Run `stackup-table` on the board (close it in KiCad first) if its
+   stackup table is missing or out of date: the release refuses it.
+4. Commit the board and its sources.
 
 ## What it writes
 
