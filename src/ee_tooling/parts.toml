@@ -13,6 +13,7 @@ C7519 = -90  # USBLC6-2SC6, 2026-10-26
 C82045 = 180  # BSS138, 2026-10-26
 C5665 = -90  # BOOMELE 2.54-2*5P box header, 2026-11-02
 C7203002 = 90  # Raspberry Pi Pico, 2026-11-02; offset unsettled, 0 to 0.4 mm along the pin rows by eye
+C7043252 = 180  # REF35125QDBVR, 2026-11-17
 
 # Millimeters added to the position, in the part's own frame (KiCad
 # rotation 0, y up).
