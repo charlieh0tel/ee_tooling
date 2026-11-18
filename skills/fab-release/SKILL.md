@@ -127,7 +127,8 @@ schematic's hierarchy inside the repository (each also in the
 uncommitted-sources check; one outside is said on stderr), then
 `sources`, then
 the schematic and board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty`
-if built from uncommitted sources, and when it was built).  It leaves
+if built from uncommitted sources, and when it was built).  It holds
+each file once, a source that holds the project's files too, and leaves
 out `.git` and every board's production directory, wherever they fall
 under a source (`sources = ["."]`).
 

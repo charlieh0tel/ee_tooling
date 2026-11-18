@@ -2512,3 +2512,15 @@ def test_core_imports_no_profile_module() -> None:
         "ee_tooling.profiles.profile",
     }
     assert not [m for m in imports("ee_tooling.profiles.profile") if m.startswith("ee_tooling")]
+
+
+def test_source_tgz_holds_each_file_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A source holding the project's files ("hw", or "."): each once."""
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', 'sources = ["hw", "docs", "."]')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    root, _ = release(tmp_path, monkeypatch)
+    with tarfile.open(root / "production/20261118-1/b-1-source.tgz") as t:
+        files = [m.name for m in t.getmembers() if m.isfile()]
+    assert len(files) == len(set(files))
+    assert "b-1-source/hw/b.kicad_pcb" in files
+    assert "b-1-source/fab.toml" in files

@@ -1195,13 +1195,19 @@ class Release:
             )
         top = out.stem.removesuffix(".tar")
         left_out = [normal(p) for p in productions]
+        added: set[Path] = set()
 
         def kept(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
-            """A source, but git's own directory and every production
-            directory (releases, this one's building directory too)."""
+            """A source, once (a source may hold the project's files), but
+            git's own directory and every production directory (releases,
+            this one's building directory too)."""
             path = normal(Path(info.name).relative_to(top))
             if GIT_DIRECTORY in path.parts or any(path.is_relative_to(p) for p in left_out):
                 return None
+            if path in added and not info.isdir():
+                return None
+            added.add(path)
+            info.name = f"{top}/{path}" if path != Path(".") else top
             return info
 
         with tarfile.open(out, "w:gz") as t:
