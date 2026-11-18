@@ -182,7 +182,9 @@ fix: with git-lfs's filters set, `git add --renormalize .` in a clean
 work tree (it stages every tracked file's changes), and a commit.  It
 examines HEAD's tree alone: history and uncommitted files pass, and it
 needs no Git LFS object fetched and no filter set, so CI checks out
-without `lfs: true`.  A repository with no commit passes.
+without `lfs: true`.  A repository with no commit passes.  The hooks
+`git lfs fsck` installs where there is no `pre-push` go to a scratch
+directory, not `.githooks`.
 
 A repository whose files of these types were committed before the
 section, or from a machine without git-lfs's filters, holds them as

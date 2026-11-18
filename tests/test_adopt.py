@@ -1183,6 +1183,23 @@ def test_lfs_migration(
 
 
 @needs_lfs
+def test_check_installs_no_hook(tmp_path: Path) -> None:
+    """--check before --yes: git lfs fsck, with no pre-push in .githooks,
+    writes none of git-lfs's hooks there."""
+    layout = repository(tmp_path, "main")
+    git("-C", str(tmp_path), "config", "core.hooksPath", ".githooks")
+    (tmp_path / ".githooks").mkdir()
+    (tmp_path / ".githooks/commit-msg").write_text("#!/bin/sh\n")
+    (tmp_path / ".gitattributes").write_text(GITATTRIBUTES)
+    (tmp_path / "a.zip").write_text("PK")
+    commit(tmp_path, "board", ".")
+    report = plain_blobs(layout.root)
+    assert report is not None
+    assert '"a.zip"' in report
+    assert sorted(p.name for p in (tmp_path / ".githooks").iterdir()) == ["commit-msg"]
+
+
+@needs_lfs
 def test_plain_blobs_none_before_a_commit(tmp_path: Path) -> None:
     git("init", "-q", str(tmp_path))
     assert plain_blobs(tmp_path) is None

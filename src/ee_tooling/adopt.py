@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -203,13 +204,17 @@ def plain_blobs(root: Path) -> str | None:
     HEAD."""
     if not git(root, "rev-parse", "--verify", "-q", "HEAD"):
         return None
-    r = subprocess.run(
-        ["git", "lfs", "fsck", "--pointers", "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # With no pre-push in core.hooksPath, fsck installs git-lfs's four hooks
+    # there (.githooks, before --yes writes the managed one): into a scratch
+    # directory instead.
+    with tempfile.TemporaryDirectory() as hooks:
+        r = subprocess.run(
+            ["git", "-c", f"core.hooksPath={hooks}", "lfs", "fsck", "--pointers", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
     return None if r.returncode == 0 else f"{r.stdout}{r.stderr}".strip()
 
 

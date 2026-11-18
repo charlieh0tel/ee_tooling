@@ -116,7 +116,11 @@ tests in `tests/test_adopt.py`, `tests/test_fab_release.py`):
   making a type plain is honored.
 - With ee_tooling's `pre-push` in `.githooks`, `git lfs install --local
   --skip-repo`, `ls-files`, `track`, `pull` and `fsck` write no hook
-  there.
+  there.  With no `pre-push` there, `fsck` writes git-lfs's four hooks
+  (a first `adopt --check`, before `--yes`); `version`, `ls-files`,
+  `pull` and `install --local --skip-repo` write none.  With
+  `git -c core.hooksPath=DIR`, `fsck` writes them into DIR, so `--check`
+  runs it with a scratch directory there.
 - `git add --renormalize .` stages every tracked file's changes, not
   only the renormalized ones; untracked files are left.  With the
   filters set, `git add` of a plain blob shown ` M` stores it as a
