@@ -106,12 +106,15 @@ class File:
     executable: bool = False
 
     def action(self, root: Path) -> str | None:
-        """create or update, or None when nothing is to be done."""
+        """create, update or make executable, or None when nothing is to be
+        done."""
         target = root / self.path
         if not target.exists():
             return "create"
         if self.owner is Owner.MANAGED and target.read_text() != self.text:
             return "update"
+        if self.owner is Owner.MANAGED and self.executable and not executable(root, self.path):
+            return "make executable"
         return None
 
 
@@ -188,6 +191,21 @@ def git(directory: Path, *args: str) -> str:
         check=False,
     )
     return r.stdout.strip()
+
+
+# A tracked file's mode in git's index when it is executable.
+EXECUTABLE_MODE = "100755"
+
+
+def executable(root: Path, path: Path) -> bool:
+    """Whether git takes the file, from root, as executable: by its mode in
+    the index when git ignores the work tree's (core.fileMode false) and
+    tracks it; by the work tree's otherwise (git then commits that)."""
+    if git(root, "config", "--type=bool", "core.fileMode") == "false":
+        staged = git(root, "ls-files", "-s", "--", path.as_posix())
+        if staged:
+            return staged.split()[0] == EXECUTABLE_MODE
+    return bool((root / path).stat().st_mode & 0o111)
 
 
 def lfs_missing() -> str | None:
@@ -792,6 +810,9 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                 target.write_text(step.text)
                 if step.executable:
                     target.chmod(0o755)
+                    # The mode git keeps, where it ignores the work tree's.
+                    if not executable(root, step.path):
+                        run(("git", "update-index", "--chmod=+x", "--", step.path.as_posix()), root)
             case Command():
                 run(step.args, root / step.directory)
             case Remove():

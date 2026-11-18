@@ -1473,3 +1473,41 @@ def test_migration_keeps_a_config_git_would_lose(
     assert load_config((tmp_path / "fab.toml").read_text())["main"].sources == (Path("docs"),)
     assert stale(layout) == []
     assert "jlcpcb.toml and fab.toml: jlcpcb.toml is not read; remove it" in capsys.readouterr().err
+
+
+def test_managed_hook_not_executable(tmp_path: Path) -> None:
+    """A managed hook without its executable bit, which git skips: --check
+    fails, --yes sets it, then nothing is to be done."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    hook = tmp_path / ".githooks/pre-push"
+    hook.chmod(0o644)
+    assert stale(layout) == [Path(".githooks/pre-push")]
+    steps = [s for s in plan(layout) if isinstance(s, File)]
+    assert [describe(s, tmp_path) for s in steps] == [
+        "make executable .githooks/pre-push (managed)"
+    ]
+    apply(tmp_path, steps, run_git_only)
+    assert hook.stat().st_mode & 0o111
+    assert stale(layout) == []
+
+
+def test_managed_hook_not_executable_in_git(tmp_path: Path) -> None:
+    """core.fileMode false, the hook committed 100644: the work tree's bit
+    says nothing; --check fails, --yes stages the mode."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    git("-C", str(tmp_path), "config", "core.fileMode", "false")
+    git("-C", str(tmp_path), "add", "--chmod=-x", ".githooks/pre-push")
+    commit(tmp_path, "hooks", ".githooks/pre-push")
+    assert (tmp_path / ".githooks/pre-push").stat().st_mode & 0o111
+    assert stale(layout) == [Path(".githooks/pre-push")]
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], run_git_only)
+    staged = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files", "-s", ".githooks/pre-push"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert staged.startswith("100755 ")
+    assert stale(layout) == []

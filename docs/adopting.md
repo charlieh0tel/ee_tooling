@@ -274,6 +274,14 @@ or out of reach).  `.githooks` is ee_tooling's: a repository's own
 `pre-push` is replaced.  `adopt`, in every mode, names one it did not
 write on stderr, with its text, before `--yes` replaces it.
 
+Git skips a hook that is not executable, silently: a `pre-push`
+committed without its executable bit lets pushes send pointers without
+their objects.  So a managed hook that is not executable is stale:
+`--check` fails on it, and `--yes` sets the bit.  Git's view decides:
+the work tree's bit, or, where git ignores it (`core.fileMode` false)
+and the hook is tracked, its mode in the index, which `--yes` then
+stages (`git update-index --chmod=+x`) for the next commit.
+
 ## Updating
 
 A change to ee_tooling is made and pushed in ee_tooling.  Then, in the
