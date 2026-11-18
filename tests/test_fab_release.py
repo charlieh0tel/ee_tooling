@@ -34,6 +34,7 @@ from ee_tooling.fab_release import (
     settings_variants,
     silkscreen_only,
     tag_plan,
+    tag_refused,
     variant_names,
 )
 from ee_tooling.fabrication import Fab, GerberFile, stackup
@@ -1855,3 +1856,25 @@ def test_release_with_variants_refuses_lfs_pointers_once(
     with pytest.raises(SystemExit, match=r"^Git LFS pointers among .*\n  docs/u1.pdf\ninstall"):
         variant_release(tmp_path, monkeypatch, LITE_OUTPUTS)
     assert kicad_calls(tmp_path) == []
+
+
+def test_release_refuses_a_tag_on_an_earlier_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The production directory committed, then a rebuild: refused before
+    anything is replaced, saying why and the choices; --retag moves it."""
+    root, _ = release(tmp_path, monkeypatch)
+    first = git(root, "rev-parse", "--short", "HEAD")
+    git(root, "add", "production")
+    git(root, "commit", "-q", "-m", "release")
+    head = git(root, "rev-parse", "--short", "HEAD")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    with pytest.raises(SystemExit) as e:
+        main()
+    assert str(e.value) == tag_refused("b-20261118-1", first, head)
+    assert f"HEAD is {head}: it has moved since" in str(e.value)
+    assert "--retag" in str(e.value)
+    assert git(root, "rev-parse", "--short", "b-20261118-1^{commit}") == first
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    assert git(root, "rev-parse", "--short", "b-20261118-1^{commit}") == head

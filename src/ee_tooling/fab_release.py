@@ -585,6 +585,17 @@ class TagPlan(Enum):
     REFUSE = "on another commit, and no --retag"
 
 
+def tag_refused(tag: str, tagged: str, commit: str) -> str:
+    """Why a rebuild stops on a tag on another commit, and the choices."""
+    return (
+        f"tag {tag} is on {tagged}, the commit its release was built from; HEAD is {commit}:"
+        " it has moved since (a commit of the production directory moves it), so a rebuild"
+        " here would no longer match the tag.  Either leave the release as it is; or rebuild"
+        f" from {tagged} (git checkout {tagged}); or, before the order is placed, rebuild"
+        " here with --retag, which moves the tag to HEAD"
+    )
+
+
 def tag_plan(dirty: bool, tagged: str | None, head: str, retag: bool) -> TagPlan:
     """The plan for a release's tag, given the commit it is on (tagged)."""
     if dirty:
@@ -1073,7 +1084,7 @@ def main() -> None:
         tagged = r.tagged(tag)
         plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
         if plan is TagPlan.REFUSE:
-            sys.exit(f"tag {tag} is on {(tagged or '')[:7]}, not {commit}; use --retag to move it")
+            sys.exit(tag_refused(tag, (tagged or "")[:7], commit))
         # Each build's parts and placements, checked.
         rows: dict[str | None, tuple[list[Part], list[Placement]]] = {}
         refusals = []

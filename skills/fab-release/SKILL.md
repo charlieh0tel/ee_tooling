@@ -147,9 +147,13 @@ only when the owner says to.
 
 - A build from uncommitted sources (`--allow-dirty`) is not tagged.
 - A rebuild (`--force`) of the commit the tag is on leaves the tag.
-- A tag already on another commit stops it before anything is replaced;
-  `--retag` moves the tag, and the printed push then has `--force`.
-  Once the order is placed, the release is fixed: don't move its tag.
+- A tag already on another commit stops it before anything is replaced,
+  saying why: HEAD has moved since the release was built, so the
+  rebuilt package would not match its tag.  Committing the production
+  directory moves HEAD, so rebuild (`--force`) before committing it;
+  after, rebuild with `--retag`, which moves the tag (the printed push
+  then has `--force`), or check out the tagged commit.  Once the order
+  is placed, the release is fixed: don't move its tag.
 
 ## Before running
 
