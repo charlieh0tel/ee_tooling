@@ -498,6 +498,17 @@ def fab_config(layout: Layout) -> str | None:
     return "\n".join(lines) + "\n"
 
 
+# The comment lines an earlier adopt wrote at the top of jlcpcb.toml, not
+# the project's.
+OLD_HEADER = frozenset(
+    {
+        "# The boards jlcpcb-release builds; the first is the default.  Paths are",
+        "# from the repository root.  Written by ee-tooling-adopt: check each",
+        "# board's production directory and add its sources.",
+    }
+)
+
+
 def has_comment(text: str) -> bool:
     """Whether TOML text has a comment: a # outside a one-line string."""
     return any("#" in TOML_STRING.sub("", line) for line in text.splitlines())
@@ -513,8 +524,15 @@ def migrated_config(text: str) -> str:
         f"# from the repository root.  Migrated from {OLD_CONFIG} by ee-tooling-adopt:",
         "# check each board's [board.fab].",
     ]
-    if has_comment(text):
-        print(f"{OLD_CONFIG}: its comments not carried over to {CONFIG}", file=sys.stderr)
+    own = "".join(
+        line for line in text.splitlines(keepends=True) if line.rstrip() not in OLD_HEADER
+    )
+    if has_comment(own):
+        print(
+            f"{OLD_CONFIG}: its comments not carried over to {CONFIG}; they stay in git's"
+            f" history (git show HEAD:{OLD_CONFIG})",
+            file=sys.stderr,
+        )
     for key in sorted(set(old) - {"board"}):
         print(f"{OLD_CONFIG}: {key!r} not carried over to {CONFIG}", file=sys.stderr)
     boards = old.get("board", [])

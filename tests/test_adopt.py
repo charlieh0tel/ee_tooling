@@ -672,7 +672,13 @@ def test_migrate_several_boards(tmp_path: Path, capsys: pytest.CaptureFixture[st
         ),
     ]
     err = capsys.readouterr().err
-    assert err.count("jlcpcb.toml: its comments not carried over to fab.toml\n") == 1
+    assert (
+        err.count(
+            "jlcpcb.toml: its comments not carried over to fab.toml; they stay in git's history"
+            " (git show HEAD:jlcpcb.toml)\n"
+        )
+        == 1
+    )
     assert "'colour' not carried over to fab.toml\n" in err
     assert (
         "[[board]] 'jig': 'copper' not carried over to fab.toml: the copper layers come from"
@@ -2068,3 +2074,17 @@ def test_lfs_ls_files_failing_stops(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         plan(layout)
     monkeypatch.setattr(shutil, "which", lambda _: None)
     assert not adopt.lfs_unfetched(tmp_path)
+
+
+def test_old_generated_header_not_taken_for_comments(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """jlcpcb.toml whose only comments are the header an earlier adopt
+    wrote: no note about comments."""
+    header = (
+        "# The boards jlcpcb-release builds; the first is the default.  Paths are\n"
+        "# from the repository root.  Written by ee-tooling-adopt: check each\n"
+        "# board's production directory and add its sources.\n"
+    )
+    adopt.migrated_config(header + OLD_CONFIG.split("\n", 1)[1].replace("colour", "x"))
+    assert "comments" not in capsys.readouterr().err
