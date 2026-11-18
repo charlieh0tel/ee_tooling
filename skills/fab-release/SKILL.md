@@ -118,6 +118,8 @@ DRC (with schematic parity, the profile's rules and Board Setup
 minimums, on a scratch copy of the project: `docs/kicad-rules.md`) is
 clean,
 the board's directory and `sources` have no uncommitted changes
+(every board's production directory left out, so a rebuild with
+`--force` over an uncommitted release goes on)
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
 `-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before
 anything is written.

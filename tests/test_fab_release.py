@@ -1659,3 +1659,41 @@ def test_release_stops_on_violations_with_the_report(
     with pytest.raises(SystemExit, match=f"^{re.escape(error)}$"):
         release(tmp_path, monkeypatch)
     assert not (tmp_path / "repo/production").exists()
+
+
+@pytest.mark.parametrize(
+    ("directory", "production"),
+    [(".", "production"), ("hw", "hw/production"), ("hw", "production")],
+)
+def test_release_rebuilt_over_its_own_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: str, production: str
+) -> None:
+    """A rebuild with --force over an uncommitted release: every board's
+    production directory is not a source, in the board's directory or
+    not; anything else uncommitted there still stops it."""
+    files = {
+        (k.replace("hw/", "", 1) if directory == "." else k): v
+        for k, v in FIXTURE.items()
+        if k != "fab.toml"
+    }
+    other = '[[board]]\nname = "other"\ndirectory = "o"\nproduction = "out"\nprofile = "jlcpcb"\n'
+    toml = (
+        FIXTURE["fab.toml"]
+        .replace('directory = "hw"', f'directory = "{directory}"')
+        .replace('production = "production"', f'production = "{production}"')
+        + other
+        + FIXTURE["fab.toml"].split("\n\n", 1)[1]
+    )
+    for k in list(FIXTURE):
+        monkeypatch.delitem(FIXTURE, k)
+    for k, v in {**files, "fab.toml": toml}.items():
+        monkeypatch.setitem(FIXTURE, k, v)
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "out").mkdir()
+    (root / "out/x.txt").write_text("another board's release\n")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    main()
+    assert (root / production / "20261118-1/b-1-bom.csv").exists()
+    (root / directory / "stray.txt").write_text("x\n")
+    with pytest.raises(SystemExit, match=r"uncommitted changes in the release's sources:\n.*stray"):
+        main()

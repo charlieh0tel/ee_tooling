@@ -574,9 +574,10 @@ class Release:
         (scratch / b.project.name).write_text(json.dumps(rules.project, indent=2) + "\n")
         return scratch / b.pcb.name
 
-    def check(self, allow_dirty: bool, rules: Installed) -> str:
+    def check(self, allow_dirty: bool, rules: Installed, productions: Iterable[Path] = ()) -> str:
         """ERC, DRC with schematic parity and the rules (drc_project), and
-        committed sources; return the commit."""
+        committed sources, less the production directories; return the
+        commit."""
         b = self.board
         erc = self.work / "erc.rpt"
         if self.run(
@@ -595,7 +596,13 @@ class Release:
             str(self.drc_project(rules)),
         ).returncode:
             sys.exit(f"DRC is not clean, with {self.board.profile}'s rules:\n{report(drc)}")
-        paths = [str(b.directory), *(str(s) for s in b.sources)]
+        # Every board's production directory left out: a release's own
+        # output, which may be in the board's directory, is not a source.
+        paths = [
+            str(b.directory),
+            *(str(s) for s in b.sources),
+            *(f":(exclude){p}" for p in productions),
+        ]
         status = self.run("git", "status", "--porcelain", "--", *paths).stdout.strip()
         if status and not allow_dirty:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
@@ -967,7 +974,7 @@ def main() -> None:
     rules = board_rules(root, b, profile, options[b.name])
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp), copper)
-        commit = r.check(a.allow_dirty, rules)
+        commit = r.check(a.allow_dirty, rules, [x.production for x in boards.values()])
         tag = f"{b.name}-{dest.name}"
         tagged = r.tagged(tag)
         plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
