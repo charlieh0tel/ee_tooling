@@ -5,7 +5,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import tomllib
 import zipfile
 from collections.abc import Callable
 from dataclasses import replace
@@ -1051,12 +1050,15 @@ def test_release_stops_on_bad_parts_before_anything(
     before a --force replaces the release."""
 
     def broken(cls: type[Corrections]) -> Corrections:
-        raise tomllib.TOMLDecodeError("bad parts.toml")
+        try:
+            return Corrections.load("[rotation]\n[rotation]\n")
+        except ValueError as e:
+            raise ValueError(f"parts.toml: {e}") from e
 
     old = tmp_path / "repo/production/20261118-1/old.txt"
     old.parent.mkdir(parents=True)
     old.write_text("kept\n")
-    with pytest.raises(tomllib.TOMLDecodeError):
+    with pytest.raises(SystemExit, match=r"^profile's data: parts.toml: Cannot declare"):
         release(tmp_path, monkeypatch, broken, ("--force",))
     assert not (tmp_path / "kicad-cli.log").exists()
     assert old.read_text() == "kept\n"

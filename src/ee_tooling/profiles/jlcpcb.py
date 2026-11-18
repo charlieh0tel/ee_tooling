@@ -20,6 +20,8 @@ FAB_DEFAULTS = {
     "tg": 130,
     "electrical_test": "100% netlist test per IPC-9252",
 }
+# The corrections' file, in the ee_tooling package.
+PARTS = "parts.toml"
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
 
@@ -34,16 +36,26 @@ class Corrections:
 
     @classmethod
     def load(cls, text: str) -> "Corrections":
+        """ValueError (tomllib's own among them) if text is not TOML, or a
+        table or value is not of its form."""
         t = tomllib.loads(text)
-        return cls(
-            rotation={k: float(v) for k, v in t.get("rotation", {}).items()},
-            offset={k: (float(v[0]), float(v[1])) for k, v in t.get("offset", {}).items()},
-            unchecked=dict(t.get("unchecked", {})),
-        )
+        try:
+            return cls(
+                rotation={k: float(v) for k, v in t.get("rotation", {}).items()},
+                offset={k: (float(v[0]), float(v[1])) for k, v in t.get("offset", {}).items()},
+                unchecked={k: str(v) for k, v in t.get("unchecked", {}).items()},
+            )
+        except (TypeError, IndexError, AttributeError) as e:
+            raise ValueError(f"not a rotation, offset or description: {e}") from e
 
     @classmethod
     def builtin(cls) -> "Corrections":
-        return cls.load(importlib.resources.files("ee_tooling").joinpath("parts.toml").read_text())
+        """parts.toml's; ValueError naming the file if it does not load."""
+        path = importlib.resources.files("ee_tooling").joinpath(PARTS)
+        try:
+            return cls.load(path.read_text())
+        except ValueError as e:
+            raise ValueError(f"{path}: {e}") from e
 
 
 @dataclass(frozen=True)

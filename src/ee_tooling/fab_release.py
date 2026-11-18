@@ -1282,7 +1282,10 @@ def main() -> None:
     except (OSError, tomllib.TOMLDecodeError, ValueError) as e:
         sys.exit(f"{root / CONFIG}: {e}")
     # Made before anything is checked or written: loading a profile's data can fail.
-    profiles = {p: PROFILES[p]() for p in dict.fromkeys(b.profile for b in boards.values())}
+    try:
+        profiles = {p: PROFILES[p]() for p in dict.fromkeys(b.profile for b in boards.values())}
+    except ValueError as e:
+        sys.exit(f"profile's data: {e}")
     try:
         options = profile_options(boards, profiles)
     except ValueError as e:

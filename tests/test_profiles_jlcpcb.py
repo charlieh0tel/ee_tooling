@@ -186,3 +186,22 @@ def test_warnings() -> None:
     check = "check a new part (C4) in JLCPCB's placement preview: no correction known"
     assert profile.warnings(parts, [], Options()) == ["no LCSC part number for R1", check]
     assert profile.warnings(parts, [], Options(require_lcsc=True)) == [check]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["[rotation]\n[rotation]\n", '[rotation]\nC1 = "x"\n', "[offset]\nC1 = 1\n", "rotation = 1\n"],
+)
+def test_corrections_refused(text: str) -> None:
+    """A parts.toml that does not load: ValueError, never a traceback."""
+    with pytest.raises(ValueError):
+        Corrections.load(text)
+
+
+def test_builtin_corrections_name_the_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    def bad(cls: type[Corrections], text: str) -> Corrections:
+        raise ValueError("bad")
+
+    monkeypatch.setattr(Corrections, "load", classmethod(bad))
+    with pytest.raises(ValueError, match=r"parts.toml: bad$"):
+        Corrections.builtin()
