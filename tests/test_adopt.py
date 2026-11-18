@@ -2088,3 +2088,46 @@ def test_old_generated_header_not_taken_for_comments(
     )
     adopt.migrated_config(header + OLD_CONFIG.split("\n", 1)[1].replace("colour", "x"))
     assert "comments" not in capsys.readouterr().err
+
+
+# A Git LFS pointer's text.
+POINTER = (
+    "version https://git-lfs.github.com/spec/v1\n"
+    "oid sha256:27c22de2bca1a85418f3a0e1ea8e9917745bcb75960a9a8fe526a7c1a76f3c95\n"
+    "size 10\n"
+)
+
+
+def test_plain_blobs_at_head_said_before_the_commit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Archives and PDFs committed as plain blobs: the dry run says so, with
+    the fix, before .gitattributes is committed; a pointer, a type the
+    project keeps plain and an untracked type are not named."""
+    layout = repository(tmp_path, "main")
+    for name, text in {
+        "production/1/b.zip": "PK zip",
+        "docs/U1.PDF": "%PDF",
+        "docs/plain.pdf": "%PDF",
+        "lfs.zip": POINTER,
+        "photo.png": "png",
+        ".gitattributes": "*.pdf -filter\n",
+    }.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    commit(tmp_path, "board", ".")
+    assert adopt.plain_at_head(tmp_path) == ["docs/U1.PDF", "production/1/b.zip"]
+    capsys.readouterr()
+    plan(layout)
+    assert (
+        "2 files at HEAD of types Git LFS tracks are plain blobs (docs/U1.PDF,"
+        " production/1/b.zip): once .gitattributes is committed,"
+        " hardware/ee_tooling/adopt --check fails on them.  Commit them as pointers with"
+        " adopt's files: after --yes, in a clean work tree, git add --renormalize . and commit\n"
+    ) in capsys.readouterr().err
+
+
+def test_no_plain_blobs_no_word(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    layout = repository(tmp_path, "main")
+    plan(layout)
+    assert "plain blobs" not in capsys.readouterr().err

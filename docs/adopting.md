@@ -289,12 +289,18 @@ write.  `--yes`'s `git lfs install` and `git lfs pull` set it.
 A repository whose files of these types were committed before the
 section, or from a machine without git-lfs's filters, holds them as
 plain blobs, and `--check` fails until they are stored through Git
-LFS.  The first two steps on each machine, the third once:
+LFS.  It passes right after `--yes` (HEAD's `.gitattributes` has no
+section yet) and fails once `.gitattributes` is committed, so the
+renormalize goes in the same commit as `adopt`'s files.  The dry run and
+`--yes` name such files at HEAD, with the fix, before that commit.  The
+first two steps on each machine, the third once:
 
 1. Install git-lfs (the distribution's `git-lfs` package).
 2. `hardware/ee_tooling/adopt --yes`: the section, the hook, the
    filters for this clone, and `git lfs pull`.
-3. In a clean work tree: `git add --renormalize .`, commit, push.
+3. In a clean work tree but for `adopt`'s files: `git add
+   --renormalize .`, then commit `adopt`'s files and the renormalized
+   ones together, and push.
 
 The commit stores pointers from then on; older commits keep their
 blobs, and the repository does not shrink.  Shrinking it rewrites

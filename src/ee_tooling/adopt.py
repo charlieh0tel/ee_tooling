@@ -11,6 +11,7 @@ ee_tooling renamed (jlcpcb.toml, the release's skill).
 
 import argparse
 import codecs
+import fnmatch
 import importlib.resources
 import json
 import os
@@ -27,7 +28,16 @@ from pathlib import Path
 from typing import Any
 
 from ee_tooling.atomic import LEFTOVER, write_text
-from ee_tooling.fab_release import CONFIG, DRU, FAB, GONE_KEYS, string, strings
+from ee_tooling.fab_release import (
+    CONFIG,
+    DRU,
+    FAB,
+    GONE_KEYS,
+    LFS_POINTER_SIZE,
+    LFS_VERSIONS,
+    string,
+    strings,
+)
 from ee_tooling.git_environment import environment
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 from ee_tooling.kicad_rules import (
@@ -993,10 +1003,68 @@ def refuse_links(root: Path, steps: Sequence[Step]) -> None:
                 )
 
 
+# How many of the files plain_at_head finds are named.
+PLAIN_SHOWN = 5
+# A file's mode in git that is not a blob of its own: a submodule, a link.
+NOT_A_FILE_MODES = ("160000", "120000")
+
+
+def plain_at_head(root: Path) -> list[str]:
+    """The files at HEAD of a type the managed .gitattributes section
+    tracks through Git LFS, stored as plain blobs, not pointers: those that
+    --check fails on once .gitattributes is committed.  A type the project
+    makes plain (-filter in its own lines, git check-attr) is left out."""
+    if not git(root, "rev-parse", "--verify", "-q", "HEAD"):
+        return []
+    template = importlib.resources.files(__package__).joinpath("templates", "gitattributes")
+    patterns = [line.split()[0] for line in template.read_text().splitlines() if line.strip()]
+    found = []
+    for entry in git(root, "ls-tree", "-r", "-l", "-z", "HEAD").split("\0"):
+        if "\t" not in entry:
+            continue
+        info, path = entry.split("\t", 1)
+        mode, _, oid, size = info.split()
+        name = path.rsplit("/", 1)[-1]
+        if mode in NOT_A_FILE_MODES or not any(fnmatch.fnmatchcase(name, p) for p in patterns):
+            continue
+        if int(size) < LFS_POINTER_SIZE:
+            first = git(root, "cat-file", "blob", oid).split("\n", 1)[0]
+            if first.encode() in LFS_VERSIONS or int(size) == 0:
+                continue
+        found.append(path)
+    if not found:
+        return []
+    attributes = git(root, "check-attr", "filter", "--", *found)
+    plain = {
+        line.rsplit(": filter: ", 1)[0]
+        for line in attributes.splitlines()
+        if line.endswith((": filter: unset", ": filter: set"))
+    }
+    return [p for p in found if p not in plain]
+
+
+def warn_plain_at_head(root: Path, submodule: Path) -> None:
+    """Say, before the commit that would show it, which files at HEAD
+    --check will fail on as plain blobs, and the fix to make with that
+    commit."""
+    found = plain_at_head(root)
+    if not found:
+        return
+    shown = ", ".join(found[:PLAIN_SHOWN]) + (", ..." if len(found) > PLAIN_SHOWN else "")
+    print(
+        f"{len(found)} files at HEAD of types Git LFS tracks are plain blobs ({shown}):"
+        f" once .gitattributes is committed, {submodule.as_posix()}/adopt --check fails on"
+        " them.  Commit them as pointers with adopt's files: after --yes, in a clean work"
+        " tree, git add --renormalize . and commit",
+        file=sys.stderr,
+    )
+
+
 def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
     planned = files(layout)
+    warn_plain_at_head(root, submodule)
     steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
