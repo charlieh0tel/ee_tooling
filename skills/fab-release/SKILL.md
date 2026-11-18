@@ -143,9 +143,10 @@ the board and its outputs; the 3D models of a library not in `sources`,
 and of KiCad's stock libraries, are not in it.  The release refuses, before
 anything runs, a path in the project's `fp-lib-table` or
 `sym-lib-table`, or a footprint's 3D model path, that leads outside the
-repository or uses a variable other than `${KIPRJMOD}` and KiCad's own
-install variables (`${KICAD10_3DMODEL_DIR}` and the like, KiCad's stock
-libraries), naming each path.  A relative 3D model path is looked
+repository (links followed) or uses a variable other than `${KIPRJMOD}`
+and KiCad's stock library variables (`${KICADn_FOOTPRINT_DIR}`,
+`${KICADn_SYMBOL_DIR}`, `${KICADn_3DMODEL_DIR}`, `${KISYSMOD}`,
+`${KISYS3DMOD}`), or a `$(NAME)` or `~` path, naming each.  A relative 3D model path is looked
 up as KiCad does, from the project's directory, then from the
 footprint's library's directory (`fp-lib-table`); one found nowhere is a
 warning naming the footprint and the path.

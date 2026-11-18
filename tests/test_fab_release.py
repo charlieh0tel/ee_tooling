@@ -29,6 +29,7 @@ from ee_tooling.fab_release import (
     lfs_pointer,
     lfs_pointers,
     load_config,
+    located_production_errors,
     main,
     output_clash,
     pointer_message,
@@ -2709,3 +2710,25 @@ def test_board_footprints() -> None:
         ' (footprint "lib:C" (property "Value" "1u") (property "Reference" "C1")))'
     )
     assert board_footprints(pcb) == {"R1": "lib:R", "C1": "lib:C"}
+
+
+def test_located_production_errors(tmp_path: Path) -> None:
+    """Links followed: a production directory a link out of the
+    repository, and two names of one directory, refused."""
+    root = tmp_path / "repo"
+    (root / "out/b").mkdir(parents=True)
+    (root / "alias").symlink_to(root / "out")
+    (root / "away").symlink_to(tmp_path)
+    boards = load_config(
+        BOARD.replace('production = "production"', 'production = "away/x"')
+    ).values()
+    assert located_production_errors(root, boards) == [
+        "[[board]] 'b': production 'away/x' leads out of the repository (a link)"
+    ]
+    two = BOARD.replace('production = "production"', 'production = "out/b"') + BOARD.replace(
+        'name = "b"', 'name = "c"'
+    ).replace('production = "production"', 'production = "alias/b"')
+    assert located_production_errors(root, load_config(two).values()) == [
+        "[[board]] 'b' and 'c': production 'out/b' and 'out/b' are the same directory,"
+        " or one holds the other"
+    ]

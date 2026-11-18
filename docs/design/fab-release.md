@@ -66,6 +66,9 @@ electrical_test = "100% netlist test per IPC-9252"
   inside the other, is an error naming both, as a release's directory,
   `DATE-REV`, does not name its board.  `--force` removes an old release
   only if every file in it is the board's (`NAME-REV-*`).
+- `production`, `directory` and `sources` are checked with their links
+  followed too (a link may lead a production directory out of the
+  repository, or make two names one directory).
 - A `production` is inside the repository, and neither the same as nor
   holding any board's `directory` or `sources` path (the
   uncommitted-sources check leaves every production directory out);
@@ -134,11 +137,15 @@ electrical_test = "100% netlist test per IPC-9252"
   the board, that resolves outside the repository, naming each as
   written (`project_libraries.py`).  `${KIPRJMOD}`, and a relative path,
   are from the project's directory.  A path under one of KiCad's install
-  variables (`${KICAD10_FOOTPRINT_DIR}`, `${KICAD10_SYMBOL_DIR}`,
-  `${KICAD10_3DMODEL_DIR}`, their older versions, `${KISYS3DMOD}`) is a
-  stock library: allowed, and not in the source tgz.  Any other
-  variable (`${KICAD10_3RD_PARTY}`, a user's own) is refused: its value
-  is the user's.  An embedded model is not a path.
+  variables for its stock libraries (`${KICADn_FOOTPRINT_DIR}`,
+  `${KICADn_SYMBOL_DIR}`, `${KICADn_3DMODEL_DIR}`, n any version or
+  none, and the legacy `${KISYSMOD}` and `${KISYS3DMOD}`) is a stock
+  library: allowed, and not in the source tgz.  Any other variable
+  (`${KICAD10_TEMPLATE_DIR}`, `${KICAD10_3RD_PARTY}`, a user's own), a
+  KiCad 5 `$(NAME)` and a home directory (`~`) are refused: their value
+  is the user's.  A path is placed with its links followed: a link
+  inside the repository to a library outside it is outside.  An
+  embedded model is not a path.
 - A footprint's 3D model path with no variable, relative, is found as
   KiCad 10.0.8 finds it (`kicad-cli pcb export step` on a scratch board:
   a model present only beside the project, or only beside the
@@ -520,41 +527,45 @@ Breaking changes:
     directory holding a file not the board's (`NAME-REV-*`).
 11. A `production` outside the repository, or the same as or holding a
     board's `directory` or a `sources` path, is an error.
-12. A title-block rev (or `--date`) that makes the release directory more
+12. A production directory that a link leads out of the repository, or
+    two production paths that a link makes one directory, are an error; a
+    library path through a link out of the repository, under
+    `${KICADn_TEMPLATE_DIR}`, in `$(NAME)` form or under `~` is refused.
+13. A title-block rev (or `--date`) that makes the release directory more
     than one path component, or the tag not a git tag name (`Rev A`), is
     refused before anything runs.
-13. A title-block rev using a text variable the project does not define
+14. A title-block rev using a text variable the project does not define
     is refused.
-14. A board with no stackup is refused (now a warning).
-15. A board without a stackup table on User.Drawings matching its stackup
+15. A board with no stackup is refused (now a warning).
+16. A board without a stackup table on User.Drawings matching its stackup
     is refused.
-16. DRC runs with the profile's current rules: a board clean today may
+17. DRC runs with the profile's current rules: a board clean today may
     not be.
-17. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+18. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-18. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-19. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+19. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+20. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-20. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+21. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-21. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+22. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-22. `adopt --yes` sets the board's ERC severities and connection grid.
-23. `adopt` and `adopt --check` require git-lfs.
-24. `adopt --check` fails on a plain blob of an LFS-tracked type at
+23. `adopt --yes` sets the board's ERC severities and connection grid.
+24. `adopt` and `adopt --check` require git-lfs.
+25. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-25. `adopt --yes` writes a managed section of `.gitattributes` and
+26. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-26. A push without git-lfs is refused.
-27. The release refuses a board whose inputs hold an unfetched LFS
+27. A push without git-lfs is refused.
+28. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-28. A board repository's host must support Git LFS: a push to one that
+29. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".

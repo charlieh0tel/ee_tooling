@@ -49,7 +49,7 @@ import tempfile
 import tomllib
 import zipfile
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -417,6 +417,39 @@ def production_errors(boards: Iterable[Board]) -> list[str]:
             if nested(a.production, b.production)
         ]
     )
+
+
+def located(root: Path, path: Path) -> Path | None:
+    """A path from the root with its links followed, from the root again;
+    None if it leads out of the repository."""
+    top = root.resolve()
+    found = (top / path).resolve()
+    return found.relative_to(top) if found.is_relative_to(top) else None
+
+
+def located_production_errors(root: Path, boards: Iterable[Board]) -> list[str]:
+    """production_errors() on the paths with their links followed: a link
+    can lead a production directory out of the repository, or make two
+    names one directory."""
+    out = []
+    found = []
+    for b in boards:
+        production = located(root, b.production)
+        if production is None:
+            out.append(
+                f"[[board]] {b.name!r}: production {str(b.production)!r} leads out of the"
+                " repository (a link)"
+            )
+            continue
+        found.append(
+            replace(
+                b,
+                production=production,
+                directory=located(root, b.directory) or b.directory,
+                sources=tuple(located(root, s) or s for s in b.sources),
+            )
+        )
+    return out + production_errors(found)
 
 
 def lfs_pointer(path: Path) -> bool:
@@ -1394,6 +1427,8 @@ def main() -> None:
         boards = load_config((root / CONFIG).read_text())
     except (OSError, tomllib.TOMLDecodeError, ValueError) as e:
         sys.exit(f"{root / CONFIG}: {e}")
+    if errors := located_production_errors(root, boards.values()):
+        sys.exit(f"{root / CONFIG}: {errors[0]}")
     # Made before anything is checked or written: loading a profile's data can fail.
     try:
         profiles = {p: PROFILES[p]() for p in dict.fromkeys(b.profile for b in boards.values())}

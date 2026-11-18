@@ -141,3 +141,53 @@ def test_relative_model_of_a_library_not_in_the_table(tmp_path: Path) -> None:
     pcb = '(kicad_pcb (footprint "other:R" (property "Reference" "R1") (model "3d/R.step")))'
     found = libraries(root, Path("."), parse(pcb))
     assert found.unresolved == ["R1 (other:R): 3d/R.step (library 'other' not in fp-lib-table)"]
+
+
+@pytest.mark.parametrize(
+    ("name", "stock"),
+    [
+        ("KICAD10_FOOTPRINT_DIR", True),
+        ("KICAD10_SYMBOL_DIR", True),
+        ("KICAD10_3DMODEL_DIR", True),
+        ("KICAD6_3DMODEL_DIR", True),
+        ("KICAD_3DMODEL_DIR", True),
+        ("KISYS3DMOD", True),
+        ("KISYSMOD", True),
+        ("KICAD10_TEMPLATE_DIR", False),
+        ("KICAD10_3RD_PARTY", False),
+        ("KICAD_USER_TEMPLATE_DIR", False),
+        ("HOME", False),
+    ],
+)
+def test_stock_variables(tmp_path: Path, name: str, stock: bool) -> None:
+    """KiCad's stock footprint, symbol and 3D model variables, and no other."""
+    (tmp_path / "fp-lib-table").write_text(
+        f'(fp_lib_table (lib (name "a")(uri "${{{name}}}/a.pretty")))'
+    )
+    found = libraries(tmp_path, Path("."), parse("(kicad_pcb)"))
+    assert (found.stock, found.outside) == (
+        ([f"${{{name}}}/a.pretty"], []) if stock else ([], [f"${{{name}}}/a.pretty"])
+    )
+
+
+@pytest.mark.parametrize("path", ["$(HOME)/lib.pretty", "~/lib.pretty", "~user/lib.pretty"])
+def test_unknown_forms(tmp_path: Path, path: str) -> None:
+    """KiCad 5's $(NAME), and a home directory: not placed, refused."""
+    (tmp_path / "fp-lib-table").write_text(f'(fp_lib_table (lib (name "a")(uri "{path}")))')
+    assert libraries(tmp_path, Path("."), parse("(kicad_pcb)")).outside == [path]
+
+
+def test_link_out_of_the_repository(tmp_path: Path) -> None:
+    """A link inside the repository to a directory outside it is outside."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    (tmp_path / "elsewhere.pretty").mkdir()
+    (root / "lib.pretty").symlink_to(tmp_path / "elsewhere.pretty")
+    (root / "here.pretty").mkdir()
+    (root / "fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "a")(uri "${KIPRJMOD}/lib.pretty"))'
+        ' (lib (name "b")(uri "${KIPRJMOD}/here.pretty")))'
+    )
+    found = libraries(root, Path("."), parse("(kicad_pcb)"))
+    assert found.outside == ["${KIPRJMOD}/lib.pretty"]
+    assert found.inside == [Path("here.pretty")]

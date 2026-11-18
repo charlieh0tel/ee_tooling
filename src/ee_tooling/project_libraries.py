@@ -20,9 +20,14 @@ TABLES = ("fp-lib-table", "sym-lib-table")
 # A ${NAME} variable in a path.
 VARIABLE = re.compile(r"\$\{([^}]*)\}")
 PROJECT = "KIPRJMOD"
-# KiCad's own install variables, for its stock libraries: versioned
-# (KICAD10_3DMODEL_DIR, KICAD6_FOOTPRINT_DIR, ...) and the legacy names.
-STOCK = re.compile(r"KICAD\d*_(FOOTPRINT|SYMBOL|3DMODEL|TEMPLATE)_DIR|KISYS3DMOD|KISYSMOD")
+# KiCad's own install variables for its stock footprint, symbol and 3D
+# model libraries: versioned (KICAD10_3DMODEL_DIR, KICAD6_FOOTPRINT_DIR,
+# ...) and the legacy names of the footprint and 3D model directories.
+STOCK = re.compile(r"KICAD\d*_(FOOTPRINT|SYMBOL|3DMODEL)_DIR|KISYS3DMOD|KISYSMOD")
+# A path naming what this module cannot place: an environment variable in
+# KiCad 5's $(NAME) form, or a home directory, ~ or ~user.
+UNKNOWN_FORMS = ("$(",)
+HOME = "~"
 # A 3D model embedded in the board file, not a path.
 EMBEDDED = "kicad-embed://"
 
@@ -104,7 +109,7 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
                 tables[name] = table_libraries(file.read_text())
             except ParseError as e:
                 raise ValueError(f"{directory / name}: {e}") from e
-    top = Path(os.path.normpath(root.absolute()))
+    top = root.resolve()
     project = top / directory
     inside: dict[Path, None] = {}
     outside: dict[str, None] = {}
@@ -112,12 +117,16 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
     unresolved: list[str] = []
 
     def kind(path: str) -> str:
+        if any(f in path for f in UNKNOWN_FORMS) or path.startswith(HOME):
+            return "unknown"
         names = VARIABLE.findall(path)
         if any(STOCK.fullmatch(n) for n in names):
             return "stock"
         return "unknown" if any(n != PROJECT for n in names) else "project"
 
-    def place(path: str, resolved: Path) -> None:
+    def place(path: str, written: Path) -> None:
+        # Links followed: a link inside the repository may lead out of it.
+        resolved = written.resolve()
         if resolved.is_relative_to(top):
             inside[resolved.relative_to(top)] = None
         else:
