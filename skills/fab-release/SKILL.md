@@ -177,7 +177,10 @@ only when the owner says to.
 ## Before running
 
 1. The board's title-block revision is the release's REV: bump it in the
-   board and schematic first if this is a new revision.
+   board and schematic first if this is a new revision.  `YYYYMMDD-REV`
+   must be one path component and `NAME-YYYYMMDD-REV` a git tag name
+   (`git check-ref-format`: no spaces, `..`, `~`, `^`, `:`, ...): the
+   release refuses one that is not, before anything runs.
 2. Set the board's stackup in Board Setup, Physical Stackup, if it has
    none: the release takes the copper layers from it, and refuses a
    board without one.

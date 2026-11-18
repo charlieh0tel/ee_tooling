@@ -30,6 +30,7 @@ from ee_tooling.fab_release import (
     main,
     profile_options,
     project_variants,
+    release_name_problem,
     revision,
     settings_variants,
     silkscreen_only,
@@ -2090,3 +2091,34 @@ def test_release_failing_export_keeps_the_old_release(
     assert {f.name: f.read_bytes() for f in dest.iterdir()} == before
     assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
     assert git(root, "rev-parse", "b-20261118-1^{commit}") == tagged
+
+
+@pytest.mark.parametrize(
+    ("rev", "error"),
+    [
+        ("Rev A", "tag 'b-20261118-Rev A' is not a git tag name"),
+        ("1/2", "release directory '20261118-1/2' is not one path component"),
+        ("1..2", "tag 'b-20261118-1..2' is not a git tag name"),
+        ("1.lock", "tag 'b-20261118-1.lock' is not a git tag name"),
+    ],
+)
+def test_release_refuses_a_bad_rev(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rev: str, error: str
+) -> None:
+    """Before anything runs, naming the value and where it comes from."""
+    monkeypatch.setitem(
+        FIXTURE, "hw/b.kicad_pcb", FIXTURE["hw/b.kicad_pcb"].replace('(rev "1")', f'(rev "{rev}")')
+    )
+    with pytest.raises(
+        SystemExit,
+        match=rf"^{re.escape(error)} \(--date '20261118', the title block's rev"
+        rf" {re.escape(repr(rev))}\)",
+    ):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+    assert not (tmp_path / "repo/production").exists()
+
+
+def test_release_name_problem(tmp_path: Path) -> None:
+    assert release_name_problem(tmp_path, "b", "20261118", "1.0") is None
+    assert "not one path component" in (release_name_problem(tmp_path, "b", "a/b", "1") or "")

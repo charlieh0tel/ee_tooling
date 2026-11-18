@@ -640,6 +640,23 @@ class TagPlan(Enum):
     REFUSE = "on another commit, and no --retag"
 
 
+def release_name_problem(root: Path, name: str, date: str, rev: str) -> str | None:
+    """What is wrong with a release's directory name, DATE-REV, and its tag,
+    NAME-DATE-REV: the directory one path component, the tag a name git
+    takes (git check-ref-format); None if nothing."""
+    directory = f"{date}-{rev}"
+    where = f"(--date {date!r}, the title block's rev {rev!r})"
+    if "/" in directory or "\0" in directory or directory in (os.curdir, os.pardir):
+        return f"release directory {directory!r} is not one path component {where}"
+    tag = f"{name}-{directory}"
+    r = subprocess.run(
+        ["git", "check-ref-format", f"refs/tags/{tag}"], cwd=root, capture_output=True, check=False
+    )
+    if r.returncode != 0:
+        return f"tag {tag!r} is not a git tag name {where}; fix the title block's rev"
+    return None
+
+
 def tag_refused(tag: str, tagged: str, commit: str) -> str:
     """Why a rebuild stops on a tag on another commit, and the choices."""
     return (
@@ -1156,6 +1173,8 @@ def main() -> None:
     rev = revision(pcb_text)
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")
+    if problem := release_name_problem(root, b.name, a.date, rev):
+        sys.exit(problem)
     dest = root / b.production / f"{a.date}-{rev}"
     if dest.exists() and not a.force:
         sys.exit(f"{dest} exists; use --force to replace it")
