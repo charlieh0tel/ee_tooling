@@ -1503,15 +1503,17 @@ def test_managed_hook_not_executable(tmp_path: Path) -> None:
     assert stale(layout) == []
 
 
-def test_managed_hook_not_executable_in_git(tmp_path: Path) -> None:
-    """core.fileMode false, the hook committed 100644: the work tree's bit
-    says nothing; --check fails, --yes stages the mode."""
+@pytest.mark.parametrize("file_mode", ["true", "false"])
+def test_managed_hook_not_executable_in_git(tmp_path: Path, file_mode: str) -> None:
+    """The hook committed 100644, executable in the work tree: a clone's is
+    not; --check fails, --yes stages the mode, whatever core.fileMode."""
     ran(tmp_path)
     layout = Layout(tmp_path, SUBMODULE)
-    git("-C", str(tmp_path), "config", "core.fileMode", "false")
-    git("-C", str(tmp_path), "add", "--chmod=-x", ".githooks/pre-push")
+    git("-C", str(tmp_path), "config", "core.fileMode", file_mode)
     commit(tmp_path, "hooks", ".githooks/pre-push")
-    assert (tmp_path / ".githooks/pre-push").stat().st_mode & 0o111
+    git("-C", str(tmp_path), "update-index", "--chmod=-x", ".githooks/pre-push")
+    git("-C", str(tmp_path), "commit", "-q", "--no-verify", "--allow-empty", "-m", "100644")
+    (tmp_path / ".githooks/pre-push").chmod(0o755)
     assert stale(layout) == [Path(".githooks/pre-push")]
     apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], run_git_only)
     staged = subprocess.run(
@@ -1521,6 +1523,22 @@ def test_managed_hook_not_executable_in_git(tmp_path: Path) -> None:
         check=True,
     ).stdout
     assert staged.startswith("100755 ")
+    assert stale(layout) == []
+
+
+def test_hook_not_executable_in_the_work_tree_with_file_mode_false(tmp_path: Path) -> None:
+    """core.fileMode false and the hook tracked 100755: git still runs it
+    only if the work tree's bit is set, so --check fails without it."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    git("-C", str(tmp_path), "config", "core.fileMode", "false")
+    git("-C", str(tmp_path), "add", "--chmod=+x", ".githooks/pre-push")
+    commit(tmp_path, "hooks", ".githooks/pre-push")
+    hook = tmp_path / ".githooks/pre-push"
+    hook.chmod(0o644)
+    assert stale(layout) == [Path(".githooks/pre-push")]
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], run_git_only)
+    assert hook.stat().st_mode & 0o111
     assert stale(layout) == []
 
 

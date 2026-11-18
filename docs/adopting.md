@@ -295,11 +295,11 @@ write on stderr, with its text, before `--yes` replaces it.
 
 Git skips a hook that is not executable, silently: a `pre-push`
 committed without its executable bit lets pushes send pointers without
-their objects.  So a managed hook that is not executable is stale:
-`--check` fails on it, and `--yes` sets the bit.  Git's view decides:
-the work tree's bit, or, where git ignores it (`core.fileMode` false)
-and the hook is tracked, its mode in the index, which `--yes` then
-stages (`git update-index --chmod=+x`) for the next commit.
+their objects.  So a managed hook is stale unless it is executable in
+the work tree (git runs a hook only so, whatever `core.fileMode` says)
+and, when tracked, in the index (what every clone checks out): `--check`
+fails on it, and `--yes` sets the work tree's bit and stages the index's
+(`git update-index --chmod=+x`) for the next commit.
 
 ## Updating
 

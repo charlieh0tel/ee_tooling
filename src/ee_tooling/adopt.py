@@ -207,14 +207,14 @@ EXECUTABLE_MODE = "100755"
 
 
 def executable(root: Path, path: Path) -> bool:
-    """Whether git takes the file, from root, as executable: by its mode in
-    the index when git ignores the work tree's (core.fileMode false) and
-    tracks it; by the work tree's otherwise (git then commits that)."""
-    if git(root, "config", "--type=bool", "core.fileMode") == "false":
-        staged = git(root, "ls-files", "-s", "--", path.as_posix())
-        if staged:
-            return staged.split()[0] == EXECUTABLE_MODE
-    return bool((root / path).stat().st_mode & 0o111)
+    """Whether git runs the file, from root, as a hook, and every clone
+    would: executable in the work tree (git runs a hook only so, whatever
+    core.fileMode says), and, when git tracks it, in the index (what a
+    clone checks out)."""
+    if not (root / path).stat().st_mode & 0o111:
+        return False
+    staged = git(root, "ls-files", "-s", "--", path.as_posix())
+    return not staged or staged.split()[0] == EXECUTABLE_MODE
 
 
 def lfs_missing() -> str | None:
@@ -881,7 +881,7 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                 write(target, step.text)
                 if step.executable:
                     target.chmod(0o755)
-                    # The mode git keeps, where it ignores the work tree's.
+                    # The mode git tracks, for every clone.
                     if not executable(root, step.path):
                         run(("git", "update-index", "--chmod=+x", "--", step.path.as_posix()), root)
             case Command():
