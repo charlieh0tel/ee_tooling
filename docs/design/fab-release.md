@@ -22,13 +22,18 @@ is open.
 | Now | After | Holds |
 |---|---|---|
 | `src/ee_tooling/jlcpcb_release.py` | `src/ee_tooling/fab_release.py` | the neutral core and `main()` |
-| - | `src/ee_tooling/profiles/__init__.py` | `Profile`, and `PROFILES` (name to profile) |
-| - | `src/ee_tooling/profiles/jlcpcb.py` | the JLCPCB profile: BOM, CPL, `Parts`, Gerber options, rules |
+| - | `src/ee_tooling/profiles/__init__.py` | `PROFILES` (name to the profile's constructor) and `DEFAULT` |
+| - | `src/ee_tooling/profiles/profile.py` | `GerberOptions`, `Part`, `Placement` and the `Profile` Protocol; imports nothing from ee_tooling |
+| - | `src/ee_tooling/profiles/jlcpcb.py` | the JLCPCB profile: `Corrections` (`parts.toml`'s), the BOM and CPL writers, `Jlcpcb` with its Gerber options and rules |
 | script `jlcpcb-release` | script `fab-release` | no alias |
 | `jlcpcb.toml` | `fab.toml` | boards, each with its `profile` |
 | `skills/jlcpcb-release/` | `skills/fab-release/SKILL.md`, `skills/fab-release/jlcpcb.md` | the neutral skill; JLCPCB's ordering and rotation steps |
 | `parts.toml`, `rules/jlcpcb*` | unchanged | data the profile names |
 
+- `fab_release.py` imports `PROFILES` and `profile.py`, never a
+  profile's module.
+- `DEFAULT` is the profile of the boards in `jlcpcb.toml`; it goes
+  when `fab.toml`'s required `profile` key arrives (step 4).
 - `fab_release.py`, as `kicad_style_check.py` is its script's name;
   "release" alone also means ee_tooling's own `vX.Y.Z` releases.
 - One `profile` per board: a project has one `.kicad_dru`, so it meets
@@ -80,7 +85,10 @@ electrical_test = "100% netlist test per IPC-9252"
   DNP, LCSC, MPN, Manufacturer, Datasheet.  A DNP part is a row of its
   own with Qty 0 and DNP `yes`, never grouped with fitted parts.
 - One ungrouped BOM export and one placement export, parsed into `Part`
-  and `Placement` rows for the house BOM and the profile.
+  and `Placement` rows for the house BOM and the profile.  BOMs are
+  grouped in Python on the resolved field values: `kicad-cli`'s
+  `--group-by` groups on the fields' text before `${...}` text
+  variables are resolved.
 - The source tgz: the project's `.kicad_pcb`, `.kicad_sch`,
   `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
   `sym-lib-table` that exist, `sources`, the PDFs and `COMMIT`.  A
@@ -165,7 +173,7 @@ class Rules:
 
 class Profile(Protocol):
     name: str  # fab.toml's profile value; names its files
-    gerbers: GerberOptions | None  # None: the core's neutral options
+    gerbers: GerberOptions  # its Gerber and drill export
     rules: Rules
     distributor: tuple[str, str] | None  # IPC-2581: the part-number field, the distributor
     fab_defaults: dict[str, Any]  # [board.fab] values adopt writes
@@ -180,17 +188,23 @@ class Profile(Protocol):
 
     def assembly(
         self,
-        release: Release,
-        stem: str,
+        dest: Path,
+        base: str,
         parts: list[Part],
         placements: list[Placement],
+        options: Any,
     ) -> list[Path]:
         ...
-        # writes its BOM and CPL, named from stem; returns them
+        # writes its BOM and CPL into dest, named by base; returns them
 ```
 
-- `stem` is `NAME-REV`, or `NAME-REV-VARIANT` for a variant; the core
-  calls `assembly` once per build.
+- `base` is the file stem, `NAME-REV`, or `NAME-REV-VARIANT` for a
+  variant; the core calls `assembly` once per build.  `options` is
+  what `options` returned for the board (`require_lcsc`).
+- `PROFILES` maps a profile's name to its constructor, not to an
+  instance.  The release builds the profile before anything else, so a
+  bad `parts.toml` stops the run before `--force` removes an old
+  release.
 
 - The PCB half (`gerbers`, `rules`) and the assembly half (`assembly`,
   `distributor`) are separate, so an `assembly = "<profile>"` key can
@@ -394,8 +408,9 @@ Breaking changes:
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
 13. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
-    move to `ee_tooling.fab_release`, `Parts` and the BOM and CPL to
-    `ee_tooling.profiles.jlcpcb`.
+    move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
+    and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
+    `Placement` are in `ee_tooling.profiles.profile`.
 14. `adopt --yes` sets the board's ERC severities and connection grid.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
@@ -406,8 +421,10 @@ files above unchanged.
 
 ## Order of work
 
-Refactor first, with no change in behavior; each commit passes every
-check, with its docs.
+One PR, merged as one: the refactor first, with no change in behavior,
+then the breaking work.  Each commit passes every check, with its docs.
+
+The refactor:
 
 1. Split `jlcpcb_release.py` into `fab_release.py` and
    `profiles/jlcpcb.py`; same command, same files.
@@ -416,7 +433,7 @@ check, with its docs.
 3. The core parses the BOM and placement exports into `Part` and
    `Placement`; the profile writes from them.  Same files.
 
-Then one PR, breaking, merged as one:
+The breaking work:
 
 4. `fab.toml`, `fab-release`, `profile` and its options; unknown keys
    refused; `jlcpcb-release` removed.
