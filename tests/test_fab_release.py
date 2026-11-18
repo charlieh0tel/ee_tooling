@@ -19,6 +19,8 @@ from ee_tooling.fab_release import (
     Board,
     Release,
     TagPlan,
+    gerber_zip,
+    house_bom,
     load_config,
     main,
     profile_options,
@@ -27,7 +29,7 @@ from ee_tooling.fab_release import (
 )
 from ee_tooling.fabrication import Fab
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
-from ee_tooling.profiles.profile import GerberOptions
+from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part
 
 CONFIG = """
 [[board]]
@@ -216,6 +218,37 @@ def test_source_paths_only_present_project_files(tmp_path: Path) -> None:
         Path("hardware/main/main.kicad_sym"),
         Path("docs"),
     ]
+
+
+def test_house_bom() -> None:
+    """Fitted parts grouped on every field but the reference; a DNP part a
+    row of its own at Qty 0, never with fitted parts or other DNP parts."""
+    rows = house_bom(
+        [
+            Part("C1", "100n", "lib:C", "C1", False, "M1", "Maker", "d"),
+            Part("C2", "100n", "lib:C", "C1", True, "M1", "Maker", "d"),
+            Part("C3", "100n", "lib:C", "C1", False, "M1", "Maker", "d"),
+            Part("C4", "100n", "lib:C", "C1", False, "M2", "Maker", "d"),
+            Part("C5", "100n", "lib:C", "C1", True, "M1", "Maker", "d"),
+            Part("R1", "0R", "lib:R", ""),
+        ]
+    )
+    assert rows == [
+        ["C1,C3", "100n", "lib:C", "2", "", "C1", "M1", "Maker", "d"],
+        ["C2", "100n", "lib:C", "0", "yes", "C1", "M1", "Maker", "d"],
+        ["C4", "100n", "lib:C", "1", "", "C1", "M2", "Maker", "d"],
+        ["C5", "100n", "lib:C", "0", "yes", "C1", "M1", "Maker", "d"],
+        ["R1", "0R", "lib:R", "1", "", "", "", "", ""],
+    ]
+    assert house_bom([]) == []
+
+
+def test_gerber_zip_name() -> None:
+    """The profile's name, unless its Gerber options are kicad-cli's own."""
+    profile = Jlcpcb(CORRECTIONS)
+    assert gerber_zip("b-1", profile) == "b-1-gerbers-jlcpcb.zip"
+    profile.gerbers = KICAD_GERBERS
+    assert gerber_zip("b-1", profile) == "b-1-gerbers.zip"
 
 
 def test_revision() -> None:
@@ -457,19 +490,22 @@ FAKE_DRILL = {
     "b-NPTH.drl": "M48\n; #@! TF.FileFunction,NonPlated,1,3,NPTH\nMETRIC\nT1C3.200\n%\n",
 }
 FAKE_BOM = """\
-"Reference","Value","Footprint","LCSC"
-"C1","100n","Capacitor_SMD:C_0402_1005Metric","C1525"
-"C2","100n","Capacitor_SMD:C_0402_1005Metric","C1525"
-"C3","100n","Capacitor_SMD:C_0402_1005Metric","C307331"
-"C10","100n","Capacitor_SMD:C_0402_1005Metric","C1525"
-"D1","LED","LED_SMD:LED_0603_1608Metric","C2"
-"J1","Conn_01x02","Connector_JST:JST_SH_SM02B","C3"
-"R1","10k","Resistor_SMD:R_0402_1005Metric","C25744"
-"R2","10k","Resistor_SMD:R_0402_1005Metric","C25744"
-"TP1","TP","TestPoint:TestPoint_Pad_D1.0mm",""
-"TP2","TP","TestPoint:TestPoint_Pad_D1.0mm",""
-"U1","TPS1","Package_TO_SOT_SMD:SOT-23-5","C1"
-"U2","NEW1","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm","C4"
+"Reference","Value","Footprint","LCSC","MPN","Manufacturer","Datasheet","DNP"
+"C1","100n","Capacitor_SMD:C_0402_1005Metric","C1525","CL05B104KO5NNNC","Samsung","",""
+"C2","100n","Capacitor_SMD:C_0402_1005Metric","C1525","CL05B104KO5NNNC","Samsung","",""
+"C3","100n","Capacitor_SMD:C_0402_1005Metric","C307331","","","",""
+"C4","100n","Capacitor_SMD:C_0402_1005Metric","C1525","CL05B104KO5NNNC","Samsung","","DNP"
+"C10","100n","Capacitor_SMD:C_0402_1005Metric","C1525","CL05B104KO5NNNC","Samsung","",""
+"D1","LED","LED_SMD:LED_0603_1608Metric","C2","","","",""
+"J1","Conn_01x02","Connector_JST:JST_SH_SM02B","C3","","","",""
+"R1","10k","Resistor_SMD:R_0402_1005Metric","C25744","","","",""
+"R2","10k","Resistor_SMD:R_0402_1005Metric","C25744","","","",""
+"R3","10k","Resistor_SMD:R_0402_1005Metric","C25744","","","","DNP"
+"R4","10k","Resistor_SMD:R_0402_1005Metric","C25744","","","","DNP"
+"TP1","TP","TestPoint:TestPoint_Pad_D1.0mm","","","","",""
+"TP2","TP","TestPoint:TestPoint_Pad_D1.0mm","","","","",""
+"U1","TPS1","Package_TO_SOT_SMD:SOT-23-5","C1","TPS1-Q1","TI","https://ti.com/tps1.pdf",""
+"U2","NEW1","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm","C4","","","",""
 """
 FAKE_POS = """\
 Ref,Val,Package,PosX,PosY,Rot,Side
@@ -616,9 +652,8 @@ RELEASE_CALLS = [
         "sch",
         "export",
         "bom",
-        "--exclude-dnp",
         "--fields",
-        "Reference,Value,Footprint,LCSC",
+        "Reference,Value,Footprint,LCSC,MPN,Manufacturer,Datasheet,${DNP}",
         "-o",
         "WORK/bom.csv",
         "ROOT/hw/b.kicad_sch",
@@ -727,6 +762,20 @@ RELEASE_CALLS = [
 # The fixture's release: each text file, by name.
 RELEASE_TEXT = {
     "b-1-bom.csv": """\
+Reference,Value,Footprint,Qty,DNP,LCSC,MPN,Manufacturer,Datasheet\r
+"C1,C2,C10",100n,Capacitor_SMD:C_0402_1005Metric,3,,C1525,CL05B104KO5NNNC,Samsung,\r
+C3,100n,Capacitor_SMD:C_0402_1005Metric,1,,C307331,,,\r
+C4,100n,Capacitor_SMD:C_0402_1005Metric,0,yes,C1525,CL05B104KO5NNNC,Samsung,\r
+D1,LED,LED_SMD:LED_0603_1608Metric,1,,C2,,,\r
+J1,Conn_01x02,Connector_JST:JST_SH_SM02B,1,,C3,,,\r
+"R1,R2",10k,Resistor_SMD:R_0402_1005Metric,2,,C25744,,,\r
+R3,10k,Resistor_SMD:R_0402_1005Metric,0,yes,C25744,,,\r
+R4,10k,Resistor_SMD:R_0402_1005Metric,0,yes,C25744,,,\r
+"TP1,TP2",TP,TestPoint:TestPoint_Pad_D1.0mm,2,,,,,\r
+U1,TPS1,Package_TO_SOT_SMD:SOT-23-5,1,,C1,TPS1-Q1,TI,https://ti.com/tps1.pdf\r
+U2,NEW1,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,1,,C4,,,\r
+""",
+    "b-1-jlcpcb-bom.csv": """\
 Comment,Designator,Footprint,LCSC Part #\r
 100n,"C1,C2,C10",C_0402_1005Metric,C1525\r
 100n,C3,C_0402_1005Metric,C307331\r
@@ -737,7 +786,7 @@ TP,"TP1,TP2",TestPoint_Pad_D1.0mm,\r
 TPS1,U1,SOT-23-5,C1\r
 NEW1,U2,SOIC-8_3.9x4.9mm_P1.27mm,C4\r
 """,
-    "b-1-cpl.csv": """\
+    "b-1-jlcpcb-cpl.csv": """\
 Designator,Val,Package,Mid X,Mid Y,Rotation,Layer\r
 C1,100n,C_0402_1005Metric,101.5000mm,-60.2500mm,90,Top\r
 C2,100n,C_0402_1005Metric,103.5000mm,-60.2500mm,270,Top\r
@@ -753,7 +802,7 @@ U1,TPS1,SOT-23-5,112.2500mm,-61.1250mm,315,Top\r
 U2,NEW1,SOIC-8_3.9x4.9mm_P1.27mm,115.0000mm,-61.0000mm,0,Top\r
 """,
     "b-1-gerber-map.txt": """\
-b 1: the files in b-1-jlcpcb.zip
+b 1: the files in b-1-gerbers-jlcpcb.zip
 
 Gerber RS-274X, mm, 4.6 format; Excellon drill, mm, decimal; finished hole sizes.
 Copper layers L1 (top) to Ln (bottom).
@@ -839,11 +888,12 @@ def test_release_files(
     assert calls == RELEASE_CALLS
     assert files == [
         "b-1-bom.csv",
-        "b-1-cpl.csv",
         "b-1-fab-notes.txt",
         "b-1-gerber-map.txt",
+        "b-1-gerbers-jlcpcb.zip",
         "b-1-ipc2581.zip",
-        "b-1-jlcpcb.zip",
+        "b-1-jlcpcb-bom.csv",
+        "b-1-jlcpcb-cpl.csv",
         "b-1-odb.tgz",
         "b-1-source.tgz",
         "b-1-stackup.txt",
@@ -852,7 +902,7 @@ def test_release_files(
         assert (dest / name).read_bytes() == text.encode(), name
     assert (dest / "b-1-odb.tgz").read_text() == "ODB++ job\n"
     assert (dest / "b-1-ipc2581.zip").read_text() == "IPC-2581 zip\n"
-    with zipfile.ZipFile(dest / "b-1-jlcpcb.zip") as z:
+    with zipfile.ZipFile(dest / "b-1-gerbers-jlcpcb.zip") as z:
         assert {i.filename: z.read(i).decode() for i in z.infolist()} == {
             **dict(sorted({**FAKE_GERBERS, **FAKE_DRILL}.items())),
             "README.txt": RELEASE_TEXT["b-1-gerber-map.txt"],

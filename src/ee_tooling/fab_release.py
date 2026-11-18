@@ -2,8 +2,9 @@
 
 Reads fab.toml at the root of the git repository it is run in, and writes
 the board's production directory, YYYYMMDD-REV/, with:
-  NAME-REV-jlcpcb.zip   Gerbers and drill files, for the PCB order, and
-                        README.txt, the Gerber map
+  NAME-REV-gerbers-jlcpcb.zip  Gerbers and drill files, for the PCB order,
+                        and README.txt, the Gerber map (NAME-REV-gerbers.zip
+                        for a profile with kicad-cli's own Gerber options)
   NAME-REV-gerber-map.txt  what each file in the Gerber zip is
   NAME-REV-stackup.txt  the board's stackup, each layer's Gerber, and its
                         impedance requirements
@@ -11,8 +12,9 @@ the board's production directory, YYYYMMDD-REV/, with:
                         [board.fab], [TBD: ...] where neither says
   NAME-REV-odb.tgz      ODB++ job, for the record and ODB++ tools
   NAME-REV-ipc2581.zip  IPC-2581 revision C, for the record and IPC-2581 tools
-  NAME-REV-bom.csv      BOM in JLCPCB's columns, for assembly
-  NAME-REV-cpl.csv      placement in JLCPCB's columns, for assembly
+  NAME-REV-bom.csv      the house BOM: every part, DNP parts at Qty 0
+  NAME-REV-jlcpcb-bom.csv, NAME-REV-jlcpcb-cpl.csv  the profile's assembly
+                        BOM and placement
   NAME-REV-source.tgz   the design files, PDFs and docs it was made from
 
 NAME is the KiCad project, REV its board's title-block revision; the
@@ -37,6 +39,7 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
@@ -57,7 +60,14 @@ from ee_tooling.fabrication import (
     stackup_document,
 )
 from ee_tooling.profiles import PROFILES
-from ee_tooling.profiles.profile import GerberOptions, Part, Placement, Profile
+from ee_tooling.profiles.profile import (
+    KICAD_GERBERS,
+    GerberOptions,
+    Part,
+    Placement,
+    Profile,
+    write_csv,
+)
 from ee_tooling.sexpr import Expression, ParseError, parse
 
 CONFIG = "fab.toml"
@@ -80,8 +90,9 @@ GONE_KEYS = {"copper": "the copper layers come from the board's stackup"}
 GERBER_README = "README.txt"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
 GERBERS = "gerbers"
-# The fabrication documents' names after NAME-REV-.
+# The fabrication documents' names after NAME-REV-, then the house BOM's.
 GERBER_MAP = "gerber-map.txt"
+BOM = "bom.csv"
 STACKUP = "stackup.txt"
 NOTES = "fab-notes.txt"
 
@@ -95,6 +106,33 @@ OTHER_LAYERS = (
     "B.Silkscreen",
     "Edge.Cuts",
 )
+
+# The BOM export's fields: ${DNP} is kicad-cli's, "DNP" for a part not
+# fitted, "" for one fitted, under the header DNP.
+BOM_FIELDS = (
+    "Reference",
+    "Value",
+    "Footprint",
+    "LCSC",
+    "MPN",
+    "Manufacturer",
+    "Datasheet",
+    "${DNP}",
+)
+# The house BOM's columns (docs/kicad-style.md's fields), and its DNP
+# column's value for a part not fitted.
+HOUSE_BOM_HEADER = (
+    "Reference",
+    "Value",
+    "Footprint",
+    "Qty",
+    "DNP",
+    "LCSC",
+    "MPN",
+    "Manufacturer",
+    "Datasheet",
+)
+DNP = "yes"
 
 # A KiCad project's design files and libraries, by suffix to its name, then
 # by name; those present go in the source tgz.
@@ -250,6 +288,38 @@ def load_config(text: str) -> dict[str, Board]:
             raise ValueError(f"[[board]] {b.name!r} is there twice")
         out[b.name] = b
     return out
+
+
+def house_bom(parts: Iterable[Part]) -> list[list[str]]:
+    """The house BOM's rows: fitted parts grouped by every field but the
+    reference, a DNP part a row of its own with Qty 0, in the order of each
+    row's first part."""
+    rows: dict[tuple[str, ...], list[Part]] = {}
+    for p in parts:
+        fields = (p.value, p.footprint, p.lcsc, p.mpn, p.manufacturer, p.datasheet)
+        rows.setdefault((p.reference,) if p.dnp else fields, []).append(p)
+    return [
+        [
+            ",".join(p.reference for p in group),
+            first.value,
+            first.footprint,
+            "0" if first.dnp else str(len(group)),
+            DNP if first.dnp else "",
+            first.lcsc,
+            first.mpn,
+            first.manufacturer,
+            first.datasheet,
+        ]
+        for group in rows.values()
+        for first in group[:1]
+    ]
+
+
+def gerber_zip(base: str, profile: Profile[Any]) -> str:
+    """The Gerber zip's name: the profile's when its Gerber options are not
+    kicad-cli's own."""
+    suffix = "" if profile.gerbers == KICAD_GERBERS else f"-{profile.name}"
+    return f"{base}-gerbers{suffix}.zip"
 
 
 def revision(pcb_text: str) -> str | None:
@@ -467,21 +537,29 @@ class Release:
         )
 
     def parts(self) -> list[Part]:
-        """The schematic's fitted parts, in KiCad's order of reference."""
+        """The schematic's parts, DNP too, in KiCad's order of reference."""
         raw = self.work / "bom.csv"
         self.kicad(
             "sch",
             "export",
             "bom",
-            "--exclude-dnp",
             "--fields",
-            "Reference,Value,Footprint,LCSC",
+            ",".join(BOM_FIELDS),
             "-o",
             str(raw),
             self.path(self.board.sch),
         )
         return [
-            Part(r["Reference"], r["Value"], r["Footprint"], r["LCSC"])
+            Part(
+                r["Reference"],
+                r["Value"],
+                r["Footprint"],
+                r["LCSC"],
+                dnp=bool(r["DNP"]),
+                mpn=r["MPN"],
+                manufacturer=r["Manufacturer"],
+                datasheet=r["Datasheet"],
+            )
             for r in csv.DictReader(io.StringIO(raw.read_text()))
         ]
 
@@ -630,13 +708,14 @@ def main() -> None:
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
         label = f"{b.name} {rev}"
-        gerbers = f"{base}-{profile.name}.zip"
+        gerbers = gerber_zip(base, profile)
         title = f"{label}: the files in {gerbers}"
         files = r.gerbers(dest / gerbers, title, profile.gerbers)
         (dest / f"{base}-{GERBER_MAP}").write_text(gerber_map(title, files))
         r.fabrication(dest, base, label, pcb, files)
         r.odb(dest / f"{base}-odb.tgz")
         r.ipc2581(dest / f"{base}-ipc2581.zip", profile.distributor)
+        write_csv(dest / f"{base}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
         profile.assembly(dest, base, parts, placements, options[b.name])
         r.source(dest / f"{base}-source.tgz", commit)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):

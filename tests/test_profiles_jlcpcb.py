@@ -31,6 +31,8 @@ def test_bom() -> None:
             Part("R1", "0R", "lib:R_0402", ""),
             Part("TP1", "TP", "TP", ""),
             Part("U1", "100n", "lib:C_0402", "C1525"),
+            Part("U2", "100n", "lib:C_0402", "C1525", dnp=True),
+            Part("TP2", "TP", "TP", "", dnp=True),
         ]
     )
     assert rows == [
@@ -147,6 +149,7 @@ def test_check_require_lcsc(require_lcsc: bool, lcsc: str, refusals: list[str]) 
         Part("C1", "100n", "lib:C", "C1525"),
         *(Part(r, "0R", "lib:R", lcsc) for r in ("R1", "R2")),
     ]
+    parts.append(Part("R3", "0R", "lib:R", "", dnp=True))
     assert Jlcpcb(CORRECTIONS).check(parts, [], Options(require_lcsc)) == refusals
 
 

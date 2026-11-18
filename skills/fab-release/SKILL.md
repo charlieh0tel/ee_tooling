@@ -105,13 +105,14 @@ only when the owner says to.
 
 | File | Use |
 |---|---|
-| `NAME-REV-jlcpcb.zip` | the PCB order: Gerbers (each copper layer, mask, paste, silk, Edge.Cuts) and Excellon drill in mm, in the profile's options (`jlcpcb.md`); `README.txt`, the Gerber map |
+| `NAME-REV-gerbers-jlcpcb.zip` | the PCB order: Gerbers (each copper layer, mask, paste, silk, Edge.Cuts) and Excellon drill in mm, in the profile's options (`jlcpcb.md`); `README.txt`, the Gerber map.  `NAME-REV-gerbers.zip` for a profile with kicad-cli's own Gerber options |
 | `NAME-REV-gerber-map.txt` | the Gerber map, as in the zip: each file's name, KiCad layer, function (copper L1 top to Ln bottom, mask, paste, silkscreen, outline, plated and non-plated drill), side and polarity, from KiCad's Gerber job file and the drill files' X2 comments |
 | `NAME-REV-stackup.txt` | the board's stackup (Board Setup, Physical Stackup): each layer's and dielectric sublayer's type, material, thickness, Er, loss tangent, color and Gerber; total thickness and the board's thickness setting; copper finish, impedance-controlled dielectric, edge connector, castellated pads, edge plating; then the impedance requirements, from net classes whose names say impedance (`[TBD: ...]` for a name not `<ohms>Z_DIFF[_<INTERFACE>]` or `<ohms>Z_SE`). |
 | `NAME-REV-fab-notes.txt` | numbered fabrication notes: generic (IPC-6012 and IPC-A-600, plating, LPI mask per IPC-SM-840, finished hole sizes, Gerbers not to be modified, no added tooling holes or marking), filled from `[board.fab]`: the IPC class, base material, minimum Tg and electrical test; from the board: layer count, finished thickness, copper weights, finish and mask and silk colors from the stackup; impedance control from the net classes; minimum track and space from KiCad's Gerber job file, minimum drill from the drill files.  `[TBD: ...]` marks what neither can say (anything the stackup lacks): fill it in before sending the notes |
 | `NAME-REV-odb.tgz` | ODB++ job (one `odb/` directory: `matrix/`, `steps/`, ...), mm, 6 decimals: for the record and for ODB++ tools such as `tools/odb_current`; not the order's upload |
 | `NAME-REV-ipc2581.zip` | IPC-2581 revision C, mm, 6 decimals: a zip of one XML file, `NAME-REV-ipc2581.xml`; its BOM from MPN, Manufacturer and the profile's distributor field: for the record and for IPC-2581 tools; not the order's upload |
-| `NAME-REV-bom.csv`, `NAME-REV-cpl.csv` | the profile's assembly BOM and placement (`jlcpcb.md`) |
+| `NAME-REV-bom.csv` | the house BOM, fab-neutral, for the record and for buying parts: Reference, Value, Footprint (LIBRARY:NAME), Qty, DNP, LCSC, MPN, Manufacturer, Datasheet.  Fitted parts grouped on every column but Reference and Qty; each DNP part a row of its own, Qty 0, DNP `yes`; a part excluded from the BOM has no row.  Not an assembly order's upload |
+| `NAME-REV-jlcpcb-bom.csv`, `NAME-REV-jlcpcb-cpl.csv` | the profile's assembly BOM and placement (`jlcpcb.md`) |
 | `NAME-REV-source.tgz` | the design files, `sources`, schematic and board PDFs, and COMMIT |
 
 Commit the production directory after the order is placed, and do not

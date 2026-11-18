@@ -92,10 +92,10 @@ def test_gerber_files_drill_without_function(tmp_path: Path) -> None:
 
 def test_gerber_map() -> None:
     text = gerber_map(
-        "b 1.0: the files in b-1.0-jlcpcb.zip",
+        "b 1.0: the files in b-1.0-gerbers-jlcpcb.zip",
         [GerberFile("b-F_Mask.gts", ("SolderMask", "Top"), "Negative", "F.Mask")],
     )
-    assert text.startswith("b 1.0: the files in b-1.0-jlcpcb.zip\n\n")
+    assert text.startswith("b 1.0: the files in b-1.0-gerbers-jlcpcb.zip\n\n")
     assert text.endswith("b-F_Mask.gts  F.Mask  solder mask  top   negative\n")
 
 
@@ -108,7 +108,7 @@ def test_gerbers_zip_holds_the_map(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     work = tmp_path / "work"
     work.mkdir()
     b = Board("b", Path("hw"), Path("production"), (), "jlcpcb", FAB)
-    out = tmp_path / "b-1-jlcpcb.zip"
+    out = tmp_path / "b-1-gerbers-jlcpcb.zip"
     files = Release(tmp_path, b, work, ("F.Cu", "In1.Cu", "B.Cu")).gerbers(
         out, "b 1", Jlcpcb.gerbers
     )

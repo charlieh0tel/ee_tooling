@@ -1,6 +1,8 @@
 """What a release asks of a fab's profile, and the rows it gives it:
 internal, not public API."""
 
+import csv
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,14 +20,27 @@ class GerberOptions:
     separate_drill: bool  # PTH and NPTH in separate files
 
 
+# kicad-cli's own Gerber and drill options: a profile with them writes the
+# neutral NAME-REV-gerbers.zip, one with others NAME-REV-gerbers-<name>.zip.
+KICAD_GERBERS = GerberOptions(
+    x2=True, protel_extensions=False, subtract_soldermask=False, separate_drill=False
+)
+
+
 @dataclass(frozen=True)
 class Part:
-    """A fitted part, one per reference, from the schematic's BOM."""
+    """A part, one per reference, from the schematic's BOM: those fitted
+    and those not (DNP); not those excluded from the BOM.  A field the
+    part lacks is ""."""
 
     reference: str
     value: str
     footprint: str  # LIBRARY:NAME
-    lcsc: str  # its LCSC field; "" if none
+    lcsc: str  # its LCSC field
+    dnp: bool = False  # do not populate
+    mpn: str = ""
+    manufacturer: str = ""
+    datasheet: str = ""
 
 
 @dataclass(frozen=True)
@@ -69,3 +84,11 @@ class Profile[Options](Protocol):
         """Writes its BOM and placement of the parts into dest, NAME-REV
         being base; returns them."""
         ...
+
+
+def write_csv(out: Path, header: Iterable[str], rows: Iterable[list[str]]) -> None:
+    """A CSV file, as Python's csv module writes it (CRLF line ends)."""
+    with out.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(rows)

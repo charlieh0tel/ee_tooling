@@ -21,11 +21,14 @@ order's options (material, Tg) before ordering.
 
 | File | Use |
 |---|---|
-| `NAME-REV-jlcpcb.zip` | the PCB order's upload: Protel extensions, no X2, soldermask subtracted from silk; Excellon in mm, PTH and NPTH separate, absolute origin |
-| `NAME-REV-bom.csv` | assembly BOM: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
-| `NAME-REV-cpl.csv` | assembly placement: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM, with `parts.toml`'s corrections |
+| `NAME-REV-gerbers-jlcpcb.zip` | the PCB order's upload: Protel extensions, no X2, soldermask subtracted from silk; Excellon in mm, PTH and NPTH separate, absolute origin |
+| `NAME-REV-jlcpcb-bom.csv` | the assembly order's BOM upload: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
+| `NAME-REV-jlcpcb-cpl.csv` | the assembly order's placement upload: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM, with `parts.toml`'s corrections |
 
 IPC-2581's distributor is LCSC, its part number the `LCSC` field.
+
+Upload `NAME-REV-jlcpcb-bom.csv`, not the house BOM, `NAME-REV-bom.csv`,
+whose columns JLCPCB does not read.
 
 The Gerber zip is the PCB order's upload: JLCPCB's help forum says it
 takes Gerbers, not ODB++

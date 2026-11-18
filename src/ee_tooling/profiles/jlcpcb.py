@@ -2,7 +2,6 @@
 KiCad's, and its corrections to KiCad's placement, by LCSC part
 (parts.toml)."""
 
-import csv
 import importlib.resources
 import math
 import sys
@@ -12,7 +11,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from ee_tooling.profiles.profile import GerberOptions, Part, Placement
+from ee_tooling.profiles.profile import GerberOptions, Part, Placement, write_csv
 
 # The house [board.fab] values adopt writes for a new board: IPC class 2,
 # FR-4 of Tg 150 deg C or more, and a full netlist test.
@@ -56,8 +55,8 @@ class Options:
 
 
 def jlcpcb_bom(parts: Iterable[Part]) -> tuple[list[list[str]], dict[str, str], list[str]]:
-    """The parts in JLCPCB's columns, grouped by Value, Footprint and LCSC
-    in the order of each group's first part, as kicad-cli's --group-by
+    """The fitted parts in JLCPCB's columns, grouped by Value, Footprint and
+    LCSC in the order of each group's first part, as kicad-cli's --group-by
     groups them.  kicad-cli groups on the fields' text before text variables
     (${...}) are resolved; these are resolved.
 
@@ -66,7 +65,8 @@ def jlcpcb_bom(parts: Iterable[Part]) -> tuple[list[list[str]], dict[str, str], 
     """
     groups: dict[tuple[str, str, str], list[Part]] = {}
     for p in parts:
-        groups.setdefault((p.value, p.footprint, p.lcsc), []).append(p)
+        if not p.dnp:
+            groups.setdefault((p.value, p.footprint, p.lcsc), []).append(p)
     out = []
     refs: dict[str, str] = {}
     missing = []
@@ -102,13 +102,6 @@ def jlcpcb_cpl(
         out.append([p.reference, p.value, p.package, f"{x:.4f}mm", f"{y:.4f}mm", f"{rot:g}", layer])
         placed.add(p.reference)
     return out, placed
-
-
-def write_csv(out: Path, header: Iterable[str], rows: Iterable[list[str]]) -> None:
-    with out.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(header)
-        w.writerows(rows)
 
 
 class Jlcpcb:
@@ -157,8 +150,8 @@ class Jlcpcb:
     ) -> list[Path]:
         """Its BOM, without not-fitted parts, and its CPL of the BOM's parts,
         with its corrections."""
-        bom_csv = dest / f"{base}-bom.csv"
-        cpl_csv = dest / f"{base}-cpl.csv"
+        bom_csv = dest / f"{base}-{self.name}-bom.csv"
+        cpl_csv = dest / f"{base}-{self.name}-cpl.csv"
         bom, refs, missing = jlcpcb_bom(parts)
         write_csv(bom_csv, BOM_HEADER, bom)
         if missing:
