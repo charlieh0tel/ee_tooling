@@ -6,7 +6,8 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 
 | Path | What |
 |---|---|
-| `src/ee_tooling/jlcpcb_release.py` | `jlcpcb-release`: a board's JLCPCB order package from its KiCad files |
+| `src/ee_tooling/fab_release.py` | `jlcpcb-release`: a board's JLCPCB order package from its KiCad files |
+| `src/ee_tooling/profiles/` | what a release shapes for one fab: `jlcpcb.py`, JLCPCB's assembly BOM and placement and its corrections from `parts.toml` |
 | `src/ee_tooling/fabrication.py` | a board's fabrication documents for `jlcpcb-release`: the Gerber map, the stackup and the fabrication notes |
 | `src/ee_tooling/placement*.py` | `placement-score`: a board's ratsnest crossings and length, decoupling distances and order, courtyard overlaps, and a render (`docs/placement.md`) |
 | `src/ee_tooling/stitch*.py` | `stitch BOARD`: ground stitching vias along every board edge and on a grid, checked by KiCad's DRC (`docs/stitch.md`) |

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from ee_tooling.fab_release import Board, Release
 from ee_tooling.fabrication import (
     GerberFile,
     Impedance,
@@ -20,7 +21,6 @@ from ee_tooling.fabrication import (
     stackup_document,
     table,
 )
-from ee_tooling.jlcpcb_release import Board, Release
 from ee_tooling.sexpr import parse
 
 LAYERS = ["F.Cu", "In1.Cu", "B.Cu", "F.Mask", "F.Silkscreen", "Edge.Cuts"]

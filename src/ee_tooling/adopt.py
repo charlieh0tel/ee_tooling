@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from ee_tooling.jlcpcb_release import CONFIG
+from ee_tooling.fab_release import CONFIG
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 
 # This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
