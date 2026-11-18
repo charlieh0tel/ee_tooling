@@ -730,15 +730,17 @@ def read_config(root: Path) -> str | None:
 
 def pending(layout: Layout) -> list[tuple[str, Path]]:
     """What --check fails on, each with what it awaits: the managed files
-    that differ from what would be written ("out of date"), the project
+    not there ("missing") or that differ from what would be written ("out
+    of date"), the project
     files still to be migrated ("to be migrated"), and the project files
     whose rules or settings are still to be installed ("to be updated")."""
     planned = files(layout)
-    managed = [f.path for f in planned if f.owner is Owner.MANAGED and f.action(layout.root)]
+    # A managed file's action: "create" (not there) or "update".
+    managed = [(f.path, f.action(layout.root)) for f in planned if f.owner is Owner.MANAGED]
     renamed = [s.source if isinstance(s, Rename) else s.path for s in migrations(layout)]
     rules = [s.path for s in rules_edits(layout.root, planned_config(layout.root, planned))]
     return [
-        *(("out of date", p) for p in managed),
+        *(("missing" if a == "create" else "out of date", p) for p, a in managed if a),
         *(("to be migrated", p) for p in renamed),
         *(("to be updated", p) for p in rules),
     ]

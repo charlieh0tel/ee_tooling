@@ -20,7 +20,8 @@ hardware/ee_tooling/adopt --yes    # does it
 It finds the board repository as the submodule's superproject, so it
 runs from any directory, and the submodule's parent is the hardware
 tools' uv project.  Rerun with `--yes` to bring the files it manages up
-to date; `--check` fails if one is stale ("out of date: PATH"), if a
+to date; `--check` fails if one is missing ("missing: PATH") or stale ("out of
+date: PATH"), if a
 file below is still to be migrated ("to be migrated: PATH"), if a
 board's rules or settings are still to be installed ("to be updated:
 PATH"), or if a file of a type Git LFS tracks is a plain blob at HEAD

@@ -1005,6 +1005,8 @@ def test_check_says_what_each_awaits(
     err = capsys.readouterr().err
     run = "; run hardware/ee_tooling/adopt --yes\n"
     assert f"out of date: AGENTS.md{run}" in err
+    assert f"missing: .githooks/commit-msg{run}" in err
+    assert "out of date: .githooks/commit-msg" not in err
     assert f"to be migrated: jlcpcb.toml{run}" in err
     assert f"to be migrated: .claude/skills/jlcpcb-release{run}" in err
     apply(tmp_path, [s for s in plan(layout) if not isinstance(s, Edit)], lambda *_: None)
@@ -1128,7 +1130,7 @@ def test_lfs_migration(
     commit(tmp_path, "board", ".")
     status, err = adopt_main(layout, monkeypatch, capsys, "--check")
     assert status == 1
-    assert "out of date: .gitattributes; run hardware/ee_tooling/adopt --yes\n" in err
+    assert "missing: .gitattributes; run hardware/ee_tooling/adopt --yes\n" in err
     assert "Git LFS" not in err
     assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] is None
     assert git_config.read_text() == ""
