@@ -1,24 +1,25 @@
 # Design: Git LFS
 
 A proposal, for review before any code.  It puts Git LFS in place in
-board and library repositories through `adopt`.  Proposed: a managed
-section at the top of `.gitattributes` tracking `*.zip`, `*.tgz`,
-`*.pdf` and STEP files, with every KiCad text format plain; a managed
+board repositories through `adopt`.  Proposed: a managed section at the
+top of `.gitattributes` tracking `*.zip`, `*.tgz`, `*.pdf`, STEP and
+VRML files, with every KiCad text format plain; a managed
 `.githooks/pre-push`; `adopt` requiring git-lfs and setting its filters
 per clone; `adopt --check` failing when git-lfs is missing or a file of
 a tracked type is a plain blob at HEAD (`git lfs fsck --pointers`);
 the release refusing an unfetched pointer among its inputs; no
 `lfs: true` on the CI template's checkouts, since neither job reads a
-tracked file's contents; no history rewriting by any tool.  The
-release's refusal is additive and lands any time; the rest is breaking
-and lands separately from the fab-release flag day (0.4.0).  Open:
-VRML and images; whether library repositories run `adopt`; whether the
-breaking part lands before or after 0.4.0; whether the host's quotas
-suit committing every release's archives.
+tracked file's contents; no history rewriting by any tool.  Decided in
+review: all of it lands in the fab-release flag day, 0.4.0, in the same
+merge; release archives stay committed under the production directory,
+through LFS; `*.wrl` tracked, images not.  Deferred: library
+repositories, which copy the section by hand for now.  To check before
+the merge: the host's LFS allowances and the runner's git-lfs.  Nothing
+is open.
 
 ## Facts this rests on
 
-From the code at `c36c726`:
+From the code at `c7fad2c`:
 
 - `adopt` (`src/ee_tooling/adopt.py`, `docs/adopting.md`) writes
   managed files (rewritten by `--yes`, compared by `--check`) and
@@ -126,24 +127,27 @@ The managed section, at the top of `.gitattributes`:
 *.pdf filter=lfs diff=lfs merge=lfs -text
 *.[sS][tT][eE][pP] filter=lfs diff=lfs merge=lfs -text
 *.[sS][tT][pP] filter=lfs diff=lfs merge=lfs -text
+*.[wW][rR][lL] filter=lfs diff=lfs merge=lfs -text
 # ee_tooling: end; the project's own lines follow and win
 ```
 
 - The lines are `git lfs track`'s own form, so `git lfs track` lists
   them.
 - `*.zip`, `*.tgz`: the release's Gerber zip, ODB++, IPC-2581 and
-  source tgz.  `*.pdf`: datasheets and exported drawings.
+  source tgz, which stay committed under the production directory.
+  `*.pdf`: datasheets and exported drawings.
 - STEP is text (ISO 10303-21) but large, unreviewed as a diff, and never
   merged by hand: tracked, both extensions, any case (makers ship
   `.STEP`).
+- VRML (`.wrl`), KiCad's other 3D model format, likewise: text, large,
+  beside STEP in many libraries; any case.
 - Plain: every KiCad file (`.kicad_pcb`, `.kicad_sch`, `.kicad_pro`,
   `.kicad_dru`, `.kicad_mod`, `.kicad_sym`, `.kicad_wks`), the
   release's `.txt` and `.csv`, `.toml`, `.md`.  They are reviewed as
   diffs, merged, read by `kicad-style-check` and the release, and
   small.
-- Open: VRML (`.wrl`), text but large, beside STEP in many libraries;
-  images (`.png`, `.jpg`) in docs.  Proposed: not tracked until a
-  repository needs them, then added to the section for all.
+- Not tracked: images (`.png`, `.jpg`).  A repository that wants them
+  in LFS adds its own lines after the section.
 
 ## .gitattributes
 
@@ -240,7 +244,9 @@ git-lfs anyway, and the pattern matching is then git-lfs's.
 - The release's outputs become LFS objects when committed, if the
   filters are set; if not, they are plain blobs and `--check` fails in
   CI.
-- After fab-release's split, the check is in the core, `fab_release.py`.
+- The check is in fab-release's core, `fab_release.py`, over the
+  inputs its `sources` (limited to the repository) and its variants
+  name.
 
 ## CI
 
@@ -266,62 +272,75 @@ git-lfs anyway, and the pattern matching is then git-lfs's.
 - Host storage: each release's archives, each version of a STEP or PDF,
   kept for good; not freed by deleting the file.  Bandwidth: each clone
   and each fetch of a new revision downloads HEAD's objects.  The
-  allowances are the host's and the account's (not verified).
+  allowances are the host's and the account's (not verified).  To check
+  before the merge: the host's current storage and bandwidth allowances,
+  whether CI and forks count against them, whether stored objects can
+  be deleted, and a board repository's archives per release against
+  them.
 - A submodule consumer: a library repository in LFS, as a board
   repository's submodule, gives its STEP files only on a machine with
   global filters (`git lfs install`, the user's own step).  `adopt`'s
   `--local` filters do not reach it.  A board repository's clone of
   ee_tooling is unchanged.
 
-## Breaking or not
+## Library repositories
 
-Breaking under `docs/releasing.md`: a board repository must act.
+Deferred.  For now a library repository copies the section into its own
+`.gitattributes` by hand, from `src/ee_tooling/templates/`; nothing
+checks it there.  Whether a library repository runs `adopt` (which also
+brings `hardware/pyproject.toml`, a venv and the release skill) is
+decided later.
+
+## Migration
+
+Part of the fab-release flag day: these commits land in the same merge
+as fab-release (`docs/design/fab-release.md`) and are released in
+0.4.0.  A board repository migrating to 0.4.0 also installs git-lfs on
+each machine, reruns `adopt --yes`, and commits `git add --renormalize
+.`.
+
+Breaking changes, under `docs/releasing.md` (a board repository must
+act), added to fab-release's list:
 
 1. `adopt` and `adopt --check` require git-lfs.
 2. `adopt --check` fails on a plain blob of a tracked type at HEAD: a
-   repository with committed archives, PDFs or STEP files must
+   repository with committed archives, PDFs, STEP or VRML files must
    renormalize and commit.
 3. `adopt --yes` writes `.gitattributes`'s section and
    `.githooks/pre-push`; a board repository's own `pre-push` is
    replaced.
 4. A push without git-lfs is refused.
-
-Not breaking: the release's pointer refusal, which refuses only a
-release that is already wrong (a pointer in the source tgz).
-
-Relation to the fab-release flag day: separate, not the same merge.
-The two touch different things (fab-release: the release's config,
-names and checks; this: `adopt`, the hook, `.gitattributes`), each is a
-migration of its own, and joining them makes the 0.4.0 merge larger and
-its migration day longer.  The pointer refusal lands any time, in
-`jlcpcb_release.py` or, after the split, `fab_release.py`.  Open:
-whether the breaking part is released before 0.4.0 (as 0.3.0) or after
-it (0.5.0).
+5. The release refuses a board whose inputs hold an unfetched LFS
+   pointer.
 
 ## Order of work
 
-Refactor first, with no change in behavior; each commit passes every
-check, with its docs.
+Each commit passes every check, with its docs.  The steps slot into
+fab-release's order of work.
 
-1. `adopt`: one marked-section function for `AGENTS.md` and, later,
-   `.gitattributes`; same files.
+Refactor first, with no change in behavior, after fab-release's
+refactor steps (1 to 3):
 
-Additive, any time:
+- L1. `adopt`: one marked-section function for `AGENTS.md` and, later,
+  `.gitattributes`; same files.
 
-2. The release refuses an unfetched pointer; tests with pointer files
-   written by the test, no git-lfs needed; the skill says so.
+Then, in fab-release's breaking PR, after its last `adopt` step (the
+ERC severities and connection grid) and before its release step:
 
-Then one PR, breaking, merged as one:
+- L2. The release refuses an unfetched pointer, in `fab_release.py`;
+  tests with pointer files written by the test, no git-lfs needed;
+  `skills/fab-release/SKILL.md` says so.
+- L3. The `.gitattributes` template and section; `adopt` writes it.
+- L4. `.githooks/pre-push`, managed.
+- L5. `adopt` requires git-lfs; installs the local filters and pulls.
+- L6. `--check`: git-lfs present; `git lfs fsck --pointers HEAD`.  Tests
+  in scratch repositories with `file://` remotes, skipped without
+  git-lfs; ee_tooling's CI fails if they are skipped.
+- L7. The CI template, if the runner lacks git-lfs; `docs/adopting.md`
+  (the table, what is left to do, the migration section).
 
-3. The `.gitattributes` template and section; `adopt` writes it.
-4. `.githooks/pre-push`, managed.
-5. `adopt` requires git-lfs; installs the local filters and pulls.
-6. `--check`: git-lfs present; `git lfs fsck --pointers HEAD`.  Tests
-   in scratch repositories with `file://` remotes, skipped without
-   git-lfs; ee_tooling's CI fails if they are skipped.
-7. The CI template, if the runner lacks git-lfs; `docs/adopting.md`
-   (the table, what is left to do, the migration section).
-8. Release; tag after CI.
+Before the merge: the host's allowances and the runner's git-lfs
+(Cost, CI).
 
 ## Adversarial review
 
@@ -337,16 +356,16 @@ Then one PR, breaking, merged as one:
   The archives are reproducible from the tagged commit, except for
   kicad-cli's version; attaching them to a host release on the tag the
   release already makes would keep them out of the repository.  Not
-  proposed; not foreclosed.  Open: whether the host's quotas suit
-  committing them.
+  chosen: they stay committed under the production directory.  Not
+  foreclosed.
+- The flag day grows: each board repository's 0.4.0 migration adds
+  git-lfs on every machine and a renormalize commit to fab-release's
+  day of work.
 - `--check` on HEAD only: history keeps every plain blob, and a clone
   stays as large as it was.  Shrinking it is a history rewrite the tool
   refuses to make.
-- Library repositories: `adopt` puts the section in place only where
-  ee_tooling is a submodule, and brings `hardware/pyproject.toml`, a
-  venv and the release skill with it.  Open: whether a library
-  repository runs `adopt`, or takes the section from a documented list
-  by hand (then unchecked).
+- Library repositories copy the section by hand: it goes stale there
+  when the section changes, and nothing checks it.
 - Global filters are the user's: `adopt` does not write `~/.gitconfig`,
   so a library submodule in LFS needs the user's own `git lfs install`.
 - Replacing a board repository's own `pre-push` loses it; the hook is
