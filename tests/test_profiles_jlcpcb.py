@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.fab_release import Board, Release
-from ee_tooling.profiles.jlcpcb import Parts, jlcpcb_bom, jlcpcb_cpl
+from ee_tooling.profiles.jlcpcb import Corrections, jlcpcb_bom, jlcpcb_cpl
 from ee_tooling.profiles.profile import Part, Placement
 
-PARTS = Parts(
+CORRECTIONS = Corrections(
     rotation={"C1": -90.0, "C2": 180.0},
     offset={"C3": (0.0, 1.5)},
     unchecked={"C4": "a new part"},
@@ -101,7 +101,7 @@ def test_cpl_rotation_and_layer() -> None:
     rows, placed = jlcpcb_cpl(
         [place("U1", 1, -2, 0), place("U2", 0, 0, 270, "bottom"), place("R1", 0, 0, 90)],
         {"U1": "C1", "U2": "C2", "R1": "C9"},
-        PARTS,
+        CORRECTIONS,
     )
     assert rows == [
         ["U1", "v", "p", "1.0000mm", "-2.0000mm", "270", "Top"],
@@ -116,18 +116,18 @@ def test_cpl_rotation_and_layer() -> None:
     [(0, "10.0000mm", "21.5000mm"), (90, "8.5000mm", "20.0000mm"), (180, "10.0000mm", "18.5000mm")],
 )
 def test_cpl_offset_turns_with_the_part(rot: float, x: str, y: str) -> None:
-    rows, _ = jlcpcb_cpl([place("J1", 10, 20, rot)], {"J1": "C3"}, PARTS)
+    rows, _ = jlcpcb_cpl([place("J1", 10, 20, rot)], {"J1": "C3"}, CORRECTIONS)
     assert rows[0][3:5] == [x, y]
 
 
 def test_cpl_skips_parts_not_in_bom() -> None:
-    rows, placed = jlcpcb_cpl([place("H1", 0, 0, 0)], {"U1": "C1"}, PARTS)
+    rows, placed = jlcpcb_cpl([place("H1", 0, 0, 0)], {"U1": "C1"}, CORRECTIONS)
     assert rows == []
     assert placed == set()
 
 
-def test_builtin_parts() -> None:
-    parts = Parts.builtin()
-    assert parts.rotation
-    assert all(len(v) == 2 for v in parts.offset.values())
-    assert not set(parts.unchecked) & (set(parts.rotation) | set(parts.offset))
+def test_builtin_corrections() -> None:
+    corrections = Corrections.builtin()
+    assert corrections.rotation
+    assert all(len(v) == 2 for v in corrections.offset.values())
+    assert not set(corrections.unchecked) & (set(corrections.rotation) | set(corrections.offset))

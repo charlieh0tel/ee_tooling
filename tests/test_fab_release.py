@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from test_profiles_jlcpcb import PARTS
+from test_profiles_jlcpcb import CORRECTIONS
 
 from ee_tooling.fab_release import (
     Board,
@@ -23,7 +23,7 @@ from ee_tooling.fab_release import (
     revision,
     tag_plan,
 )
-from ee_tooling.profiles.jlcpcb import Jlcpcb, Parts
+from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb
 from ee_tooling.profiles.profile import GerberOptions
 
 CONFIG = """
@@ -404,18 +404,18 @@ sources = ["docs"]
 }
 
 
-def builtin_parts(cls: type[Parts]) -> Parts:
-    return PARTS
+def builtin_corrections(cls: type[Corrections]) -> Corrections:
+    return CORRECTIONS
 
 
 def release(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    builtin: Callable[[type[Parts]], Parts] = builtin_parts,
+    builtin: Callable[[type[Corrections]], Corrections] = builtin_corrections,
     args: tuple[str, ...] = (),
 ) -> tuple[Path, list[list[str]]]:
     """Release the fixture board with the fake kicad-cli, builtin for
-    Parts.builtin and args after --date; return the repository and
+    Corrections.builtin and args after --date; return the repository and
     kicad-cli's calls, the root as ROOT and the work directory as WORK."""
     root = tmp_path / "repo"
     for name, text in FIXTURE.items():
@@ -438,7 +438,7 @@ def release(
     monkeypatch.setenv("FAKE_KICAD_LOG", str(log))
     monkeypatch.setenv("FAKE_OUTPUTS", json.dumps(FAKE_OUTPUTS))
     monkeypatch.setattr(tempfile, "tempdir", str(work))
-    monkeypatch.setattr(Parts, "builtin", classmethod(builtin))
+    monkeypatch.setattr(Corrections, "builtin", classmethod(builtin))
     monkeypatch.setattr(sys, "argv", ["jlcpcb-release", "--date", "20261118", *args])
     monkeypatch.chdir(root)
     main()
@@ -733,7 +733,7 @@ def test_release_stops_on_bad_parts_before_anything(
     """A parts.toml that does not load stops the release before ERC, and
     before a --force replaces the release."""
 
-    def broken(cls: type[Parts]) -> Parts:
+    def broken(cls: type[Corrections]) -> Corrections:
         raise tomllib.TOMLDecodeError("bad parts.toml")
 
     old = tmp_path / "repo/production/20261118-1/old.txt"

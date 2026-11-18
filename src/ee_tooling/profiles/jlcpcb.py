@@ -18,7 +18,7 @@ CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Lay
 
 
 @dataclass(frozen=True)
-class Parts:
+class Corrections:
     """JLCPCB's corrections to KiCad's placement, by LCSC part (parts.toml)."""
 
     rotation: dict[str, float]  # degrees added to KiCad's rotation
@@ -26,7 +26,7 @@ class Parts:
     unchecked: dict[str, str]  # part description, for parts with no correction known yet
 
     @classmethod
-    def load(cls, text: str) -> "Parts":
+    def load(cls, text: str) -> "Corrections":
         t = tomllib.loads(text)
         return cls(
             rotation={k: float(v) for k, v in t.get("rotation", {}).items()},
@@ -35,7 +35,7 @@ class Parts:
         )
 
     @classmethod
-    def builtin(cls) -> "Parts":
+    def builtin(cls) -> "Corrections":
         return cls.load(importlib.resources.files("ee_tooling").joinpath("parts.toml").read_text())
 
 
@@ -65,7 +65,7 @@ def jlcpcb_bom(parts: Iterable[Part]) -> tuple[list[list[str]], dict[str, str], 
 
 
 def jlcpcb_cpl(
-    placements: Iterable[Placement], refs: dict[str, str], corrections: Parts
+    placements: Iterable[Placement], refs: dict[str, str], corrections: Corrections
 ) -> tuple[list[list[str]], set[str]]:
     """The placements in JLCPCB's columns, for the parts in refs.
 
@@ -104,13 +104,13 @@ class Jlcpcb:
     )
     distributor: tuple[str, str] | None = ("LCSC", "LCSC")
 
-    def __init__(self, corrections: Parts) -> None:
+    def __init__(self, corrections: Corrections) -> None:
         self.corrections = corrections
 
     @classmethod
     def builtin(cls) -> "Jlcpcb":
         """The profile with parts.toml's corrections."""
-        return cls(Parts.builtin())
+        return cls(Corrections.builtin())
 
     def assembly(
         self, dest: Path, base: str, parts: list[Part], placements: list[Placement]
