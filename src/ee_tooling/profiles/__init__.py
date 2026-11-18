@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from ee_tooling.fab_release import Release
+    from ee_tooling.fab_release import Part, Placement
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,9 @@ class Profile(Protocol):
     gerbers: GerberOptions  # its Gerber and drill export
     distributor: tuple[str, str] | None  # IPC-2581: the part-number field, the distributor
 
-    def assembly(self, release: "Release", dest: Path, base: str) -> list[Path]:
-        """Writes its BOM and placement into dest, NAME-REV being base;
-        returns them."""
+    def assembly(
+        self, dest: Path, base: str, parts: list["Part"], placements: list["Placement"]
+    ) -> list[Path]:
+        """Writes its BOM and placement of the parts into dest, NAME-REV
+        being base; returns them."""
         ...

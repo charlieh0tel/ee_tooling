@@ -4,7 +4,6 @@ KiCad's, and its corrections to KiCad's placement, by LCSC part
 
 import csv
 import importlib.resources
-import io
 import math
 import sys
 import tomllib
@@ -16,7 +15,7 @@ from typing import TYPE_CHECKING
 from ee_tooling.profiles import GerberOptions
 
 if TYPE_CHECKING:
-    from ee_tooling.fab_release import Release
+    from ee_tooling.fab_release import Part, Placement
 
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
@@ -44,48 +43,52 @@ class Parts:
         return cls.load(importlib.resources.files("ee_tooling").joinpath("parts.toml").read_text())
 
 
-def jlcpcb_bom(rows: Iterable[dict[str, str]]) -> tuple[list[list[str]], dict[str, str], list[str]]:
-    """KiCad's grouped BOM in JLCPCB's columns.
+def jlcpcb_bom(parts: Iterable["Part"]) -> tuple[list[list[str]], dict[str, str], list[str]]:
+    """The parts in JLCPCB's columns, grouped by Value, Footprint and LCSC
+    in the order of each group's first part, as kicad-cli's --group-by
+    groups them.  kicad-cli groups on the fields' text before text variables
+    (${...}) are resolved; these are resolved.
 
     Returns the rows, each designator's LCSC part, and the designators of
     rows with no LCSC part.
     """
+    groups: dict[tuple[str, str, str], list[Part]] = {}
+    for p in parts:
+        groups.setdefault((p.value, p.footprint, p.lcsc), []).append(p)
     out = []
     refs: dict[str, str] = {}
     missing = []
-    for r in rows:
-        lcsc = r["LCSC Part #"]
-        out.append([r["Comment"], r["Designator"], r["Footprint"].split(":", 1)[-1], lcsc])
-        for x in r["Designator"].split(","):
-            refs[x.strip()] = lcsc
-        if not lcsc:
-            missing.append(r["Designator"])
+    for group in groups.values():
+        first = group[0]
+        designators = ",".join(p.reference for p in group)
+        out.append([first.value, designators, first.footprint.split(":", 1)[-1], first.lcsc])
+        refs.update((p.reference, first.lcsc) for p in group)
+        if not first.lcsc:
+            missing.append(designators)
     return out, refs, missing
 
 
 def jlcpcb_cpl(
-    rows: Iterable[dict[str, str]], refs: dict[str, str], parts: Parts
+    placements: Iterable["Placement"], refs: dict[str, str], corrections: Parts
 ) -> tuple[list[list[str]], set[str]]:
-    """KiCad's placement in JLCPCB's columns, for the parts in refs.
+    """The placements in JLCPCB's columns, for the parts in refs.
 
     Returns the rows and the designators placed.
     """
     out = []
     placed = set()
-    for r in rows:
-        ref = r["Ref"]
-        if ref not in refs:
+    for p in placements:
+        if p.reference not in refs:
             continue
-        lcsc = refs[ref]
-        kicad_rot = float(r["Rot"])
-        ox, oy = parts.offset.get(lcsc, (0.0, 0.0))
-        t = math.radians(kicad_rot)
-        x = float(r["PosX"]) + ox * math.cos(t) - oy * math.sin(t)
-        y = float(r["PosY"]) + ox * math.sin(t) + oy * math.cos(t)
-        rot = (kicad_rot + parts.rotation.get(lcsc, 0.0)) % 360
-        layer = "Top" if r["Side"].lower() == "top" else "Bottom"
-        out.append([ref, r["Val"], r["Package"], f"{x:.4f}mm", f"{y:.4f}mm", f"{rot:g}", layer])
-        placed.add(ref)
+        lcsc = refs[p.reference]
+        ox, oy = corrections.offset.get(lcsc, (0.0, 0.0))
+        t = math.radians(p.rotation)
+        x = p.x + ox * math.cos(t) - oy * math.sin(t)
+        y = p.y + ox * math.sin(t) + oy * math.cos(t)
+        rot = (p.rotation + corrections.rotation.get(lcsc, 0.0)) % 360
+        layer = "Top" if p.side.lower() == "top" else "Bottom"
+        out.append([p.reference, p.value, p.package, f"{x:.4f}mm", f"{y:.4f}mm", f"{rot:g}", layer])
+        placed.add(p.reference)
     return out, placed
 
 
@@ -94,60 +97,6 @@ def write_csv(out: Path, header: Iterable[str], rows: Iterable[list[str]]) -> No
         w = csv.writer(f)
         w.writerow(header)
         w.writerows(rows)
-
-
-def bom(release: "Release", out: Path) -> dict[str, str]:
-    """JLCPCB BOM, without not-fitted parts; return its designators' LCSC parts."""
-    raw = release.work / "bom.csv"
-    release.kicad(
-        "sch",
-        "export",
-        "bom",
-        "--exclude-dnp",
-        "--fields",
-        "Value,Reference,Footprint,LCSC,${QUANTITY}",
-        "--labels",
-        "Comment,Designator,Footprint,LCSC Part #,Qty",
-        "--group-by",
-        "Value,Footprint,LCSC",
-        "--ref-range-delimiter",
-        "",
-        "-o",
-        str(raw),
-        release.path(release.board.sch),
-    )
-    rows, refs, missing = jlcpcb_bom(csv.DictReader(io.StringIO(raw.read_text())))
-    write_csv(out, BOM_HEADER, rows)
-    if missing:
-        print("warning: no LCSC part number for", ", ".join(missing))
-    return refs
-
-
-def cpl(release: "Release", out: Path, refs: dict[str, str], parts: Parts) -> None:
-    """JLCPCB placement for the parts in the BOM."""
-    raw = release.work / "pos.csv"
-    release.kicad(
-        "pcb",
-        "export",
-        "pos",
-        "--format",
-        "csv",
-        "--units",
-        "mm",
-        "--side",
-        "both",
-        "--exclude-dnp",
-        "-o",
-        str(raw),
-        release.path(release.board.pcb),
-    )
-    rows, placed = jlcpcb_cpl(csv.DictReader(io.StringIO(raw.read_text())), refs, parts)
-    write_csv(out, CPL_HEADER, rows)
-    for lcsc, part in parts.unchecked.items():
-        if lcsc in refs.values():
-            print(f"check {part} ({lcsc}) in JLCPCB's placement preview: no correction known")
-    if unplaced := set(refs) - placed:
-        sys.exit(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
 
 
 class Jlcpcb:
@@ -159,18 +108,30 @@ class Jlcpcb:
     )
     distributor: tuple[str, str] | None = ("LCSC", "LCSC")
 
-    def __init__(self, parts: Parts) -> None:
-        self.parts = parts
+    def __init__(self, corrections: Parts) -> None:
+        self.corrections = corrections
 
     @classmethod
     def builtin(cls) -> "Jlcpcb":
         """The profile with parts.toml's corrections."""
         return cls(Parts.builtin())
 
-    def assembly(self, release: "Release", dest: Path, base: str) -> list[Path]:
-        """Its BOM and CPL, with its parts' corrections."""
+    def assembly(
+        self, dest: Path, base: str, parts: list["Part"], placements: list["Placement"]
+    ) -> list[Path]:
+        """Its BOM, without not-fitted parts, and its CPL of the BOM's parts,
+        with its corrections."""
         bom_csv = dest / f"{base}-bom.csv"
         cpl_csv = dest / f"{base}-cpl.csv"
-        refs = bom(release, bom_csv)
-        cpl(release, cpl_csv, refs, self.parts)
+        bom, refs, missing = jlcpcb_bom(parts)
+        write_csv(bom_csv, BOM_HEADER, bom)
+        if missing:
+            print("warning: no LCSC part number for", ", ".join(missing))
+        cpl, placed = jlcpcb_cpl(placements, refs, self.corrections)
+        write_csv(cpl_csv, CPL_HEADER, cpl)
+        for lcsc, desc in self.corrections.unchecked.items():
+            if lcsc in refs.values():
+                print(f"check {desc} ({lcsc}) in JLCPCB's placement preview: no correction known")
+        if unplaced := set(refs) - placed:
+            sys.exit(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
         return [bom_csv, cpl_csv]

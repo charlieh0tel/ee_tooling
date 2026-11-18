@@ -23,6 +23,7 @@ is not tagged; a tag already on another commit stops it, unless --retag.
 """
 
 import argparse
+import csv
 import datetime
 import io
 import json
@@ -156,6 +157,29 @@ def load_config(text: str) -> dict[str, Board]:
         )
         for b in boards
     }
+
+
+@dataclass(frozen=True)
+class Part:
+    """A fitted part, one per reference, from the schematic's BOM."""
+
+    reference: str
+    value: str
+    footprint: str  # LIBRARY:NAME
+    lcsc: str  # its LCSC field; "" if none
+
+
+@dataclass(frozen=True)
+class Placement:
+    """A fitted footprint's place on the board, from KiCad's position file."""
+
+    reference: str
+    value: str
+    package: str  # the footprint's name
+    x: float  # mm, KiCad's absolute coordinates (y negative)
+    y: float
+    rotation: float  # degrees
+    side: str  # KiCad's: top or bottom
 
 
 def revision(pcb_text: str) -> str | None:
@@ -367,6 +391,56 @@ class Release:
             self.path(self.board.pcb),
         )
 
+    def parts(self) -> list[Part]:
+        """The schematic's fitted parts, in KiCad's order of reference."""
+        raw = self.work / "bom.csv"
+        self.kicad(
+            "sch",
+            "export",
+            "bom",
+            "--exclude-dnp",
+            "--fields",
+            "Reference,Value,Footprint,LCSC",
+            "-o",
+            str(raw),
+            self.path(self.board.sch),
+        )
+        return [
+            Part(r["Reference"], r["Value"], r["Footprint"], r["LCSC"])
+            for r in csv.DictReader(io.StringIO(raw.read_text()))
+        ]
+
+    def placements(self) -> list[Placement]:
+        """The board's fitted footprints, both sides, in KiCad's order."""
+        raw = self.work / "pos.csv"
+        self.kicad(
+            "pcb",
+            "export",
+            "pos",
+            "--format",
+            "csv",
+            "--units",
+            "mm",
+            "--side",
+            "both",
+            "--exclude-dnp",
+            "-o",
+            str(raw),
+            self.path(self.board.pcb),
+        )
+        return [
+            Placement(
+                r["Ref"],
+                r["Val"],
+                r["Package"],
+                float(r["PosX"]),
+                float(r["PosY"]),
+                float(r["Rot"]),
+                r["Side"],
+            )
+            for r in csv.DictReader(io.StringIO(raw.read_text()))
+        ]
+
     def source(self, out: Path, commit: str) -> None:
         b = self.board
         pdf = self.work / "pdf"
@@ -461,7 +535,7 @@ def main() -> None:
         r.fabrication(dest, base, label, pcb, files)
         r.odb(dest / f"{base}-odb.tgz")
         r.ipc2581(dest / f"{base}-ipc2581.zip", profile.distributor)
-        profile.assembly(r, dest, base)
+        profile.assembly(dest, base, r.parts(), r.placements())
         r.source(dest / f"{base}-source.tgz", commit)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
             message = f"{b.name} {rev}: JLCPCB release {b.production / dest.name}"

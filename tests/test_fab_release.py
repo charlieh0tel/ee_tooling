@@ -319,15 +319,19 @@ FAKE_DRILL = {
     "b-NPTH.drl": "M48\n; #@! TF.FileFunction,NonPlated,1,3,NPTH\nMETRIC\nT1C3.200\n%\n",
 }
 FAKE_BOM = """\
-"Comment","Designator","Footprint","LCSC Part #","Qty"
-"100n","C1,C2,C10","Capacitor_SMD:C_0402_1005Metric","C1525","3"
-"100n","C3","Capacitor_SMD:C_0402_1005Metric","C307331","1"
-"LED","D1","LED_SMD:LED_0603_1608Metric","C2","1"
-"Conn_01x02","J1","Connector_JST:JST_SH_SM02B","C3","1"
-"10k","R1,R2","Resistor_SMD:R_0402_1005Metric","C25744","2"
-"TP","TP1,TP2","TestPoint:TestPoint_Pad_D1.0mm","","2"
-"TPS1","U1","Package_TO_SOT_SMD:SOT-23-5","C1","1"
-"NEW1","U2","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm","C4","1"
+"Reference","Value","Footprint","LCSC"
+"C1","100n","Capacitor_SMD:C_0402_1005Metric","C1525"
+"C2","100n","Capacitor_SMD:C_0402_1005Metric","C1525"
+"C3","100n","Capacitor_SMD:C_0402_1005Metric","C307331"
+"C10","100n","Capacitor_SMD:C_0402_1005Metric","C1525"
+"D1","LED","LED_SMD:LED_0603_1608Metric","C2"
+"J1","Conn_01x02","Connector_JST:JST_SH_SM02B","C3"
+"R1","10k","Resistor_SMD:R_0402_1005Metric","C25744"
+"R2","10k","Resistor_SMD:R_0402_1005Metric","C25744"
+"TP1","TP","TestPoint:TestPoint_Pad_D1.0mm",""
+"TP2","TP","TestPoint:TestPoint_Pad_D1.0mm",""
+"U1","TPS1","Package_TO_SOT_SMD:SOT-23-5","C1"
+"U2","NEW1","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm","C4"
 """
 FAKE_POS = """\
 Ref,Val,Package,PosX,PosY,Rot,Side
@@ -529,13 +533,7 @@ RELEASE_CALLS = [
         "bom",
         "--exclude-dnp",
         "--fields",
-        "Value,Reference,Footprint,LCSC,${QUANTITY}",
-        "--labels",
-        "Comment,Designator,Footprint,LCSC Part #,Qty",
-        "--group-by",
-        "Value,Footprint,LCSC",
-        "--ref-range-delimiter",
-        "",
+        "Reference,Value,Footprint,LCSC",
         "-o",
         "WORK/bom.csv",
         "ROOT/hw/b.kicad_sch",
