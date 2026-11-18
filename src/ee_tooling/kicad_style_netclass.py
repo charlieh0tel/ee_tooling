@@ -335,8 +335,15 @@ def sheets(root: Path) -> Iterator[Expression]:
         yield sheet
 
 
-def sheet_files(root: Path) -> Iterator[tuple[Path, Expression]]:
-    """A schematic's sheets' files (resolved) and sheets, as sheets()."""
+def sheet_files(
+    root: Path,
+    missing: list[tuple[Path, str]] | None = None,
+    parents: dict[Path, Path] | None = None,
+) -> Iterator[tuple[Path, Expression]]:
+    """A schematic's sheets' files (resolved) and sheets, as sheets().  A
+    sheet file not found is said on stderr, or, given missing, put there
+    as its referencing sheet and its name as written; given parents, each
+    sheet's first referencing sheet is put there."""
     seen: set[Path] = set()
     todo = [root]
     while todo:
@@ -352,9 +359,14 @@ def sheet_files(root: Path) -> Iterator[tuple[Path, Expression]]:
                 continue
             found = next((p for p in (path.parent / name, root.parent / name) if p.is_file()), None)
             if found is None:
-                print(f"{path}: sheet file {name} not found, not checked", file=sys.stderr)
+                if missing is None:
+                    print(f"{path}: sheet file {name} not found, not checked", file=sys.stderr)
+                else:
+                    missing.append((path, name))
             else:
                 todo.append(found.resolve())
+                if parents is not None:
+                    parents.setdefault(found.resolve(), path)
 
 
 def check_project(path: Path) -> Checked:

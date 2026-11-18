@@ -124,7 +124,7 @@ variants.
 `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
 `sym-lib-table` that exist (directories whole), every sheet file of the
 schematic's hierarchy inside the repository (each also in the
-uncommitted-sources check; one outside is said on stderr), then
+uncommitted-sources check), then
 `sources`, then
 the schematic and board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty`
 if built from uncommitted sources, and when it was built).  It holds
@@ -148,7 +148,10 @@ up as KiCad does, from the project's directory, then from the
 footprint's library's directory (`fp-lib-table`); one found nowhere is a
 warning naming the footprint and the path.
 
-It stops unless the board has a stackup and a stackup table on
+It stops, before anything runs, on a sheet file the schematic names that
+is not there, or is outside the repository, naming it and the sheet
+that names it: `kicad-cli` would take it as an empty sheet, its parts
+gone from ERC, parity and every BOM.  It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not
 honored: `stackup-table` writes or refreshes the table), ERC is clean,
 DRC (with schematic parity, the profile's rules and Board Setup

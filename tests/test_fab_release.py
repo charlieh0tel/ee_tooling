@@ -2563,3 +2563,27 @@ def test_pointer_message_by_repository() -> None:
         "  git -C libs/shared/sub lfs install --local --skip-repo"
         " && git -C libs/shared/sub lfs pull"
     )
+
+
+@pytest.mark.parametrize(
+    ("sheet", "error"),
+    [
+        ("sub/gone.kicad_sch", "b: sheet sub/gone.kicad_sch, named by hw/b.kicad_sch: not found"),
+        (
+            "../../outside.kicad_sch",
+            "outside.kicad_sch, named by hw/b.kicad_sch: outside the repository",
+        ),
+    ],
+)
+def test_release_refuses_a_sheet_missing_or_outside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sheet: str, error: str
+) -> None:
+    """kicad-cli would load either as an empty sheet, its parts gone from
+    ERC, parity and the BOMs: refused before anything runs."""
+    monkeypatch.setitem(
+        FIXTURE, "hw/b.kicad_sch", f'(kicad_sch (sheet (property "Sheetfile" "{sheet}")))\n'
+    )
+    (tmp_path / "outside.kicad_sch").write_text("(kicad_sch)\n")
+    with pytest.raises(SystemExit, match=re.escape(error) + "$"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []

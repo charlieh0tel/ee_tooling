@@ -1397,16 +1397,30 @@ def main() -> None:
             f"warning: 3D model not found, from the project or its library: {model}",
             file=sys.stderr,
         )
+    missing_sheets: list[tuple[Path, str]] = []
+    parents: dict[Path, Path] = {}
     try:
-        sheets_found = list(sheet_files((root / b.sch).resolve()))
+        sheets_found = list(sheet_files((root / b.sch).resolve(), missing_sheets, parents))
     except (OSError, ParseError) as e:
         sys.exit(f"{b.sch}: {e}")
     schematic = [s for _, s in sheets_found]
     top = root.resolve()
-    sheet_paths = [p.relative_to(top) for p, _ in sheets_found if p.is_relative_to(top)]
-    for p, _ in sheets_found:
-        if not p.is_relative_to(top):
-            print(f"warning: sheet {p} is outside the repository: not a source", file=sys.stderr)
+
+    # kicad-cli takes a sheet file it cannot find as an empty sheet, and one
+    # outside the repository is not committed with the board: either would
+    # drop parts from ERC, parity and every BOM unseen.
+    def from_root(path: Path) -> Path:
+        return path.relative_to(top) if path.is_relative_to(top) else path
+
+    if sheet_problems := [
+        f"sheet {name}, named by {from_root(parent)}: not found" for parent, name in missing_sheets
+    ] + [
+        f"sheet {p}, named by {from_root(parents[p])}: outside the repository"
+        for p, _ in sheets_found
+        if not p.is_relative_to(top)
+    ]:
+        sys.exit("\n".join(f"{b.name}: {s}" for s in sheet_problems))
+    sheet_paths = [p.relative_to(top) for p, _ in sheets_found]
     try:
         inputs = [
             *b.source_paths(root, sheet_paths),
