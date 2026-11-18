@@ -1,0 +1,15 @@
+#!/bin/sh
+# Uploads the pushed commits' Git LFS objects (git-lfs's own pre-push),
+# so that other clones can fetch them.  Written by
+# @EE_TOOLING@/adopt (ee_tooling's docs/adopting.md): rerun it rather
+# than editing this file.  Without git-lfs the push is refused: it would
+# send pointers whose files no other clone could fetch.
+if ! command -v git-lfs >/dev/null 2>&1; then
+    echo "push refused: git-lfs is not installed; install the distribution's git-lfs package (@EE_TOOLING@/docs/adopting.md)" >&2
+    exit 2
+fi
+git lfs pre-push "$@" || {
+    status=$?
+    echo "push refused: git lfs pre-push could not upload the Git LFS objects (its error is above): the remote must support Git LFS and be reachable (@EE_TOOLING@/docs/adopting.md)" >&2
+    exit $status
+}

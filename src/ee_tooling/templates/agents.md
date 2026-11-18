@@ -14,6 +14,9 @@
   style rule), consider whether it could be made generic and generally
   useful.  If so, ask whether it should be made in ee_tooling instead,
   then taken here.
-- `@EE_TOOLING@/adopt` wrote this section, `.githooks/commit-msg` and
-  `.github/workflows/ee-tooling.yml`; rerun it with `--yes` rather
+- `@EE_TOOLING@/adopt` wrote this section, `.githooks/commit-msg`,
+  `.githooks/pre-push`, `.github/workflows/ee-tooling.yml` and the
+  section at the top of `.gitattributes`; rerun it with `--yes` rather
   than editing them.
+- Archives (`.zip`, `.tgz`), PDFs, STEP and VRML files are stored
+  through Git LFS (`.gitattributes`): each machine needs git-lfs.

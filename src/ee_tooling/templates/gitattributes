@@ -1,0 +1,6 @@
+*.[zZ][iI][pP] filter=lfs diff=lfs merge=lfs -text
+*.[tT][gG][zZ] filter=lfs diff=lfs merge=lfs -text
+*.[pP][dD][fF] filter=lfs diff=lfs merge=lfs -text
+*.[sS][tT][eE][pP] filter=lfs diff=lfs merge=lfs -text
+*.[sS][tT][pP] filter=lfs diff=lfs merge=lfs -text
+*.[wW][rR][lL] filter=lfs diff=lfs merge=lfs -text

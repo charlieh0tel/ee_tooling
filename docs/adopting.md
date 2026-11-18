@@ -40,6 +40,8 @@ missing, then the project's.
 | Path | Owner | What |
 |---|---|---|
 | `.githooks/commit-msg` | managed | runs ee_tooling's commit-msg hook from the submodule |
+| `.githooks/pre-push` | managed | git-lfs's `pre-push`: uploads the pushed commits' Git LFS objects |
+| `.gitattributes` | managed section | first in the file, between `ee_tooling: begin` and `end` markers: the Git LFS patterns (below) |
 | `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
@@ -126,13 +128,43 @@ What it runs, each only when needed:
   credits an AI assistant.
 - Commit the result, `hardware/uv.lock` with it.
 
-## Hook
+## Git LFS
+
+`.gitattributes`'s section stores these through Git LFS, each in any
+case (`*.[pP][dD][fF]`), in any directory:
+
+- `.zip`, `.tgz`: the release's archives, committed under the
+  production directory;
+- `.pdf`: datasheets and exported drawings;
+- `.step`, `.stp`, `.wrl`: 3D models, text but large and never
+  reviewed as a diff.
+
+Every KiCad file, the release's `.txt` and `.csv`, `.toml` and `.md`
+stay plain, as do images.  The lines are `git lfs track`'s own form.
+The section goes first, so the project's own lines after it win, per
+attribute: `*.pdf -filter -diff -merge text` keeps a repository's PDFs
+plain, `*.png filter=lfs diff=lfs merge=lfs -text` adds a type.  A
+`.gitattributes` in a subdirectory is the project's and also wins.
+
+A library repository (footprints, symbols, 3D models) does not run
+`adopt`: it copies the lines of `src/ee_tooling/templates/gitattributes`
+into its own `.gitattributes` by hand, and nothing checks them there.
+
+## Hooks
 
 Git runs a hook from the top of the work tree, whatever the directory
 of the commit, so the wrapper's path is from there.  Before
 `git submodule update --init` the hook is missing, and the wrapper
 refuses every commit, saying so.  `make hook-test` in ee_tooling tests
 the wrapper in a scratch repository.
+
+`.githooks/pre-push` runs `git lfs pre-push`, which uploads the pushed
+commits' Git LFS objects; without it a push sends pointers whose files
+no other clone can fetch.  It refuses a push from a machine without
+git-lfs, and says so when the upload fails (a remote without Git LFS,
+or out of reach).  `.githooks` is ee_tooling's: a repository's own
+`pre-push` is replaced.  `adopt`, in every mode, names one it did not
+write on stderr, with its text, before `--yes` replaces it.
 
 ## Updating
 

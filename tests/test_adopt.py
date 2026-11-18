@@ -184,6 +184,8 @@ def test_root_layout(tmp_path: Path) -> None:
     assert [s.directory for s in steps if isinstance(s, Command)] == [Path()] * 3
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
+        ".githooks/pre-push": Owner.MANAGED,
+        ".gitattributes": Owner.MANAGED,
         ".github/workflows/ee-tooling.yml": Owner.MANAGED,
         ".claude/skills/fab-release/SKILL.md": Owner.PROJECT,
         "pyproject.toml": Owner.PROJECT,
@@ -197,6 +199,7 @@ def test_root_layout(tmp_path: Path) -> None:
     workflow = (tmp_path / ".github/workflows/ee-tooling.yml").read_text()
     assert "run: ee_tooling/adopt --check" in workflow
     assert "@ee_tooling/docs/kicad-style.md" in (tmp_path / "AGENTS.md").read_text()
+    assert "(ee_tooling/docs/adopting.md)" in (tmp_path / ".githooks/pre-push").read_text()
     assert stale(layout) == []
 
 
@@ -209,6 +212,8 @@ def test_plan_fresh_repository(tmp_path: Path) -> None:
     ]
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
+        ".githooks/pre-push": Owner.MANAGED,
+        ".gitattributes": Owner.MANAGED,
         ".github/workflows/ee-tooling.yml": Owner.MANAGED,
         ".claude/skills/fab-release/SKILL.md": Owner.PROJECT,
         "hardware/pyproject.toml": Owner.PROJECT,
@@ -238,6 +243,11 @@ def test_apply_writes_files(tmp_path: Path) -> None:
     assert "\n@hardware/ee_tooling/docs/kicad-style.md\n" in agents
     assert "git submodule update --remote hardware/ee_tooling" in agents
     assert "`hardware/ee_tooling/adopt --yes`" in agents
+    hook = tmp_path / ".githooks/pre-push"
+    assert hook.stat().st_mode & 0o111
+    assert "@" not in hook.read_text().replace('"$@"', "")
+    assert "(hardware/ee_tooling/docs/adopting.md)" in hook.read_text()
+    assert (tmp_path / ".gitattributes").read_text() == GITATTRIBUTES
     assert (
         f'name = "{tmp_path.name}-hardware"' in (tmp_path / "hardware/pyproject.toml").read_text()
     )
@@ -298,6 +308,195 @@ def test_venv_not_on_an_old_system_python(
     err = capsys.readouterr().err
     assert "/usr/bin/python3 is 3.10: no venv on the system Python" in err
     assert "stitch and placement-score cannot run here" in err
+
+
+# The .gitattributes adopt writes in a repository without one.
+GITATTRIBUTES = """\
+# ee_tooling: begin; written by ee-tooling-adopt
+*.[zZ][iI][pP] filter=lfs diff=lfs merge=lfs -text
+*.[tT][gG][zZ] filter=lfs diff=lfs merge=lfs -text
+*.[pP][dD][fF] filter=lfs diff=lfs merge=lfs -text
+*.[sS][tT][eE][pP] filter=lfs diff=lfs merge=lfs -text
+*.[sS][tT][pP] filter=lfs diff=lfs merge=lfs -text
+*.[wW][rR][lL] filter=lfs diff=lfs merge=lfs -text
+# ee_tooling: end; the project's own lines follow and win
+"""
+
+
+def test_gitattributes_section_first(tmp_path: Path) -> None:
+    """The section goes before the project's own lines, which are kept and
+    win; a section changed by hand is stale and rewritten in place."""
+    layout = repository(tmp_path, "main")
+    own = "*.pdf -filter -diff -merge text\n*.png filter=lfs diff=lfs merge=lfs -text\n"
+    (tmp_path / ".gitattributes").write_text(own)
+    apply(tmp_path, plan(layout), lambda *_: None)
+    assert (tmp_path / ".gitattributes").read_text() == GITATTRIBUTES + own
+    assert stale(layout) == []
+    (tmp_path / ".gitattributes").write_text(GITATTRIBUTES.replace("*.[tT][gG][zZ]", "*.tgz") + own)
+    assert stale(layout) == [Path(".gitattributes")]
+    apply(tmp_path, plan(layout), lambda *_: None)
+    assert (tmp_path / ".gitattributes").read_text() == GITATTRIBUTES + own
+
+
+@pytest.mark.parametrize(
+    "name", ["a.zip", "A.ZIP", "s.tgz", "d.pdf", "D.Pdf", "m.step", "M.STEP", "m.stp", "m.WRL"]
+)
+def test_gitattributes_tracked(tmp_path: Path, name: str) -> None:
+    """git's own reading of the section: each type, in any case, in any
+    directory, through Git LFS."""
+    git("init", "-q", str(tmp_path))
+    (tmp_path / ".gitattributes").write_text(GITATTRIBUTES)
+    for path in (name, f"production/20261118-1/{name}"):
+        out = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(tmp_path),
+                "check-attr",
+                "filter",
+                "diff",
+                "merge",
+                "text",
+                "--",
+                path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert (
+            out
+            == f"{path}: filter: lfs\n{path}: diff: lfs\n{path}: merge: lfs\n{path}: text: unset\n"
+        )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "b.kicad_pcb",
+        "b.kicad_sch",
+        "b.kicad_pro",
+        "b.kicad_dru",
+        "f.kicad_mod",
+        "s.kicad_sym",
+        "w.kicad_wks",
+        "b-1-bom.csv",
+        "b-1-stackup.txt",
+        "fab.toml",
+        "README.md",
+        "photo.png",
+        "a.zip.txt",
+    ],
+)
+def test_gitattributes_plain(tmp_path: Path, name: str) -> None:
+    git("init", "-q", str(tmp_path))
+    (tmp_path / ".gitattributes").write_text(GITATTRIBUTES)
+    out = subprocess.run(
+        ["git", "-C", str(tmp_path), "check-attr", "filter", name],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert out == f"{name}: filter: unspecified\n"
+
+
+def test_project_pre_push_replaced_loudly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pre-push adopt did not write is named on stderr with its text, by
+    every mode, and --yes replaces it."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / ".githooks").mkdir()
+    own = "#!/bin/sh\nmake lint\n"
+    (tmp_path / ".githooks/pre-push").write_text(own)
+    assert Path(".githooks/pre-push") in stale(layout)
+    warning = (
+        "WARNING: .githooks/pre-push is the project's own, not ee_tooling's: --yes replaces it"
+        " with ee_tooling's, which uploads Git LFS objects (.githooks is ee_tooling's); move what"
+        f" it does elsewhere.  Its text:\n{own}\n"
+    )
+    assert capsys.readouterr().err == warning
+    steps = plan(layout)
+    assert written(steps)[".githooks/pre-push"] is Owner.MANAGED
+    assert capsys.readouterr().err == warning
+    apply(tmp_path, steps, lambda *_: None)
+    assert "git lfs pre-push" in (tmp_path / ".githooks/pre-push").read_text()
+    assert stale(layout) == []
+    assert capsys.readouterr().err == ""
+
+
+def test_stale_pre_push_of_ours_replaced_quietly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    hook = tmp_path / ".githooks/pre-push"
+    hook.write_text(hook.read_text().replace("exit 2", "exit 3"))
+    capsys.readouterr()
+    assert stale(layout) == [Path(".githooks/pre-push")]
+    assert "WARNING" not in capsys.readouterr().err
+
+
+def run_pre_push(tmp_path: Path, path: str) -> subprocess.CompletedProcess[str]:
+    """The pre-push adopt writes, run with PATH as path, the push's refs on
+    its stdin."""
+    ran(tmp_path)
+    return subprocess.run(
+        ["/bin/sh", str(tmp_path / ".githooks/pre-push"), "origin", "file:///x"],
+        input="refs/heads/main 1 refs/heads/main 0\n",
+        env={"PATH": path},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_pre_push_refused_without_git_lfs(tmp_path: Path) -> None:
+    empty = tmp_path / "bin"
+    empty.mkdir()
+    r = run_pre_push(tmp_path, str(empty))
+    assert r.returncode == 2
+    assert r.stderr == (
+        "push refused: git-lfs is not installed; install the distribution's git-lfs package"
+        " (hardware/ee_tooling/docs/adopting.md)\n"
+    )
+
+
+def fake_bin(tmp_path: Path, git_status: int) -> str:
+    """A PATH with a git-lfs and a git that logs its arguments and its
+    stdin to git.log and exits git_status: nothing else, so the shell's
+    builtins only."""
+    directory = tmp_path / "fake-bin"
+    directory.mkdir()
+    (directory / "git-lfs").write_text("#!/bin/sh\n")
+    log = tmp_path / "git.log"
+    (directory / "git").write_text(
+        f'#!/bin/sh\necho "$@" >>{log}\nwhile read -r line; do echo "$line"; done >>{log}\n'
+        f"exit {git_status}\n"
+    )
+    for f in directory.iterdir():
+        f.chmod(0o755)
+    return str(directory)
+
+
+def test_pre_push_runs_git_lfs(tmp_path: Path) -> None:
+    """git lfs pre-push, with the hook's arguments and the push's refs."""
+    r = run_pre_push(tmp_path, fake_bin(tmp_path, 0))
+    assert (r.returncode, r.stderr) == (0, "")
+    assert (tmp_path / "git.log").read_text() == (
+        "lfs pre-push origin file:///x\nrefs/heads/main 1 refs/heads/main 0\n"
+    )
+
+
+def test_pre_push_refused_when_the_upload_fails(tmp_path: Path) -> None:
+    """A remote without Git LFS, or out of reach: git-lfs's error, then why."""
+    r = run_pre_push(tmp_path, fake_bin(tmp_path, 2))
+    assert r.returncode == 2
+    assert r.stderr == (
+        "push refused: git lfs pre-push could not upload the Git LFS objects (its error is"
+        " above): the remote must support Git LFS and be reachable"
+        " (hardware/ee_tooling/docs/adopting.md)\n"
+    )
 
 
 # A git identity for the test's commits: CI's runner has none.

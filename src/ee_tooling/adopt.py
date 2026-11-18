@@ -43,6 +43,14 @@ HOOKS_PATH = ".githooks"
 AGENTS = Path("AGENTS.md")
 AGENTS_BEGIN = "<!-- ee_tooling: begin; written by ee-tooling-adopt -->"
 AGENTS_END = "<!-- ee_tooling: end -->"
+# .gitattributes's section, first in the file: Git LFS's patterns.
+GITATTRIBUTES = Path(".gitattributes")
+GITATTRIBUTES_BEGIN = "# ee_tooling: begin; written by ee-tooling-adopt"
+GITATTRIBUTES_END = "# ee_tooling: end; the project's own lines follow and win"
+# The hook that uploads Git LFS objects; one without WRITTEN_BY_ADOPT in it
+# is the project's own, which adopt replaces, saying so.
+PRE_PUSH = Path(HOOKS_PATH, "pre-push")
+WRITTEN_BY_ADOPT = "(ee_tooling's docs/adopting.md)"
 # What a hand-adopted AGENTS.md has: the house style's import line.
 STYLE = "docs/kicad-style.md"
 # The profile of each board adopt finds.
@@ -467,6 +475,7 @@ class Markers:
 
 
 AGENTS_MARKERS = Markers(AGENTS_BEGIN, AGENTS_END, first=False)
+GITATTRIBUTES_MARKERS = Markers(GITATTRIBUTES_BEGIN, GITATTRIBUTES_END, first=True)
 
 
 def marked_text(existing: str | None, block: str, markers: Markers) -> str:
@@ -496,6 +505,23 @@ def agents_text(existing: str | None, block: str) -> str | None:
     return marked_text(existing, block, AGENTS_MARKERS)
 
 
+def warn_replaced_hook(root: Path) -> None:
+    """Say loudly, with its text, that the project's own pre-push is
+    replaced by ee_tooling's."""
+    hook = root / PRE_PUSH
+    if not hook.exists():
+        return
+    text = hook.read_text(errors="replace")
+    if WRITTEN_BY_ADOPT in text:
+        return
+    print(
+        f"WARNING: {PRE_PUSH} is the project's own, not ee_tooling's: --yes replaces it with"
+        f" ee_tooling's, which uploads Git LFS objects ({HOOKS_PATH} is ee_tooling's); move"
+        f" what it does elsewhere.  Its text:\n{text}",
+        file=sys.stderr,
+    )
+
+
 def uses_ee_tooling(pyproject: Path) -> bool:
     if not pyproject.exists():
         return False
@@ -513,6 +539,7 @@ def files(layout: Layout) -> list[File]:
     root = layout.root
     out = [
         File(Path(HOOKS_PATH, "commit-msg"), layout.fill("commit-msg"), Owner.MANAGED, True),
+        File(PRE_PUSH, layout.fill("pre-push"), Owner.MANAGED, True),
         File(
             Path(".github/workflows/ee-tooling.yml"), layout.fill("ee-tooling.yml"), Owner.MANAGED
         ),
@@ -522,6 +549,16 @@ def files(layout: Layout) -> list[File]:
             Owner.PROJECT,
         ),
     ]
+    warn_replaced_hook(root)
+    attributes = root / GITATTRIBUTES
+    existing = attributes.read_text() if attributes.exists() else None
+    out.append(
+        File(
+            GITATTRIBUTES,
+            marked_text(existing, layout.fill("gitattributes"), GITATTRIBUTES_MARKERS),
+            Owner.MANAGED,
+        )
+    )
     agents = root / AGENTS
     text = agents_text(agents.read_text() if agents.exists() else None, layout.fill("agents.md"))
     if text is None:
