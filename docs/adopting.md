@@ -49,7 +49,10 @@ tools' uv project is the root: `pyproject.toml`, `.venv` and the
 
 The templates are in `src/ee_tooling/templates/`.  A managed file is
 rewritten by every run with `--yes`; a project file is written only if
-missing, then the project's.
+missing, then the project's.  Each board's `.kicad_dru` and `.kicad_pro`
+are the project's, and `--yes` edits them in place, keeping the rest:
+the dry run and `--yes` name such an edit "update PATH (project;
+...)", and `--check` "to be updated: PATH".
 
 | Path | Owner | What |
 |---|---|---|
@@ -61,7 +64,7 @@ missing, then the project's.
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
 | `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb`, with the profile's house `[board.fab]` values |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
-| each board's `NAME.kicad_dru` | managed section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
+| each board's `NAME.kicad_dru` | project, with ee_tooling's section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
 | each board's `NAME.kicad_pro` | project | Board Setup's design rule minimums raised to the profile's, never lowered; the ERC severities set from `erc_severities.json`, each kept where the board's is stricter, and the connection grid (`docs/kicad-rules.md`) |
 
 `adopt` changes no file through a symbolic link: a file it would

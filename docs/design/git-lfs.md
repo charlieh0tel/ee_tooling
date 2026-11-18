@@ -92,9 +92,9 @@ repositories with `file://` remotes:
   keys in `.git/config` and writes no hook.  Local filters do not reach
   a submodule: its files stay pointers.  With global filters,
   `git clone --recurse-submodules` smudges a submodule's files.
-- `git lfs install`, `git lfs track`, `fetch`, `ls-files` and
-  `fsck` install `pre-push`, `post-checkout`, `post-commit` and
-  `post-merge` into `core.hooksPath` when absent: in a board repository,
+- `git lfs install`, `git lfs track` and `fsck` install `pre-push`,
+  `post-checkout`, `post-commit` and `post-merge` into `core.hooksPath`
+  when absent (`ls-files` does not; `fetch` with no remote does not): in a board repository,
   four untracked files in `.githooks/`.  When a `pre-push` that is not
   git-lfs's own is there, `git lfs track` installs none of them and
   succeeds; `git lfs install` fails ("Hook already exists").
