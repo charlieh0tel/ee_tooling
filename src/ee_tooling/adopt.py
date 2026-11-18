@@ -33,6 +33,7 @@ from ee_tooling.kicad_rules import (
     Dru,
     board_setup,
     copied_message,
+    dropped,
     erc_set,
     install,
     installed,
@@ -641,6 +642,14 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         if found.copied:
             print(copied_message(dru.as_posix(), found.copied), file=sys.stderr)
         close = "close the board in KiCad first"
+        count, names = dropped(Dru.split(existing).section, found.section)
+        if found.stale and count:
+            rules = f"; rules: {', '.join(names)}" if names else ""
+            print(
+                f"{dru.as_posix()}: {count} lines between ee_tooling's markers are not in its"
+                f" section now and go{rules}",
+                file=sys.stderr,
+            )
         if found.stale:
             out.append(
                 Edit(dru, found.dru, f"ee_tooling's {profile.name} rules installed; {close}")

@@ -61,6 +61,9 @@ overwrites the change.
    ```
 
    A rerun replaces the section between the markers and keeps the rest.
+   Lines between the markers that the new section lacks (a rule put
+   there by hand, or one ee_tooling no longer has) are counted on
+   stderr, with each such rule's name, as they go.
    A rule of the board's own with the name of one of the section's (a
    copy made by hand) is named on stderr, and left: it wins over the
    section's.

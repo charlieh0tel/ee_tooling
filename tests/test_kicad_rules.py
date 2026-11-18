@@ -12,6 +12,7 @@ from ee_tooling.kicad_rules import (
     Dru,
     board_setup,
     copied_message,
+    dropped,
     erc_set,
     floored,
     install,
@@ -321,3 +322,11 @@ def test_install_floors_and_goes_stale() -> None:
     assert not again.stale
     later = install(found.dru, setup_of(min_through_hole_diameter=0.7), section, least)
     assert later.stale and "(min 0.7mm)" in later.section
+
+
+def test_dropped() -> None:
+    old = '# a\n(rule "x" (c))\n\n(rule "y" (c))\n'
+    new = '# a\n(rule "y" (c))\n'
+    assert dropped(old, new) == (1, ["x"])
+    assert dropped(None, new) == (0, [])
+    assert dropped(new, new) == (0, [])

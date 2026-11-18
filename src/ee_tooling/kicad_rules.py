@@ -160,6 +160,17 @@ MINIMUM = re.compile(r"\(constraint[ \t]+(\w+)[ \t]+\(min[ \t]+([0-9.]+)mm\)")
 MM_PLACES = 6
 
 
+def dropped(old: str | None, new: str) -> tuple[int, list[str]]:
+    """What replacing section old with new removes: the count of old's
+    non-blank lines new lacks, and the names of old's rules new lacks."""
+    if old is None:
+        return 0, []
+    kept = set(new.splitlines())
+    lines = [line for line in old.splitlines() if line.strip() and line not in kept]
+    names = set(RULE_NAME.findall(new))
+    return len(lines), [n for n in RULE_NAME.findall(old) if n not in names]
+
+
 def floored(section: str, project: dict[str, Any]) -> str:
     """section with each minimum of a kind Board Setup also holds raised to
     the project's Board Setup value where that is higher: a rule replaces

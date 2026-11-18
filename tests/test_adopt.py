@@ -1886,3 +1886,22 @@ def test_no_warning_once_hooks_path_is_ours(
     capsys.readouterr()
     plan(layout)
     assert "stop running" not in capsys.readouterr().err
+
+
+def test_lines_in_the_section_not_ours_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A rule the project put between the markers: --yes says it goes,
+    with the count of lines and the rule's name."""
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    text = dru.read_text()
+    inside = '(rule "Mine inside"\n\t(constraint track_width (min 0.3mm)))\n'
+    dru.write_text(text.replace("# --- ee_tooling: end", f"{inside}# --- ee_tooling: end", 1))
+    capsys.readouterr()
+    plan(layout)
+    assert (
+        "hardware/main/main.kicad_dru: 2 lines between ee_tooling's markers are not in its"
+        " section now and go; rules: Mine inside\n"
+    ) in capsys.readouterr().err
