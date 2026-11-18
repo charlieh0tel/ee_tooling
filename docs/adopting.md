@@ -23,6 +23,12 @@ tools' uv project.  Rerun with `--yes` to bring the files it manages up
 to date; `--check` fails if one is stale.  A fresh clone needs
 `git submodule update --init` first.
 
+The submodule's parent need not be `hardware/`.  With the submodule at
+`ee_tooling/` and the KiCad project at the repository root, the hardware
+tools' uv project is the root: `pyproject.toml`, `.venv` and the
+`./ee_tooling` editable source are there, and `jlcpcb.toml` has
+`directory = "."`.  (`tests/test_adopt.py`, `test_root_layout`.)
+
 ## What it writes
 
 The templates are in `src/ee_tooling/templates/`.  A managed file is

@@ -114,6 +114,43 @@ def test_jlcpcb_config_no_project(tmp_path: Path) -> None:
     assert jlcpcb_config(repository(tmp_path)) is None
 
 
+def test_root_layout(tmp_path: Path) -> None:
+    """The submodule at ee_tooling/ and the KiCad project at the repository root."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "main.kicad_pro").write_text("{}")
+    (tmp_path / "main.kicad_pcb").write_text(PCB)
+    (tmp_path / "ee_tooling/x").mkdir(parents=True)
+    (tmp_path / "ee_tooling/x/x.kicad_pro").write_text("{}")
+    layout = Layout(tmp_path, Path("ee_tooling"))
+    config = jlcpcb_config(layout)
+    assert config is not None
+    assert '[[board]]\nname = "main"\ndirectory = "."\n' in config
+    assert '"x"' not in config
+    steps = plan(layout)
+    assert commands(steps) == [
+        ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
+        ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
+        ("git", "config", "core.hooksPath", ".githooks"),
+    ]
+    assert [s.directory for s in steps if isinstance(s, Command)] == [Path()] * 3
+    assert written(steps) == {
+        ".githooks/commit-msg": Owner.MANAGED,
+        ".github/workflows/ee-tooling.yml": Owner.MANAGED,
+        ".claude/skills/jlcpcb-release/SKILL.md": Owner.PROJECT,
+        "pyproject.toml": Owner.PROJECT,
+        "AGENTS.md": Owner.MANAGED,
+        "jlcpcb.toml": Owner.PROJECT,
+    }
+    apply(tmp_path, steps, lambda *_: None)
+    assert (
+        "HOOK=ee_tooling/.githooks/commit-msg\n" in (tmp_path / ".githooks/commit-msg").read_text()
+    )
+    workflow = (tmp_path / ".github/workflows/ee-tooling.yml").read_text()
+    assert "run: ee_tooling/adopt --check" in workflow
+    assert "@ee_tooling/docs/kicad-style.md" in (tmp_path / "AGENTS.md").read_text()
+    assert stale(layout) == []
+
+
 def test_plan_fresh_repository(tmp_path: Path) -> None:
     steps = plan(repository(tmp_path, "main"))
     assert commands(steps) == [
