@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1558,3 +1559,41 @@ def test_rename_leaves_a_markdown_file_not_utf8(
     assert "old.md: not UTF-8 (byte 18: invalid continuation byte): left as it is" in (
         capsys.readouterr().err
     )
+
+
+def test_unwritable_refused_before_anything(tmp_path: Path) -> None:
+    """A read-only .kicad_pro: --yes stops naming it, nothing done."""
+    layout = rules_repository(tmp_path)
+    project = tmp_path / "hardware/main/main.kicad_pro"
+    before = project.read_text()
+    project.chmod(0o444)
+    (tmp_path / ".githooks/pre-push").unlink()
+    steps = plan(layout)
+    with pytest.raises(
+        ValueError, match=r"^hardware/main/main.kicad_pro cannot be written: nothing done$"
+    ):
+        apply(tmp_path, steps, lambda *_: pytest.fail("ran"))
+    assert project.read_text() == before
+    assert not (tmp_path / ".githooks/pre-push").exists()
+
+
+def test_write_whole_or_not_at_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Interrupted before the rename: the file as it was, no scratch file
+    left; done: the new text, the file's mode kept."""
+    target = tmp_path / "b.kicad_pro"
+    target.write_text("old\n")
+    target.chmod(0o640)
+
+    def interrupted(*_: object) -> None:
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as m:
+        m.setattr(os, "replace", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            adopt.write(target, "new\n")
+    assert target.read_text() == "old\n"
+    assert [p.name for p in tmp_path.iterdir()] == ["b.kicad_pro"]
+    adopt.write(target, "new\n")
+    assert target.read_text() == "new\n"
+    assert target.stat().st_mode & 0o777 == 0o640
+    assert [p.name for p in tmp_path.iterdir()] == ["b.kicad_pro"]

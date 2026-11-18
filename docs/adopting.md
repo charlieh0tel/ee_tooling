@@ -75,6 +75,12 @@ A file `adopt` reads that is not UTF-8 stops it, naming the file,
 before anything is done; a Markdown file in a skill it moves is left as
 it is, named on stderr.
 
+`--yes` checks that it can write every file it writes (a read-only
+`.kicad_pro`, say) before it does anything, and stops naming the first
+it cannot.  It writes each file beside it and renames it over the old,
+the old file's mode kept, so an interrupted run leaves each file whole,
+old or new.
+
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
 overwrites the change.  `--check` fails while a board's rules section

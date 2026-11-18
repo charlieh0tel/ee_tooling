@@ -14,6 +14,7 @@ import importlib.resources
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -821,14 +822,58 @@ def describe(step: Step, root: Path) -> str:
             )
 
 
+def write(target: Path, text: str) -> None:
+    """target's text replaced whole or not at all: written beside it, then
+    renamed over it, its mode kept (a new file's from the umask)."""
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.adopt")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        if target.exists():
+            temporary.chmod(stat.S_IMODE(target.stat().st_mode))
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def writable(path: Path) -> bool:
+    """Whether path, or the nearest directory of it that exists, can be
+    written."""
+    while not path.exists():
+        path = path.parent
+    return os.access(path, os.W_OK)
+
+
+def refuse_unwritable(root: Path, steps: Sequence[Step]) -> None:
+    """ValueError naming a file or directory a step must write that cannot
+    be: before any step is done."""
+    for step in steps:
+        match step:
+            case File() | Edit():
+                paths = [step.path, step.path.parent]
+            case Remove():
+                paths = [step.path.parent] if step.kept is None else []
+            case Rename():
+                paths = [step.source.parent, step.target.parent, step.source]
+            case Command():
+                paths = []
+        for p in paths:
+            if not writable(root / p):
+                raise ValueError(f"{p.as_posix()} cannot be written: nothing done")
+
+
 def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path], None]) -> None:
+    """The steps, in order; ValueError naming what cannot be written, before
+    any is done."""
+    refuse_unwritable(root, steps)
     for step in steps:
         print(describe(step, root), flush=True)
         match step:
             case File():
                 target = root / step.path
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(step.text)
+                write(target, step.text)
                 if step.executable:
                     target.chmod(0o755)
                     # The mode git keeps, where it ignores the work tree's.
@@ -840,7 +885,7 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                 if step.kept is None:
                     (root / step.path).unlink()
             case Edit():
-                (root / step.path).write_text(step.text)
+                write(root / step.path, step.text)
             case Rename():
                 (root / step.source).rename(root / step.target)
                 for f in sorted((root / step.target).rglob("*.md")):
@@ -851,7 +896,7 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                         continue
                     for old, new in step.names:
                         text = text.replace(old, new)
-                    f.write_text(text)
+                    write(f, text)
 
 
 def run_command(args: Sequence[str], directory: Path) -> None:
@@ -935,6 +980,10 @@ def main() -> None:
     elif a.yes:
         try:
             apply(layout.root, steps, run_command)
+        except ValueError as e:
+            sys.exit(str(e))
+        except OSError as e:
+            sys.exit(f"{e.filename}: {e.strerror}; the steps above were done")
         except subprocess.CalledProcessError as e:
             why = ""
             if tuple(e.cmd) == LFS_PULL:
