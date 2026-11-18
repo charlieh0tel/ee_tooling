@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from ee_tooling import adopt
 from ee_tooling.adopt import (
     AGENTS_BEGIN,
     AGENTS_END,
@@ -21,6 +22,13 @@ from ee_tooling.adopt import (
 )
 
 SUBMODULE = Path("hardware/ee_tooling")
+
+
+@pytest.fixture(autouse=True)
+def supported(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A system Python that can run pcbnew, whatever this machine's is."""
+    monkeypatch.setattr(adopt, "unsupported", lambda: None)
+
 
 PCB = """(kicad_pcb
 \t(layers
@@ -194,6 +202,16 @@ def test_venv_without_system_packages_remade(tmp_path: Path) -> None:
         "--python",
         "/usr/bin/python3",
     ) in commands(plan(layout))
+
+
+def test_venv_not_on_an_old_system_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(adopt, "unsupported", lambda: "/usr/bin/python3 is 3.10")
+    assert not [c for c in commands(plan(repository(tmp_path, "main"))) if c[:2] == ("uv", "venv")]
+    err = capsys.readouterr().err
+    assert "/usr/bin/python3 is 3.10: no venv on the system Python" in err
+    assert "stitch and placement-score cannot run here" in err
 
 
 # A git identity for the test's commits: CI's runner has none.

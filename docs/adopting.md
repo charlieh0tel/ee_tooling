@@ -53,7 +53,9 @@ What it runs, each only when needed:
   uv has no project setting for it, and KiCad's `pcbnew` is only in
   the system Python.  A venv uv remakes itself (after `.venv` is
   deleted) has no `pcbnew`; rerun `adopt --yes`.  The system Python
-  must be 3.12 or later (`docs/stitch.md`, Platforms);
+  must be 3.12 or later (`docs/stitch.md`, Platforms); where it is
+  older, or missing, `adopt` says so and makes no venv on it, and
+  `uv add` makes one on a Python of uv's;
 - `uv add --dev --editable --no-workspace ./ee_tooling` in `hardware/`;
 - `git config core.hooksPath .githooks`, once per clone.
 

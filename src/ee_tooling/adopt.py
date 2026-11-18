@@ -21,7 +21,7 @@ from enum import Enum
 from pathlib import Path
 
 from ee_tooling.jlcpcb_release import CONFIG
-from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON
+from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 
 # This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
 CHECKOUT = Path(__file__).resolve().parents[2]
@@ -217,7 +217,14 @@ def plan(layout: Layout) -> list[Step]:
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
     steps: list[Step] = [f for f in files(layout) if f.action(root)]
     venv = root / hardware / ".venv"
-    if not system_site_packages(venv):
+    reason = unsupported()
+    if reason is not None:
+        print(
+            f"{reason}: no venv on the system Python, so stitch and placement-score"
+            " cannot run here (docs/stitch.md, Platforms)",
+            file=sys.stderr,
+        )
+    elif not system_site_packages(venv):
         clear = ("--clear",) if venv.exists() else ()
         steps.append(
             Command(
