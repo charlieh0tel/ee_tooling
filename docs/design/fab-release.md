@@ -1,8 +1,9 @@
 # Design: fab-release
 
-A proposal, for review before any code.  It replaces `jlcpcb-release`
-and `jlcpcb.toml` with a fab-neutral `fab-release` and `fab.toml`, with
-JLCPCB as one profile.  Decided in review: the names below, a neutral
+The design of `fab-release` as built for the 0.4.0 flag day.  It
+replaces `jlcpcb-release` and `jlcpcb.toml` with a fab-neutral
+`fab-release` and `fab.toml`, with JLCPCB as one profile.  Decided in
+review: the names below, a neutral
 core with profiles, required per-board fab values, the house BOM in the
 core, rules added by the release (not refused when stale), no `kicad`
 profile yet, no alias for the old command, a flag day, DNP parts at
@@ -14,8 +15,8 @@ documents shared; a Gerber zip per variant when the variants'
 silkscreens differ; a variant that differs in copper, mask, paste,
 outline or drill, or that overrides a part's Footprint field, refused.
 A library a board reads lives inside its repository (house style); the
-source tgz holds only `sources` beside the project's files; `adopt` skips production and hidden directories when finding
-projects; Git LFS (`docs/design/git-lfs.md`) lands in the same merge.
+source tgz holds only `sources` beside the project's files; `adopt`
+skips production and hidden directories when finding projects; Git LFS (`docs/design/git-lfs.md`) lands in the same merge.
 Deferred: the fab notes and the no-extra-cost via rules.  Nothing
 is open.
 
@@ -24,7 +25,7 @@ is open.
 | Now | After | Holds |
 |---|---|---|
 | `src/ee_tooling/jlcpcb_release.py` | `src/ee_tooling/fab_release.py` | the neutral core and `main()` |
-| - | `src/ee_tooling/profiles/__init__.py` | `PROFILES` (name to the profile's constructor) and `DEFAULT` |
+| - | `src/ee_tooling/profiles/__init__.py` | `PROFILES`, name to the profile's constructor |
 | - | `src/ee_tooling/profiles/profile.py` | `GerberOptions`, `Part`, `Placement` and the `Profile` Protocol; imports nothing from ee_tooling |
 | - | `src/ee_tooling/profiles/jlcpcb.py` | the JLCPCB profile: `Corrections` (`parts.toml`'s), the BOM and CPL writers, `Jlcpcb` with its Gerber options and rules |
 | script `jlcpcb-release` | script `fab-release` | no alias |
@@ -34,8 +35,6 @@ is open.
 
 - `fab_release.py` imports `PROFILES` and `profile.py`, never a
   profile's module.
-- `DEFAULT` is the profile of the boards in `jlcpcb.toml`; it goes
-  when `fab.toml`'s required `profile` key arrives (step 5).
 - `fab_release.py`, as `kicad_style_check.py` is its script's name;
   "release" alone also means ee_tooling's own `vX.Y.Z` releases.
 - One `profile` per board: a project has one `.kicad_dru`, so it meets
@@ -58,7 +57,7 @@ tg = 130                         # deg C, minimum
 electrical_test = "100% netlist test per IPC-9252"
 ```
 
-- The first board is the default, as now.
+- The first board is the default, as in `jlcpcb.toml`.
 - `copper` is gone: the copper layers come from the board's stackup.
 - An unknown key, at any level, is an error naming it, so later keys
   (`assembly`, `kind = "panel"`) are additive.
@@ -157,7 +156,7 @@ electrical_test = "100% netlist test per IPC-9252"
 - Its BOM `NAME-REV-jlcpcb-bom.csv` (Comment, Designator, Footprint,
   LCSC Part #; DNP left out) and CPL `NAME-REV-jlcpcb-cpl.csv`, with
   `parts.toml`'s rotations and offsets.  A fitted part with no LCSC
-  number is a warning, naming each one, as now; with the board option
+  number is a warning, naming each one, on stderr; with the board option
   `require_lcsc = true` in `[board.jlcpcb]` (default false), it refuses
   the release.
 - IPC-2581's distributor: the `LCSC` field, distributor "LCSC".
@@ -257,7 +256,8 @@ class Profile(Protocol):
 ```
 
 - `base` is the file stem, `NAME-REV`, or `NAME-REV-VARIANT` for a
-  variant; the core calls `check` and `assembly` once per build.
+  variant; the core calls `check`, `warnings` and `assembly` once per
+  build, every build's `check` before anything is written.
   `options` is what `options` returned for the board (`require_lcsc`).
   `check` takes the rows, not the release: `profile.py` imports nothing
   from ee_tooling.
@@ -302,7 +302,9 @@ class Profile(Protocol):
   Board Setup values in the `.kicad_pro` to at least the profile's,
   never lowering one.  That makes KiCad's own DRC in the editor match
   the release.  `fab-release` warns when the installed section is
-  missing or stale, naming `adopt --yes`.
+  missing or stale, or Board Setup is below the minimums, naming
+  `adopt --yes`, and when the board's own rules below the end marker
+  copy the profile's (a hand-made copy), naming each and the file.
 
 ```
 (version 1)
@@ -360,7 +362,7 @@ with it:
 |---|---|---|---|
 | Do not populate | `(dnp yes)` | `(dnp yes)` | honored: a Qty 0 row in the house BOM; left out of JLCPCB's BOM and CPL |
 | Exclude from BOM | `(in_bom no)` | `(exclude_from_bom yes)` | honored: no row in any BOM |
-| Exclude from position files | `(in_pos_files no)` | `(exclude_from_pos_files yes)` | honored by the placement export; a part in the BOM and not placed is refused, as now |
+| Exclude from position files | `(in_pos_files no)` | `(exclude_from_pos_files yes)` | honored by the placement export; a part in the profile's BOM and not placed is refused by the profile's `check` |
 | Exclude from board | `(on_board no)` | - | as without variants |
 | Exclude from simulation | `(exclude_from_sim yes)` | - | ignored |
 | A field's value (Value, LCSC, MPN, ...) | `(field (name "F") (value "V"))` | likewise | honored: the BOMs, the CPL's Val, `require_lcsc`, IPC-2581 and ODB++ take the variant's |
@@ -417,8 +419,9 @@ Checks per variant, beyond the core's:
 - A part fitted in the variant's placement export and DNP in its BOM,
   or the reverse, is refused, naming it: the board's variant data is
   not the schematic's.  The board's DNP parts are those in a placement
-  export without `--exclude-dnp` and not in the one with it.  DRC's schematic parity does not compare
-  variants (10.0.8); Update PCB from Schematic syncs them.
+  export without `--exclude-dnp` and not in the one with it.  DRC's
+  schematic parity does not compare variants (10.0.8); Update PCB from
+  Schematic syncs them.
 - A part whose Value differs between the two exports is refused, for
   the same reason.
 - A part whose BOM Footprint differs from the board's footprint is
@@ -446,10 +449,12 @@ become groups chosen per board, and whether a value the board and
   section and raises Board Setup.  It sets `erc.rule_severities` in the
   `.kicad_pro` from `erc_severities.json`, keeping a board's own
   severity where it is stricter (ignore, warning, error), and
-  `schematic.connection_grid_size`.  `adopt --check` fails on a missing
-  key.
+  `schematic.connection_grid_size`.  `adopt --check` fails while any of
+  it is pending, saying what each file awaits (missing, out of date, to
+  be migrated, to be updated); the dry run, `--yes` and `--check` take
+  the boards from the `fab.toml` `--yes` leaves.
 - `adopt` finds the projects (`*.kicad_pro`) under the hardware
-  directory, skipping the submodule, as now, and also every production
+  directory, skipping the submodule, every production
   directory (`production/`, which `adopt` assigns, and each `production`
   an existing `jlcpcb.toml` or `fab.toml` names) and every directory
   whose name starts with `.` (`.venv`, `.git`, `.claude/`, whose
@@ -457,7 +462,7 @@ become groups chosen per board, and whether a value the board and
   a release, or in a worktree, is not taken for a board.  It matters
   most with the KiCad project at the repository root (a supported
   layout: `docs/adopting.md`, `test_root_layout`), where the hardware
-  directory is the root.  Today's `adopt.py` skips only the submodule.
+  directory is the root.
 - `fab-setup`: adds a board or sets a value (`fab-setup add NAME
   [--profile P]`, `fab-setup set BOARD KEY VALUE`, `--interactive`),
   editing `fab.toml` with `tomlkit` (a new dependency) to keep its
@@ -469,8 +474,9 @@ A flag day: the breaking commits land on `main` in one merge and are
 released as 0.4.0.  The last release before it (`v0.2.0` or any
 later release before 0.4.0) is the pin for a board repository not yet
 migrated.  A board repository cannot release from the merge until it
-runs `adopt --yes`, checks `[board.fab]`, draws the stackup table and
-passes DRC under the profile's rules.  For Git LFS
+runs `adopt --yes`, checks `[board.fab]`, draws the stackup table, puts
+its libraries in the repository and passes DRC under the profile's
+rules.  For Git LFS
 (`docs/design/git-lfs.md`), it also installs git-lfs on each machine
 and commits `git add --renormalize .`.
 
@@ -648,8 +654,14 @@ rules.
   Value differences, not other fields'.
 - Variants: `kicad-cli` takes an unknown variant name as the default
   without an error; the release's own name check is the only guard,
-  and it rests on reading the board's `(variants)`, a KiCad 10 format
-  that may change.
+  and it rests on reading where KiCad 10.0.8 records variants (the
+  `.kicad_pro`, the board, the overrides), formats that may change.
+- Variants: on a project whose variants only the `.kicad_pro` lists
+  (KiCad's GUI), `kicad-cli pcb export gerbers --variant X` (10.0.8)
+  honors the footprints' overrides but gave the default variant's
+  `${VARIANT}` silkscreen text, the same for every variant, on a scratch
+  board; with the board's own `(variants)` list, each variant's.  A
+  per-variant silkscreen marking needs checking on such a board.
 - Variants: one tag for all of a release's variants: a variant added at
   the same revision later is a new release, a new date directory and a
   new tag, with every variant rebuilt.
