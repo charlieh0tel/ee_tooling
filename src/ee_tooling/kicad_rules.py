@@ -137,11 +137,55 @@ def raised(project: dict[str, Any], least: dict[str, Any]) -> tuple[dict[str, An
     return out, changes
 
 
+# A custom rule's constraint, by its kind, to the Board Setup minimum of
+# that kind (.kicad_pro board.design_settings.rules), which a rule matching
+# an item replaces for it in KiCad's DRC.  Not annular_width: Board Setup's
+# (min_via_annular_width) holds for vias only (KiCad 10.0.8), and a pad's
+# annular ring has no Board Setup minimum to loosen.
+BOARD_SETUP_KEYS = {
+    "track_width": "min_track_width",
+    "via_diameter": "min_via_diameter",
+    "hole_size": "min_through_hole_diameter",
+    "hole_to_hole": "min_hole_to_hole",
+    "hole_clearance": "min_hole_clearance",
+    "clearance": "min_clearance",
+    "edge_clearance": "min_copper_edge_clearance",
+    "silk_clearance": "min_silk_clearance",
+    "text_height": "min_text_height",
+    "text_thickness": "min_text_thickness",
+}
+# A constraint's minimum in a .kicad_dru, in mm: its kind, its value.
+MINIMUM = re.compile(r"\(constraint[ \t]+(\w+)[ \t]+\(min[ \t]+([0-9.]+)mm\)")
+# Decimal places kept in a minimum written to a .kicad_dru (KiCad's 1 nm).
+MM_PLACES = 6
+
+
+def floored(section: str, project: dict[str, Any]) -> str:
+    """section with each minimum of a kind Board Setup also holds raised to
+    the project's Board Setup value where that is higher: a rule replaces
+    Board Setup's constraint for what it matches, so a lower one would
+    loosen the board's own limit there."""
+    setup = project.get("board", {}).get("design_settings", {}).get("rules", {})
+
+    def floor(m: re.Match[str]) -> str:
+        key = BOARD_SETUP_KEYS.get(m.group(1))
+        least = setup.get(key) if key is not None else None
+        if not isinstance(least, int | float) or isinstance(least, bool):
+            return m.group(0)
+        if least <= float(m.group(2)):
+            return m.group(0)
+        mm = f"{least:.{MM_PLACES}f}".rstrip("0").rstrip(".")
+        return m.group(0).replace(f"{m.group(2)}mm", f"{mm}mm")
+
+    return MINIMUM.sub(floor, section)
+
+
 @dataclass(frozen=True)
 class Installed:
     """A board's rules files with a profile's rules installed."""
 
     dru: str  # the .kicad_dru's text
+    section: str  # the section installed in it, floored to the board's Board Setup
     project: dict[str, Any]  # the .kicad_pro, Board Setup raised
     stale: bool  # the board's .kicad_dru lacks the section, or has another
     raised: list[str]  # the Board Setup values raised, as raised() gives them
@@ -152,12 +196,15 @@ def install(
     dru: str | None, project: dict[str, Any], section: str, least: dict[str, Any]
 ) -> Installed:
     """The board's .kicad_dru (None if it has none) and .kicad_pro with
-    section installed and Board Setup raised to least; ValueError if the
+    Board Setup raised to least and section installed, each of its minimums
+    floored to the raised Board Setup's (floored); ValueError if the
     .kicad_dru's markers are not in order."""
     found = Dru.split(dru)
     project, changes = raised(project, least)
+    section = floored(section, project)
     return Installed(
         found.with_section(section),
+        section,
         project,
         found.section != section,
         changes,

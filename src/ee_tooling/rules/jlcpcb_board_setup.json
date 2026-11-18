@@ -4,7 +4,12 @@
       "rules": {
         "min_clearance": 0.1,
         "min_copper_edge_clearance": 0.2,
-        "min_hole_clearance": 0.2
+        "min_hole_clearance": 0.2,
+        "min_hole_to_hole": 0.2,
+        "min_through_hole_diameter": 0.15,
+        "min_track_width": 0.1,
+        "min_via_annular_width": 0.05,
+        "min_via_diameter": 0.25
       }
     }
   }

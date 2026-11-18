@@ -884,7 +884,7 @@ def test_adopt_stops_on_fab_it_cannot_add(tmp_path: Path) -> None:
 # JLCPCB's minimum, one below.
 OWN_RULE = '(rule "Mine"\n\t(constraint track_width (min 0.2mm)))\n'
 LOW_SETUP = {
-    "board": {"design_settings": {"rules": {"min_clearance": 0.05, "min_hole_clearance": 0.3}}},
+    "board": {"design_settings": {"rules": {"min_clearance": 0.05, "min_hole_clearance": 0.25}}},
     "erc": {
         "rule_severities": {
             "four_way_junction": "error",
@@ -931,6 +931,11 @@ def test_rules_installed(tmp_path: Path) -> None:
             "Board Setup raised to jlcpcb's minimums:"
             " board.design_settings.rules.min_clearance: 0.05 -> 0.1;"
             " board.design_settings.rules.min_copper_edge_clearance: none -> 0.2;"
+            " board.design_settings.rules.min_hole_to_hole: none -> 0.2;"
+            " board.design_settings.rules.min_through_hole_diameter: none -> 0.15;"
+            " board.design_settings.rules.min_track_width: none -> 0.1;"
+            " board.design_settings.rules.min_via_annular_width: none -> 0.05;"
+            " board.design_settings.rules.min_via_diameter: none -> 0.25;"
             f" ERC severities and connection grid set ({len(ERC_CHANGES)} values);"
             " close the board in KiCad first",
         ),
@@ -940,8 +945,13 @@ def test_rules_installed(tmp_path: Path) -> None:
     project = json.loads((board / "main.kicad_pro").read_text())
     assert project["board"]["design_settings"]["rules"] == {
         "min_clearance": 0.1,
-        "min_hole_clearance": 0.3,
         "min_copper_edge_clearance": 0.2,
+        "min_hole_clearance": 0.25,
+        "min_hole_to_hole": 0.2,
+        "min_through_hole_diameter": 0.15,
+        "min_track_width": 0.1,
+        "min_via_annular_width": 0.05,
+        "min_via_diameter": 0.25,
     }
     assert project["meta"] == LOW_SETUP["meta"]
     severities = project["erc"]["rule_severities"]
@@ -958,7 +968,7 @@ def test_rules_stale_section_replaced(tmp_path: Path) -> None:
     """An old section is replaced in place; the board's own rules kept."""
     layout = rules_repository(tmp_path)
     dru = tmp_path / "hardware/main/main.kicad_dru"
-    old = SECTION.replace("(min 0.1mm)", "(min 0.05mm)", 1)
+    old = SECTION.replace("(min 0.18mm)", "(min 0.05mm)", 1)
     dru.write_text(f"(version 1)\n{old}\n{OWN_RULE}")
     assert Path("hardware/main/main.kicad_dru") in stale(layout)
     apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
@@ -991,13 +1001,13 @@ def test_rules_copied_named(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     left."""
     layout = rules_repository(tmp_path)
     dru = tmp_path / "hardware/main/main.kicad_dru"
-    copy = '(rule "JLCPCB track width"\n\t(constraint track_width (min 0.1mm)))\n'
+    copy = '(rule "JLCPCB annular ring"\n\t(constraint annular_width (min 0.18mm)))\n'
     dru.write_text(f"(version 1)\n{copy}")
     apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
     assert dru.read_text().endswith(f"\n{copy}")
     assert (
         "hardware/main/main.kicad_dru: 1 rule below ee_tooling's end marker copies the"
-        " profile's and wins over them:\n  JLCPCB track width\n"
+        " profile's and wins over them:\n  JLCPCB annular ring\n"
     ) in capsys.readouterr().err
 
 

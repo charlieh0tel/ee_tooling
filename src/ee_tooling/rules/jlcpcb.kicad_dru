@@ -8,10 +8,14 @@
 #
 # A rule here replaces, for what it matches, the Board Setup constraint of
 # its kind, and a clearance rule would replace the net classes'
-# clearances.  So the limits that are lower than a board would choose and
-# that shape zone fills (copper clearance, copper to edge, a via's hole
-# clearance) are not rules here but Board Setup minimums
-# (jlcpcb_board_setup.json).
+# clearances.  So a limit that holds for every item of its kind is not a
+# rule here but a Board Setup minimum (jlcpcb_board_setup.json: track
+# width, via diameter, hole size, annular width, hole to hole, copper
+# clearance, copper to edge, hole clearance), raised to, never lowered.
+# The rules here are those Board Setup cannot express (a condition, a
+# layer, an assertion, a skew), and adopt and fab-release raise each of
+# their minimums to the board's Board Setup value of its kind where that
+# is higher, so no rule loosens the board's own limit.
 
 # --- JLCPCB limits ---------------------------------------------------------
 #
@@ -20,19 +24,15 @@
 # 1 oz outer copper, through vias.  Where the page gives a 1- and 2-layer
 # and a multilayer figure, the stricter holds, so one file serves both.
 
-# Traces, min. track width (1 oz): 1- and 2-layer 0.10 mm, multilayer
-# 0.09 mm.
-(rule "JLCPCB track width"
-	(constraint track_width (min 0.1mm)))
-
-# Drilling, min. via hole size/diameter: 0.15/0.25 mm.
-(rule "JLCPCB via diameter"
-	(constraint via_diameter (min 0.25mm)))
-
-# Drilling, drill diameter: 2-layer and multilayer 0.15 - 6.3 mm (6.3 mm
-# and up is routed, not drilled, so there is no maximum).
-(rule "JLCPCB hole size"
-	(constraint hole_size (min 0.15mm)))
+# Board Setup (jlcpcb_board_setup.json): traces, min. track width (1 oz):
+# 1- and 2-layer 0.10 mm, multilayer 0.09 mm; drilling, min. via hole
+# size/diameter: 0.15/0.25 mm; drill diameter: 2-layer and multilayer
+# 0.15 - 6.3 mm (6.3 mm and up is routed, not drilled, so there is no
+# maximum); via hole-to-hole spacing: 0.2 mm (and, from Outline, mouse
+# bites panel, "Recommended distance between the two mouse-bites is
+# 0.2-0.3mm", so non-plated holes take the via figure); a via's annular
+# ring: "Via diameter should be 0.1mm (0.15mm preferred) larger than Via
+# hole size", 0.05 mm.
 
 # Drilling, min. non-plated holes: 0.50 mm.
 (rule "JLCPCB non-plated hole size"
@@ -50,21 +50,10 @@
 	(constraint hole_size (min 1.0mm)))
 
 # Traces, PTH annular ring (1 oz): 2-layer absolute minimum 0.18 mm,
-# multilayer 0.15 mm.
+# multilayer 0.15 mm.  A via's is Board Setup's.
 (rule "JLCPCB annular ring"
+	(condition "A.Type == 'Pad'")
 	(constraint annular_width (min 0.18mm)))
-
-# Drilling, min. via hole size/diameter: "Via diameter should be 0.1mm
-# (0.15mm preferred) larger than Via hole size", a 0.05 mm ring.
-(rule "JLCPCB via annular ring"
-	(condition "A.Type == 'Via'")
-	(constraint annular_width (min 0.05mm)))
-
-# Drilling, via hole-to-hole spacing: 0.2 mm.  Outline, mouse bites
-# panel: "Recommended distance between the two mouse-bites is 0.2-0.3mm",
-# so non-plated holes take the via figure.
-(rule "JLCPCB hole to hole"
-	(constraint hole_to_hole (min 0.2mm)))
 
 # Drilling, pad hole-to-hole spacing: 0.45 mm, between plated pads.
 (rule "JLCPCB pad hole to pad hole"

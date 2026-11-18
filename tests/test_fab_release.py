@@ -655,6 +655,11 @@ electrical_test = "100% netlist test per IPC-9252"
                         "min_clearance": 0.15,
                         "min_copper_edge_clearance": 0.2,
                         "min_hole_clearance": 0.25,
+                        "min_hole_to_hole": 0.2,
+                        "min_through_hole_diameter": 0.3,
+                        "min_track_width": 0.15,
+                        "min_via_annular_width": 0.1,
+                        "min_via_diameter": 0.5,
                     }
                 }
             },
@@ -1788,7 +1793,7 @@ def test_release_warns_of_rules_not_installed(
     """A board's .kicad_dru without the current rules, a Board Setup below
     the profile's, and a copy of the profile's rules: each a warning, the
     release made with the current rules."""
-    copy = '(rule "JLCPCB track width"\n\t(constraint track_width (min 0.1mm)))\n'
+    copy = '(rule "JLCPCB annular ring"\n\t(constraint annular_width (min 0.18mm)))\n'
     monkeypatch.setitem(FIXTURE, "hw/b.kicad_dru", f"(version 1)\n{copy}")
     project = json.loads(FIXTURE["hw/b.kicad_pro"])
     project["board"]["design_settings"]["rules"]["min_clearance"] = 0.05
@@ -1801,7 +1806,7 @@ def test_release_warns_of_rules_not_installed(
         "warning: b.kicad_pro: Board Setup below jlcpcb's minimums"
         f" (board.design_settings.rules.min_clearance: 0.05 -> 0.1): {adopt}\n"
         "warning: hw/b.kicad_dru: 1 rule below ee_tooling's end marker copies the profile's and"
-        " wins over them:\n  JLCPCB track width\nremove this rule from below the end marker in"
+        " wins over them:\n  JLCPCB annular ring\nremove this rule from below the end marker in"
         " hw/b.kicad_dru\n"
     )
     assert (root / "hw/b.kicad_dru").read_text() == f"(version 1)\n{copy}"

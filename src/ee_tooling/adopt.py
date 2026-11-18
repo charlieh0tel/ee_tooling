@@ -575,7 +575,7 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             raise ValueError(f"{dru.as_posix()}: {e}; {by_hand}") from e
         settings, erc = erc_set(found.project, house)
         if (
-            Dru.split(found.dru).section != section
+            Dru.split(found.dru).section != found.section
             or raised(settings, least)[1]
             or erc_set(settings, house)[1]
         ):

@@ -19,10 +19,25 @@ a board with DRC or ERC violations.
 - A custom rule replaces, for what it matches, the Board Setup
   constraint of its kind, and a custom `clearance` rule the net classes'
   clearances.  Board Setup's minimum clearance is a floor under every
-  clearance (KiCad 10.0.8, `pcbnew/drc/drc_engine.cpp`).  So copper
-  clearance, copper to edge and a via's hole clearance, which are lower
-  at JLCPCB than a board would choose and which shape zone fills, are
-  Board Setup minimums, not rules.
+  clearance (KiCad 10.0.8, `pcbnew/drc/drc_engine.cpp`).  So a rule
+  installed with a lower minimum than the board's own Board Setup value
+  would loosen the board's limit for what it matches (checked with
+  `kicad-cli pcb drc`: a board with Board Setup track width 0.5 and a
+  0.1 mm `track_width` rule passes its 0.15 mm tracks).
+- Hence: every limit that holds for every item of its kind is a Board
+  Setup minimum, raised to and never lowered: copper clearance, copper
+  to edge, hole clearance, track width, via diameter, hole size (through
+  hole diameter), a via's annular width, hole to hole.  The custom rules
+  are only those Board Setup cannot express: a condition (plated or not,
+  slots, pads, a footprint), a layer, an assertion, a skew.  And each of
+  their minimums of a kind Board Setup also holds (`kicad_rules.py`,
+  `BOARD_SETUP_KEYS`) is raised to the board's Board Setup value where
+  that is higher, when installed and in `fab-release`'s DRC, so no rule
+  loosens the board's own limit.  A board that later raises a Board
+  Setup value has a stale section: `adopt --check` fails, and
+  `fab-release` warns, until `adopt --yes`.  Board Setup's annular width
+  holds for vias only (10.0.8): a pad's ring, `JLCPCB annular ring`, is
+  not raised to it.
 - `fab-release` runs `kicad-cli ... --exit-code-violations`, which
   fails on a warning as on an error.
 
@@ -51,7 +66,8 @@ overwrites the change.
    section's.
 2. `NAME.kicad_pro`: each of `board.design_settings.rules` raised to at
    least its value in `jlcpcb_board_setup.json` (Board Setup, Design
-   Rules, Constraints), never lowered.
+   Rules, Constraints), never lowered; then the section's minimums are
+   raised to these values where they are higher (above).
 3. `NAME.kicad_pro`: each of `erc.rule_severities` set to its value in
    `erc_severities.json` (Schematic Setup, Electrical Rules, Violation
    Severity), kept where the board's is stricter (`ignore`, then
@@ -86,21 +102,21 @@ and 6 layers.  mm.
 
 | Page: item | 1-2 layer | Multilayer | Checked by |
 |---|---|---|---|
-| Traces: min. track width and spacing (1 oz) | 0.10 / 0.10 | 0.09 / 0.09 | `JLCPCB track width` 0.1; Board Setup `min_clearance` 0.1 |
+| Traces: min. track width and spacing (1 oz) | 0.10 / 0.10 | 0.09 / 0.09 | Board Setup `min_track_width` 0.1, `min_clearance` 0.1 |
 | Traces: pad to track clearance (1 oz) | 0.1 | 0.1 | Board Setup `min_clearance` 0.1 |
 | Traces: SMD pad to pad clearance (different nets) | 0.15 | 0.15 | not checked: a `clearance` rule would replace the net classes' |
 | Traces: minimum SMD pad | 0.25 x 0.25 | 0.25 x 0.25 | `JLCPCB SMD pad size` (pads with copper) |
 | Traces: BGA pad (ENIG) | 0.2 | 0.2 | `JLCPCB BGA pad size` (fabrication property BGA pad) |
-| Traces: PTH annular ring (1 oz), absolute minimum | 0.18 | 0.15 | `JLCPCB annular ring` 0.18 |
-| Drilling: min. via hole size / diameter | 0.15 / 0.25 | 0.15 / 0.25 | `JLCPCB hole size` 0.15, `JLCPCB via diameter` 0.25 |
-| Drilling: via diameter over via hole | 0.1 | 0.1 | `JLCPCB via annular ring` 0.05 |
-| Drilling: drill diameter | 0.15 - 6.3 | 0.15 - 6.3 | `JLCPCB hole size` 0.15 (6.3 and up is routed) |
+| Traces: PTH annular ring (1 oz), absolute minimum | 0.18 | 0.15 | `JLCPCB annular ring` 0.18 (pads) |
+| Drilling: min. via hole size / diameter | 0.15 / 0.25 | 0.15 / 0.25 | Board Setup `min_through_hole_diameter` 0.15, `min_via_diameter` 0.25 |
+| Drilling: via diameter over via hole | 0.1 | 0.1 | Board Setup `min_via_annular_width` 0.05 |
+| Drilling: drill diameter | 0.15 - 6.3 | 0.15 - 6.3 | Board Setup `min_through_hole_diameter` 0.15 (6.3 and up is routed) |
 | Drilling: min. non-plated holes | 0.50 | 0.50 | `JLCPCB non-plated hole size` |
 | Drilling: min. plated slots width | 0.5 | 0.35 | `JLCPCB plated slot width` 0.5 |
 | Drilling: min. non-plated slots | 1.0 | 1.0 | `JLCPCB non-plated slot width` |
-| Drilling: via hole-to-hole spacing | 0.2 | 0.2 | `JLCPCB hole to hole` (all holes) |
+| Drilling: via hole-to-hole spacing | 0.2 | 0.2 | Board Setup `min_hole_to_hole` 0.2 (all holes) |
 | Drilling: pad hole-to-hole spacing | 0.45 | 0.45 | `JLCPCB pad hole to pad hole` (plated pads) |
-| Outline: mouse bites, distance between two | 0.2 - 0.3 | 0.2 - 0.3 | `JLCPCB hole to hole` 0.2 (non-plated holes) |
+| Outline: mouse bites, distance between two | 0.2 - 0.3 | 0.2 - 0.3 | Board Setup `min_hole_to_hole` 0.2 (non-plated holes) |
 | Traces: via hole to track | 0.2 | 0.2 | Board Setup `min_hole_clearance` 0.2 |
 | Traces: NPTH to track | 0.2 | 0.2 | Board Setup `min_hole_clearance` 0.2 |
 | Traces: PTH to track | 0.28 | 0.28 | `JLCPCB plated hole clearance` (outer layers) |

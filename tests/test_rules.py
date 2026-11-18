@@ -6,9 +6,11 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from ee_tooling.kicad_rules import install
 from ee_tooling.kicad_style_check import GRID
 from ee_tooling.kicad_style_netclass import INTERFACES
 from ee_tooling.sexpr import Expression, child, children, parse
@@ -71,7 +73,16 @@ CONSTRAINTS = {
 FAB_PREFIX = "JLCPCB "
 HOUSE_HEADING = "# --- House rules"
 # Board Setup's rule keys in a .kicad_pro (board.design_settings.rules).
-BOARD_SETUP_KEYS = {"min_clearance", "min_copper_edge_clearance", "min_hole_clearance"}
+BOARD_SETUP_KEYS = {
+    "min_clearance",
+    "min_copper_edge_clearance",
+    "min_hole_clearance",
+    "min_hole_to_hole",
+    "min_through_hole_diameter",
+    "min_track_width",
+    "min_via_annular_width",
+    "min_via_diameter",
+}
 
 
 def dru(text: str) -> list[Expression]:
@@ -160,13 +171,22 @@ def project(classes: dict[str, str]) -> dict[str, object]:
     }
 
 
-def drc(tmp_path: Path, *items: str, classes: dict[str, str] | None = None) -> list[str]:
-    """kicad-cli's DRC of a board of items with the rules, and net classes
-    by net pattern: each violation's type and description."""
+def drc(
+    tmp_path: Path,
+    *items: str,
+    classes: dict[str, str] | None = None,
+    setup: dict[str, float] | None = None,
+) -> list[str]:
+    """kicad-cli's DRC of a board of items with the rules installed as adopt
+    installs them (Board Setup raised to the minimums, the rules floored to
+    it), net classes by net pattern and the board's own Board Setup values
+    setup: each violation's type and description."""
     (tmp_path / "t.kicad_pcb").write_text(board(*items))
-    (tmp_path / "t.kicad_dru").write_text(DRU)
-    if classes:
-        (tmp_path / "t.kicad_pro").write_text(json.dumps(project(classes)))
+    own: dict[str, Any] = project(classes or {})
+    own["board"] = {"design_settings": {"rules": dict(setup or {})}}
+    found = install(None, own, DRU, BOARD_SETUP)
+    (tmp_path / "t.kicad_dru").write_text(found.section)
+    (tmp_path / "t.kicad_pro").write_text(json.dumps(found.project))
     report = tmp_path / "drc.json"
     subprocess.run(
         [
@@ -193,7 +213,27 @@ def test_kicad_drc(tmp_path: Path) -> None:
     found = drc(tmp_path, *right_angle, *thin)
     # Right-angle bends are kicad-style-check's: track_angle cannot tell a T.
     assert not any(v.startswith("track_angle: ") for v in found)
-    assert any(v.startswith("track_width: ") and "'JLCPCB track width'" in v for v in found)
+    assert any(v.startswith("track_width: ") and "actual 0.0900 mm" in v for v in found)
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_board_setup_wins(tmp_path: Path) -> None:
+    """A board's Board Setup stricter than the profile: its track width,
+    which no rule replaces, and its hole size, which the non-plated hole
+    rule takes as its floor, still hold."""
+    track = segment("20 5", "30 5", "C", width=0.3)
+    hole = footprint(
+        "Test:Hole",
+        "H1",
+        20,
+        20,
+        '(pad "" np_thru_hole circle (at 0 0) (size 1 1) (drill 1) (layers "*.Cu" "*.Mask"))',
+    )
+    assert not [v for v in drc(tmp_path, track, hole) if v.startswith(("track_width", "drill"))]
+    strict = {"min_track_width": 0.5, "min_through_hole_diameter": 1.5}
+    found = drc(tmp_path, track, hole, setup=strict)
+    assert any(v.startswith("track_width: ") and "actual 0.3000 mm" in v for v in found)
+    assert any(v.startswith("drill_out_of_range: ") and "actual 1.0000 mm" in v for v in found)
 
 
 def plated(x: float, drill: float, size: float = 0) -> str:

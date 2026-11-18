@@ -13,6 +13,7 @@ from ee_tooling.kicad_rules import (
     board_setup,
     copied_message,
     erc_set,
+    floored,
     install,
     installed,
     raised,
@@ -80,7 +81,8 @@ def test_jlcpcb_rules() -> None:
     """The JLCPCB profile's: its limits and the house rules; its Board
     Setup minimums."""
     text = installed("jlcpcb", Jlcpcb.rules, Options())
-    assert '(rule "JLCPCB track width"' in text
+    assert '(rule "JLCPCB annular ring"' in text
+    assert "track_width" not in text
     assert '(rule "Mounting hole plated"' in text
     assert "price" not in text.lower()
     assert [n for n, _ in sections(resource(Jlcpcb.rules.dru))][1:] == [
@@ -267,3 +269,55 @@ def test_new_keys_in_sorted_place() -> None:
         "min_via_diameter",
     ]
     assert list(out) == ["board", "erc", "meta", "schematic"]
+
+
+def setup_of(**rules: object) -> dict[str, Any]:
+    return {"board": {"design_settings": {"rules": rules}}}
+
+
+FLOOR_SECTION = (
+    '(rule "a" (condition "x") (constraint hole_size (min 0.5mm)))\n'
+    '(rule "b" (constraint text_height (min 0.8mm)) (constraint text_thickness (min 0.15mm)))\n'
+    '(rule "c" (condition "A.Type == \'Pad\'") (constraint annular_width (min 0.18mm)))\n'
+    '(rule "d" (constraint skew (max 1.27mm)))\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("setup", "want"),
+    [
+        ({}, FLOOR_SECTION),
+        ({"min_through_hole_diameter": 0.3}, FLOOR_SECTION),
+        (
+            {"min_through_hole_diameter": 1.5, "min_text_thickness": 0.2},
+            FLOOR_SECTION.replace("(min 0.5mm)", "(min 1.5mm)").replace(
+                "(min 0.15mm)", "(min 0.2mm)"
+            ),
+        ),
+        ({"min_via_annular_width": 0.3}, FLOOR_SECTION),
+        ({"min_text_height": True, "min_through_hole_diameter": "x"}, FLOOR_SECTION),
+        ({"min_text_height": 1.0 / 3}, FLOOR_SECTION),
+    ],
+)
+def test_floored(setup: dict[str, object], want: str) -> None:
+    """A minimum raised to the board's Board Setup value of its kind where
+    that is higher; a pad's annular ring, booleans and text left."""
+    assert floored(FLOOR_SECTION, setup_of(**setup)) == want
+
+
+def test_floored_rounds() -> None:
+    assert "(min 1.333333mm)" in floored(FLOOR_SECTION, setup_of(min_text_height=4 / 3))
+
+
+def test_install_floors_and_goes_stale() -> None:
+    """The section installed is floored to the board's Board Setup, raised
+    first; a Board Setup raised later leaves it stale."""
+    section = f"{BEGIN.format('fab')}\n{FLOOR_SECTION}{END}\n"
+    least = setup_of(min_through_hole_diameter=0.15)
+    found = install(None, setup_of(min_through_hole_diameter=0.6), section, least)
+    assert "(constraint hole_size (min 0.6mm))" in found.section
+    assert found.section in found.dru
+    again = install(found.dru, found.project, section, least)
+    assert not again.stale
+    later = install(found.dru, setup_of(min_through_hole_diameter=0.7), section, least)
+    assert later.stale and "(min 0.7mm)" in later.section
