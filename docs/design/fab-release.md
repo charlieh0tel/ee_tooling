@@ -441,6 +441,8 @@ Breaking changes:
 19. A push without git-lfs is refused.
 20. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
+21. A board repository's host must support Git LFS: a push to one that
+    does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
 
@@ -463,7 +465,8 @@ The refactor:
    `Placement`; the profile writes from them; `Parts` renamed
    `Corrections`; `profiles/profile.py`.  Same files.
 4. `adopt`: one marked-section function for `AGENTS.md` and
-   `.gitattributes`; same files.
+   `.gitattributes`; same files.  Built after step 15, as the first of
+   the Git LFS commits.
 
 The breaking work:
 
@@ -490,15 +493,19 @@ The breaking work:
     stale warning.
 15. `adopt` sets the ERC severities and connection grid.
 16. The release refuses an unfetched LFS pointer among its inputs, in
-    `fab_release.py`.
-17. The managed `.gitattributes` section and `.githooks/pre-push`.
-18. `adopt` requires git-lfs, installs the local filters and pulls;
-    `--check` runs `git lfs fsck --pointers HEAD`.
-19. The CI template, if the runner lacks git-lfs; `docs/adopting.md`.
+    `fab_release.py`, once, before any variant's build.
+17. The managed `.gitattributes` section and `.githooks/pre-push`; a
+    board repository's own `pre-push` named, with its text, before it is
+    replaced.
+18. `adopt` requires git-lfs, installs the local filters and pulls when
+    a pointer remains; `--check` runs `git lfs fsck --pointers HEAD`.
+19. The CI template installs git-lfs where the runner lacks it;
+    `docs/adopting.md`; ee_tooling's `kicad` job fails if the git-lfs
+    tests are skipped.
 20. Release 0.4.0; tag after CI.
 
-Before the merge: the host's LFS allowances and the runner's git-lfs
-(`docs/design/git-lfs.md`).
+Before the merge: the host's LFS allowances against a board
+repository's archives per release (`docs/design/git-lfs.md`, Cost).
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
 rules.
