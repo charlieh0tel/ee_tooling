@@ -35,6 +35,7 @@ from ee_tooling.adopt import (
     lfs_unfetched,
     locate,
     marked_text,
+    package_name,
     pending,
     plain_blobs,
     plan,
@@ -238,10 +239,10 @@ def test_root_layout(tmp_path: Path) -> None:
     assert '"x"' not in config
     steps = plan(layout)
     assert commands(steps) == [
-        ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
-        ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
         ("git", "config", "core.hooksPath", ".githooks"),
         LFS_INSTALL,
+        ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
+        ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
     ]
     assert [s.directory for s in steps if isinstance(s, Command)] == [Path()] * 4
     assert written(steps) == {
@@ -268,10 +269,10 @@ def test_root_layout(tmp_path: Path) -> None:
 def test_plan_fresh_repository(tmp_path: Path) -> None:
     steps = plan(repository(tmp_path, "main"))
     assert commands(steps) == [
-        ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
-        ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
         ("git", "config", "core.hooksPath", ".githooks"),
         LFS_INSTALL,
+        ("uv", "venv", "--system-site-packages", "--python", "/usr/bin/python3"),
+        ("uv", "add", "--dev", "--editable", "--no-workspace", "./ee_tooling"),
     ]
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
@@ -317,7 +318,8 @@ def test_apply_writes_files(tmp_path: Path) -> None:
     assert "(hardware/ee_tooling/docs/adopting.md)" in hook.read_text()
     assert (tmp_path / ".gitattributes").read_text() == GITATTRIBUTES
     assert (
-        f'name = "{tmp_path.name}-hardware"' in (tmp_path / "hardware/pyproject.toml").read_text()
+        f'name = "{package_name(tmp_path.name)}-hardware"'
+        in (tmp_path / "hardware/pyproject.toml").read_text()
     )
 
 
@@ -1286,7 +1288,7 @@ def test_lfs_clone_pulled(
     step = layout.root / "hardware/main/u1.step"
     assert step.read_text().startswith("version https://git-lfs.github.com/spec/v1\n")
     assert lfs_unfetched(layout.root)
-    assert commands(plan(layout))[-2:] == [LFS_INSTALL, LFS_PULL]
+    assert [c for c in commands(plan(layout)) if c[0] == "git"][-2:] == [LFS_INSTALL, LFS_PULL]
     assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] is None
     assert step.read_text() == "ISO-10303-21;"
     assert not lfs_unfetched(layout.root)
@@ -1643,3 +1645,51 @@ def test_fsck_message() -> None:
         " that, then rerun"
     )
     assert "renormalize" not in adopt.fsck_message(f"{found}\n{failed}")
+
+
+@pytest.mark.parametrize(
+    ("directory", "name"),
+    [
+        ("widget", "widget"),
+        ("My Board", "my-board"),
+        ("caf\u00e9 board", "caf-board"),
+        ("__x__", "x"),
+        ("\u00e9\u00e9", "board"),
+        ("a.b_c", "a-b-c"),
+    ],
+)
+def test_package_name(directory: str, name: str) -> None:
+    """A clone's directory name made a package name uv accepts."""
+    assert package_name(directory) == name
+    assert adopt.PACKAGE_NAME.match(f"{name}-hardware")
+
+
+def test_pyproject_with_a_bad_name_said(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The project's own file, never rewritten: named, with a name to use."""
+    layout = repository(tmp_path, "main")
+    pyproject = tmp_path / "hardware/pyproject.toml"
+    pyproject.parent.mkdir(exist_ok=True)
+    pyproject.write_text('[project]\nname = "My Board-hardware"\n')
+    plan(layout)
+    assert (
+        "[project] name 'My Board-hardware' is not a package name uv accepts: rename it, say to"
+        " 'my-board-hardware'" in capsys.readouterr().err
+    )
+
+
+def test_git_set_up_before_uv(tmp_path: Path) -> None:
+    """A uv step that fails leaves hooksPath and the LFS filters set."""
+    layout = repository(tmp_path / "My Board", "main")
+    ran_commands: list[tuple[str, ...]] = []
+
+    def run(args: Sequence[str], directory: Path) -> None:
+        ran_commands.append(tuple(args))
+        if args[0] == "uv":
+            raise subprocess.CalledProcessError(1, list(args))
+        run_git_only(args, directory)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        apply(layout.root, plan(layout), run)
+    assert ran_commands[:2] == [("git", "config", "core.hooksPath", ".githooks"), LFS_INSTALL]
+    assert adopt.git(layout.root, "config", "core.hooksPath") == ".githooks"
+    assert 'name = "my-board-hardware"' in (layout.root / "hardware/pyproject.toml").read_text()

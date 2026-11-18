@@ -185,8 +185,23 @@ class Layout:
         return (
             text.replace("@EE_TOOLING@", self.submodule.as_posix())
             .replace("@HARDWARE@", self.hardware.as_posix())
-            .replace("@NAME@", self.root.name)
+            .replace("@NAME@", package_name(self.root.name))
         )
+
+
+# A valid Python package name (PEP 508), which uv requires of a project's;
+# and what package_name makes of the rest.
+PACKAGE_NAME = re.compile(r"^([A-Z0-9]|[A-Z0-9][A-Z0-9._-]*[A-Z0-9])$", re.I)
+NOT_IN_A_PACKAGE_NAME = re.compile(r"[^A-Za-z0-9]+")
+# The name when nothing of the directory's is left.
+DEFAULT_PACKAGE_NAME = "board"
+
+
+def package_name(directory: str) -> str:
+    """A package name from the repository's directory name: each run of
+    other than ASCII letters and digits a hyphen, lowercased."""
+    name = NOT_IN_A_PACKAGE_NAME.sub("-", directory).strip("-").lower()
+    return name or DEFAULT_PACKAGE_NAME
 
 
 def git(directory: Path, *args: str) -> str:
@@ -674,9 +689,20 @@ def warn_replaced_hook(root: Path) -> None:
 
 
 def uses_ee_tooling(pyproject: Path) -> bool:
+    """Whether the hardware tools' project has ee_tooling as a source; said
+    on stderr if its name is not a package name uv accepts (the project's
+    file, never rewritten: rename it there)."""
     if not pyproject.exists():
         return False
-    sources = tomllib.loads(read(pyproject)).get("tool", {}).get("uv", {}).get("sources", {})
+    project = tomllib.loads(read(pyproject))
+    name = project.get("project", {}).get("name")
+    if isinstance(name, str) and not PACKAGE_NAME.match(name):
+        print(
+            f"{pyproject}: [project] name {name!r} is not a package name uv accepts:"
+            f" rename it, say to {package_name(name)!r}",
+            file=sys.stderr,
+        )
+    sources = project.get("tool", {}).get("uv", {}).get("sources", {})
     return "ee-tooling" in sources
 
 
@@ -782,6 +808,14 @@ def plan(layout: Layout) -> list[Step]:
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
     refuse_links(root, steps)
+    # git's and git-lfs's set-up first: .gitattributes routes files to Git
+    # LFS already, and a uv step that fails must not leave them unset.
+    if git(root, "config", "core.hooksPath") != HOOKS_PATH:
+        steps.append(Command(("git", "config", "core.hooksPath", HOOKS_PATH)))
+    if not git(root, "config", "filter.lfs.process"):
+        steps.append(Command(LFS_INSTALL))
+    if lfs_unfetched(root):
+        steps.append(Command(LFS_PULL))
     venv = root / hardware / ".venv"
     reason = unsupported()
     if reason is not None:
@@ -803,12 +837,6 @@ def plan(layout: Layout) -> list[Step]:
         steps.append(
             Command(("uv", "add", "--dev", "--editable", "--no-workspace", editable), hardware)
         )
-    if git(root, "config", "core.hooksPath") != HOOKS_PATH:
-        steps.append(Command(("git", "config", "core.hooksPath", HOOKS_PATH)))
-    if not git(root, "config", "filter.lfs.process"):
-        steps.append(Command(LFS_INSTALL))
-    if lfs_unfetched(root):
-        steps.append(Command(LFS_PULL))
     return steps
 
 

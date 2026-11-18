@@ -61,7 +61,7 @@ the dry run and `--yes` name such an edit "update PATH (project;
 | `.gitattributes` | managed section | first in the file, between `ee_tooling: begin` and `end` markers: the Git LFS patterns (below) |
 | `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` (git-lfs installed first where the runner lacks it) |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
-| `hardware/pyproject.toml` | project | the hardware tools' uv project |
+| `hardware/pyproject.toml` | project | the hardware tools' uv project, named `<directory>-hardware`, the repository's directory name with each run of other than ASCII letters and digits a hyphen, lowercased (a package name uv accepts); an existing one whose name uv refuses is named on stderr: rename it there |
 | `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb`, with the profile's house `[board.fab]` values |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
 | each board's `NAME.kicad_dru` | project, with ee_tooling's section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
@@ -153,17 +153,10 @@ between them are replaced.  Any other arrangement (an end before the
 begin, a begin with no end, two of either) stops `adopt`, naming the
 file, before anything is written: fix the markers by hand.
 
-What it runs, each only when needed:
+What it runs, each only when needed, in this order (git's set-up
+first: `.gitattributes` routes files to Git LFS already, and a uv step
+that fails must not leave the hooks or the filters unset):
 
-- `uv venv --system-site-packages --python /usr/bin/python3` in
-  `hardware/`, with `--clear` for a venv without system packages:
-  uv has no project setting for it, and KiCad's `pcbnew` is only in
-  the system Python.  A venv uv remakes itself (after `.venv` is
-  deleted) has no `pcbnew`; rerun `adopt --yes`.  The system Python
-  must be 3.12 or later (`docs/stitch.md`, Platforms); where it is
-  older, or missing, `adopt` says so and makes no venv on it, and
-  `uv add` makes one on a Python of uv's;
-- `uv add --dev --editable --no-workspace ./ee_tooling` in `hardware/`;
 - `git config core.hooksPath .githooks`, once per clone;
 - `git lfs install --local --skip-repo`, when `git config
   filter.lfs.process` is unset: git-lfs's filters for this clone, in
@@ -172,7 +165,16 @@ What it runs, each only when needed:
 - `git lfs pull`, when a file Git LFS tracks is a pointer in the work
   tree (`git lfs ls-files` marks it `-`): the clone's pointers become
   files.  With no remote, or the remote out of reach, it fails, and
-  `adopt` says the files stay pointers until it runs.
+  `adopt` says the files stay pointers until it runs;
+- `uv venv --system-site-packages --python /usr/bin/python3` in
+  `hardware/`, with `--clear` for a venv without system packages:
+  uv has no project setting for it, and KiCad's `pcbnew` is only in
+  the system Python.  A venv uv remakes itself (after `.venv` is
+  deleted) has no `pcbnew`; rerun `adopt --yes`.  The system Python
+  must be 3.12 or later (`docs/stitch.md`, Platforms); where it is
+  older, or missing, `adopt` says so and makes no venv on it, and
+  `uv add` makes one on a Python of uv's;
+- `uv add --dev --editable --no-workspace ./ee_tooling` in `hardware/`.
 
 It never runs `git lfs migrate`, never renormalizes and never commits.
 
