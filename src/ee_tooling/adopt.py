@@ -52,6 +52,8 @@ AGENTS_END = "<!-- ee_tooling: end -->"
 GITATTRIBUTES = Path(".gitattributes")
 GITATTRIBUTES_BEGIN = "# ee_tooling: begin; written by ee-tooling-adopt"
 GITATTRIBUTES_END = "# ee_tooling: end; the project's own lines follow and win"
+# The files adopt writes a section of, the rest of each the project's.
+SECTION_FILES = (AGENTS, GITATTRIBUTES)
 # The hook that uploads Git LFS objects; one without WRITTEN_BY_ADOPT in it
 # is the project's own, which adopt replaces, saying so.
 PRE_PUSH = Path(HOOKS_PATH, "pre-push")
@@ -798,13 +800,47 @@ def link_on_the_way(root: Path, path: Path) -> Path | None:
     return None
 
 
+def linked_within(root: Path, path: Path) -> Path | None:
+    """The file path, from root, links to, if a write may go through to it:
+    a regular file inside the repository, not in another repository (a
+    directory with a .git on the way); else None."""
+    target = (root / path).resolve()
+    top = root.resolve()
+    if not target.is_file() or not target.is_relative_to(top):
+        return None
+    for directory in target.relative_to(top).parents:
+        if directory != Path() and os.path.lexists(top / directory / ".git"):
+            return None
+    return target.relative_to(top)
+
+
+def through_link(root: Path, step: Step) -> Path | None:
+    """Where a write of step goes through a symbolic link, if it may: a
+    file adopt edits keeping the project's text in it (a section's file,
+    AGENTS.md as a link to CLAUDE.md, say, or an Edit) linked to a file
+    within the repository; None if step's path is not a link."""
+    if not isinstance(step, File | Edit) or link_on_the_way(root, step.path) is None:
+        return None
+    if isinstance(step, File) and step.path not in SECTION_FILES:
+        return None
+    return linked_within(root, step.path)
+
+
 def refuse_links(root: Path, steps: Sequence[Step]) -> None:
     """ValueError naming a symbolic link a step would write, edit, rename or
     remove through (the link's target, perhaps outside the repository, is
     not adopt's to change): a file's path, a renamed directory, or a
-    Markdown file in it that is renamed in."""
+    Markdown file in it that is renamed in.  A file with ee_tooling's
+    section, or one adopt edits, linked to a file within the repository is
+    written there (through_link), said on stderr."""
     for step in steps:
         match step:
+            case File() | Edit() if (target := through_link(root, step)) is not None:
+                print(
+                    f"{step.path.as_posix()} links to {target.as_posix()}: written there",
+                    file=sys.stderr,
+                )
+                paths = []
             case File() | Edit() | Remove():
                 paths = [step.path]
             case Rename():
@@ -928,7 +964,7 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
         print(describe(step, root), flush=True)
         match step:
             case File():
-                target = root / step.path
+                target = root / (through_link(root, step) or step.path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 write(target, step.text)
                 if step.executable:
@@ -942,7 +978,7 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                 if step.kept is None:
                     (root / step.path).unlink()
             case Edit():
-                write(root / step.path, step.text)
+                write(root / (through_link(root, step) or step.path), step.text)
             case Rename():
                 # Its files first, then the directory: a run stopped between
                 # leaves the old directory, which the next run renames.

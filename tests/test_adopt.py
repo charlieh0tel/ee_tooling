@@ -1391,21 +1391,58 @@ def test_file_in_a_linked_directory_refused(tmp_path: Path) -> None:
     assert list(outside.iterdir()) == []
 
 
-def test_edit_through_a_link_refused(tmp_path: Path) -> None:
-    layout = repository(tmp_path, "main")
-    (tmp_path / "shared.toml").write_text(NO_FAB)
-    link(tmp_path / "fab.toml", Path("shared.toml"))
+def test_edit_through_a_link_outside_refused(tmp_path: Path) -> None:
+    outside = tmp_path / "shared.toml"
+    outside.write_text(NO_FAB)
+    layout = repository(tmp_path / "board", "main")
+    link(tmp_path / "board/fab.toml", outside)
     refused_through(layout, "fab.toml")
-    assert (tmp_path / "shared.toml").read_text() == NO_FAB
+    assert outside.read_text() == NO_FAB
 
 
-def test_rules_edit_through_a_link_refused(tmp_path: Path) -> None:
+def test_edit_through_a_link_inside_written_there(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A .kicad_dru linked to a file in the repository: written there, the
+    link kept, said so."""
     layout = rules_repository(tmp_path)
     dru = tmp_path / "hardware/main/main.kicad_dru"
     (tmp_path / "rules.kicad_dru").write_text(dru.read_text())
     dru.unlink()
     link(dru, Path("../../rules.kicad_dru"))
-    refused_through(layout, "hardware/main/main.kicad_dru")
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert dru.is_symlink()
+    assert "ee_tooling: jlcpcb rules" in (tmp_path / "rules.kicad_dru").read_text()
+    assert (
+        "hardware/main/main.kicad_dru links to rules.kicad_dru: written there"
+        in capsys.readouterr().err
+    )
+    assert Path("hardware/main/main.kicad_dru") not in stale(layout)
+
+
+def test_agents_linked_to_claude(tmp_path: Path) -> None:
+    """AGENTS.md a link to CLAUDE.md: the section written in CLAUDE.md, the
+    link kept."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / "CLAUDE.md").write_text("# Mine\n")
+    link(tmp_path / "AGENTS.md", Path("CLAUDE.md"))
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    assert (tmp_path / "AGENTS.md").is_symlink()
+    text = (tmp_path / "CLAUDE.md").read_text()
+    assert text.startswith("# Mine\n\n<!-- ee_tooling: begin")
+    assert Path("AGENTS.md") not in stale(layout)
+
+
+def test_link_into_another_repository_refused(tmp_path: Path) -> None:
+    """A section's file linked into a submodule: not adopt's to change."""
+    layout = repository(tmp_path, "main")
+    library = tmp_path / "lib"
+    library.mkdir()
+    (library / ".git").write_text("gitdir: x\n")
+    (library / "AGENTS.md").write_text("# Library\n")
+    link(tmp_path / "AGENTS.md", Path("lib/AGENTS.md"))
+    refused_through(layout, "AGENTS.md")
+    assert (library / "AGENTS.md").read_text() == "# Library\n"
 
 
 def test_remove_through_a_link_refused(tmp_path: Path) -> None:
