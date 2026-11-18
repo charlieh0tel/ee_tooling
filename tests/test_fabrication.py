@@ -21,6 +21,7 @@ from ee_tooling.fabrication import (
     stackup_document,
     table,
 )
+from ee_tooling.profiles.jlcpcb import Jlcpcb
 from ee_tooling.sexpr import parse
 
 LAYERS = ["F.Cu", "In1.Cu", "B.Cu", "F.Mask", "F.Silkscreen", "Edge.Cuts"]
@@ -105,7 +106,7 @@ def test_gerbers_zip_holds_the_map(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     work.mkdir()
     b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), ())
     out = tmp_path / "b-1-jlcpcb.zip"
-    files = Release(tmp_path, b, work).gerbers(out, "b 1")
+    files = Release(tmp_path, b, work).gerbers(out, "b 1", Jlcpcb.gerbers)
     with zipfile.ZipFile(out) as z:
         assert z.read("README.txt").decode() == gerber_map("b 1", files)
         assert "b-PTH.drl" in z.namelist()

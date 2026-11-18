@@ -1,11 +1,22 @@
-"""JLCPCB: its assembly BOM and placement (CPL) from KiCad's, and its
-corrections to KiCad's placement, by LCSC part (parts.toml)."""
+"""JLCPCB: its Gerber options, its assembly BOM and placement (CPL) from
+KiCad's, and its corrections to KiCad's placement, by LCSC part
+(parts.toml)."""
 
+import csv
 import importlib.resources
+import io
 import math
+import sys
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ee_tooling.profiles import GerberOptions
+
+if TYPE_CHECKING:
+    from ee_tooling.fab_release import Release
 
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
@@ -76,3 +87,90 @@ def jlcpcb_cpl(
         out.append([ref, r["Val"], r["Package"], f"{x:.4f}mm", f"{y:.4f}mm", f"{rot:g}", layer])
         placed.add(ref)
     return out, placed
+
+
+def write_csv(out: Path, header: Iterable[str], rows: Iterable[list[str]]) -> None:
+    with out.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(rows)
+
+
+def bom(release: "Release", out: Path) -> dict[str, str]:
+    """JLCPCB BOM, without not-fitted parts; return its designators' LCSC parts."""
+    raw = release.work / "bom.csv"
+    release.kicad(
+        "sch",
+        "export",
+        "bom",
+        "--exclude-dnp",
+        "--fields",
+        "Value,Reference,Footprint,LCSC,${QUANTITY}",
+        "--labels",
+        "Comment,Designator,Footprint,LCSC Part #,Qty",
+        "--group-by",
+        "Value,Footprint,LCSC",
+        "--ref-range-delimiter",
+        "",
+        "-o",
+        str(raw),
+        release.path(release.board.sch),
+    )
+    rows, refs, missing = jlcpcb_bom(csv.DictReader(io.StringIO(raw.read_text())))
+    write_csv(out, BOM_HEADER, rows)
+    if missing:
+        print("warning: no LCSC part number for", ", ".join(missing))
+    return refs
+
+
+def cpl(release: "Release", out: Path, refs: dict[str, str], parts: Parts) -> None:
+    """JLCPCB placement for the parts in the BOM."""
+    raw = release.work / "pos.csv"
+    release.kicad(
+        "pcb",
+        "export",
+        "pos",
+        "--format",
+        "csv",
+        "--units",
+        "mm",
+        "--side",
+        "both",
+        "--exclude-dnp",
+        "-o",
+        str(raw),
+        release.path(release.board.pcb),
+    )
+    rows, placed = jlcpcb_cpl(csv.DictReader(io.StringIO(raw.read_text())), refs, parts)
+    write_csv(out, CPL_HEADER, rows)
+    for lcsc, part in parts.unchecked.items():
+        if lcsc in refs.values():
+            print(f"check {part} ({lcsc}) in JLCPCB's placement preview: no correction known")
+    if unplaced := set(refs) - placed:
+        sys.exit(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
+
+
+class Jlcpcb:
+    """JLCPCB's PCB and assembly service."""
+
+    name = "jlcpcb"
+    gerbers = GerberOptions(
+        x2=False, protel_extensions=True, subtract_soldermask=True, separate_drill=True
+    )
+    distributor: tuple[str, str] | None = ("LCSC", "LCSC")
+
+    def __init__(self, parts: Parts) -> None:
+        self.parts = parts
+
+    @classmethod
+    def builtin(cls) -> "Jlcpcb":
+        """The profile with parts.toml's corrections."""
+        return cls(Parts.builtin())
+
+    def assembly(self, release: "Release", dest: Path, base: str) -> list[Path]:
+        """Its BOM and CPL, with its parts' corrections."""
+        bom_csv = dest / f"{base}-bom.csv"
+        cpl_csv = dest / f"{base}-cpl.csv"
+        refs = bom(release, bom_csv)
+        cpl(release, cpl_csv, refs, self.parts)
+        return [bom_csv, cpl_csv]

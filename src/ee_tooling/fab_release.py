@@ -23,7 +23,6 @@ is not tagged; a tag already on another commit stops it, unless --retag.
 """
 
 import argparse
-import csv
 import datetime
 import io
 import json
@@ -35,7 +34,7 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -52,7 +51,8 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
-from ee_tooling.profiles.jlcpcb import BOM_HEADER, CPL_HEADER, Parts, jlcpcb_bom, jlcpcb_cpl
+from ee_tooling.profiles import GerberOptions, Profile
+from ee_tooling.profiles.jlcpcb import Jlcpcb
 from ee_tooling.sexpr import Expression, ParseError, parse
 
 CONFIG = "jlcpcb.toml"
@@ -90,16 +90,20 @@ ODB_COMPRESSION = "tgz"
 
 # IPC-2581 export: revision C, kicad-cli's default; mm and 6 decimals, as
 # the ODB++; a zip of one XML file, NAME-REV-ipc2581.xml.  Its BOM takes
-# the house BOM fields (docs/kicad-style.md), LCSC as the distributor.
+# the house BOM fields (docs/kicad-style.md), and the profile's distributor.
 IPC2581_VERSION = "C"
 IPC2581_UNITS = ODB_UNITS
 IPC2581_PRECISION = ODB_PRECISION
 IPC2581_BOM = (
     ("--bom-col-mfg-pn", "MPN"),
     ("--bom-col-mfg", "Manufacturer"),
-    ("--bom-col-dist-pn", "LCSC"),
-    ("--bom-col-dist", "LCSC"),
 )
+
+# Each profile's maker, by its name: a release makes its profile before
+# anything is checked or written, as loading the profile's data can fail.
+PROFILES: dict[str, Callable[[], Profile]] = {Jlcpcb.name: Jlcpcb.builtin}
+# jlcpcb.toml's boards are all JLCPCB's.
+PROFILE = Jlcpcb.name
 
 
 @dataclass(frozen=True)
@@ -157,13 +161,6 @@ def load_config(text: str) -> dict[str, Board]:
 def revision(pcb_text: str) -> str | None:
     m = re.search(r'\(title_block\s.*?\(rev "([^"]+)"\)', pcb_text, re.S)
     return m.group(1) if m else None
-
-
-def write_csv(out: Path, header: Iterable[str], rows: Iterable[list[str]]) -> None:
-    with out.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(header)
-        w.writerows(rows)
 
 
 class TagPlan(Enum):
@@ -247,7 +244,7 @@ class Release:
         if r.returncode != 0:
             sys.exit(f"git tag {name} failed:\n{r.stdout}{r.stderr}")
 
-    def gerbers(self, out: Path, title: str) -> list[GerberFile]:
+    def gerbers(self, out: Path, title: str, options: GerberOptions) -> list[GerberFile]:
         """The Gerber zip, with the Gerber map titled title; return its files."""
         b = self.board
         g = self.work / GERBERS
@@ -258,8 +255,9 @@ class Release:
             "gerbers",
             "--layers",
             ",".join(b.layers),
-            "--no-x2",
-            "--subtract-soldermask",
+            *([] if options.x2 else ["--no-x2"]),
+            *(["--subtract-soldermask"] if options.subtract_soldermask else []),
+            *([] if options.protel_extensions else ["--no-protel-ext"]),
             "--check-zones",
             "-o",
             str(g),
@@ -277,7 +275,7 @@ class Release:
             "decimal",
             "--excellon-oval-format",
             "alternate",
-            "--excellon-separate-th",
+            *(["--excellon-separate-th"] if options.separate_drill else []),
             "--drill-origin",
             "absolute",
             "-o",
@@ -328,7 +326,13 @@ class Release:
             )
         )
 
-    def ipc2581(self, out: Path) -> None:
+    def ipc2581(self, out: Path, distributor: tuple[str, str] | None) -> None:
+        """IPC-2581, its BOM with the distributor (the part-number field, the
+        distributor's name), if any."""
+        bom = [*IPC2581_BOM]
+        if distributor is not None:
+            field, name = distributor
+            bom += [("--bom-col-dist-pn", field), ("--bom-col-dist", name)]
         self.kicad(
             "pcb",
             "export",
@@ -340,7 +344,7 @@ class Release:
             "--precision",
             str(IPC2581_PRECISION),
             "--compress",
-            *(x for pair in IPC2581_BOM for x in pair),
+            *(x for pair in bom for x in pair),
             "-o",
             str(out),
             self.path(self.board.pcb),
@@ -362,58 +366,6 @@ class Release:
             str(out),
             self.path(self.board.pcb),
         )
-
-    def bom(self, out: Path) -> dict[str, str]:
-        """JLCPCB BOM, without not-fitted parts; return its designators' LCSC parts."""
-        raw = self.work / "bom.csv"
-        self.kicad(
-            "sch",
-            "export",
-            "bom",
-            "--exclude-dnp",
-            "--fields",
-            "Value,Reference,Footprint,LCSC,${QUANTITY}",
-            "--labels",
-            "Comment,Designator,Footprint,LCSC Part #,Qty",
-            "--group-by",
-            "Value,Footprint,LCSC",
-            "--ref-range-delimiter",
-            "",
-            "-o",
-            str(raw),
-            self.path(self.board.sch),
-        )
-        rows, refs, missing = jlcpcb_bom(csv.DictReader(io.StringIO(raw.read_text())))
-        write_csv(out, BOM_HEADER, rows)
-        if missing:
-            print("warning: no LCSC part number for", ", ".join(missing))
-        return refs
-
-    def cpl(self, out: Path, refs: dict[str, str], parts: Parts) -> None:
-        """JLCPCB placement for the parts in the BOM."""
-        raw = self.work / "pos.csv"
-        self.kicad(
-            "pcb",
-            "export",
-            "pos",
-            "--format",
-            "csv",
-            "--units",
-            "mm",
-            "--side",
-            "both",
-            "--exclude-dnp",
-            "-o",
-            str(raw),
-            self.path(self.board.pcb),
-        )
-        rows, placed = jlcpcb_cpl(csv.DictReader(io.StringIO(raw.read_text())), refs, parts)
-        write_csv(out, CPL_HEADER, rows)
-        for lcsc, part in parts.unchecked.items():
-            if lcsc in refs.values():
-                print(f"check {part} ({lcsc}) in JLCPCB's placement preview: no correction known")
-        if unplaced := set(refs) - placed:
-            sys.exit(f"in the BOM but not placed: {', '.join(sorted(unplaced))}")
 
     def source(self, out: Path, commit: str) -> None:
         b = self.board
@@ -488,7 +440,7 @@ def main() -> None:
         pcb = parse(pcb_text)
     except ParseError as e:
         sys.exit(f"{b.pcb}: {e}")
-    parts = Parts.builtin()
+    profile = PROFILES[PROFILE]()
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp))
         commit = r.check(a.allow_dirty)
@@ -502,15 +454,14 @@ def main() -> None:
         dest.mkdir(parents=True)
         base = f"{b.name}-{rev}"
         label = f"{b.name} {rev}"
-        gerbers = f"{base}-jlcpcb.zip"
+        gerbers = f"{base}-{profile.name}.zip"
         title = f"{label}: the files in {gerbers}"
-        files = r.gerbers(dest / gerbers, title)
+        files = r.gerbers(dest / gerbers, title, profile.gerbers)
         (dest / f"{base}-{GERBER_MAP}").write_text(gerber_map(title, files))
         r.fabrication(dest, base, label, pcb, files)
         r.odb(dest / f"{base}-odb.tgz")
-        r.ipc2581(dest / f"{base}-ipc2581.zip")
-        refs = r.bom(dest / f"{base}-bom.csv")
-        r.cpl(dest / f"{base}-cpl.csv", refs, parts)
+        r.ipc2581(dest / f"{base}-ipc2581.zip", profile.distributor)
+        profile.assembly(r, dest, base)
         r.source(dest / f"{base}-source.tgz", commit)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
             message = f"{b.name} {rev}: JLCPCB release {b.production / dest.name}"

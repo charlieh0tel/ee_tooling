@@ -5,7 +5,10 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import zipfile
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,7 +23,8 @@ from ee_tooling.fab_release import (
     revision,
     tag_plan,
 )
-from ee_tooling.profiles.jlcpcb import Parts
+from ee_tooling.profiles import GerberOptions
+from ee_tooling.profiles.jlcpcb import Jlcpcb, Parts
 
 CONFIG = """
 [[board]]
@@ -88,12 +92,24 @@ def test_board_is_frozen() -> None:
         b.name = "y"  # type: ignore[misc]
 
 
-def test_ipc2581_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("distributor", "flags"),
+    [
+        (("LCSC", "LCSC"), ["--bom-col-dist-pn", "LCSC", "--bom-col-dist", "LCSC"]),
+        (None, []),
+    ],
+)
+def test_ipc2581_export(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    distributor: tuple[str, str] | None,
+    flags: list[str],
+) -> None:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(Release, "kicad", lambda self, *args: calls.append(args))
     r = Release(tmp_path, load_config(CONFIG)["jig"], tmp_path / "work")
     out = tmp_path / "jig-1-ipc2581.zip"
-    r.ipc2581(out)
+    r.ipc2581(out, distributor)
     assert calls == [
         (
             "pcb",
@@ -110,15 +126,61 @@ def test_ipc2581_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
             "MPN",
             "--bom-col-mfg",
             "Manufacturer",
-            "--bom-col-dist-pn",
-            "LCSC",
-            "--bom-col-dist",
-            "LCSC",
+            *flags,
             "-o",
             str(out),
             str(tmp_path / "hardware/jig/jig.kicad_pcb"),
         )
     ]
+
+
+def gerber_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, options: GerberOptions
+) -> list[list[str]]:
+    """kicad-cli's Gerber and drill calls for options."""
+    calls: list[list[str]] = []
+
+    def kicad(self: Release, *args: str) -> None:
+        calls.append(list(args))
+        out = Path(args[args.index("-o") + 1])
+        for name, text in (FAKE_GERBERS if args[2] == "gerbers" else FAKE_DRILL).items():
+            (out / name).write_text(text)
+
+    monkeypatch.setattr(Release, "kicad", kicad)
+    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), ())
+    work = tmp_path / str(options)
+    work.mkdir()
+    Release(tmp_path, b, work).gerbers(work / "b.zip", "b 1", options)
+    return [[a.replace(str(work), "WORK") for a in c] for c in calls]
+
+
+@pytest.mark.parametrize(
+    ("option", "call", "removed", "added"),
+    [
+        ("x2", 0, "--no-x2", None),
+        ("subtract_soldermask", 0, "--subtract-soldermask", None),
+        ("protel_extensions", 0, None, "--no-protel-ext"),
+        ("separate_drill", 1, "--excellon-separate-th", None),
+    ],
+)
+def test_gerber_options(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    option: str,
+    call: int,
+    removed: str | None,
+    added: str | None,
+) -> None:
+    """Each Gerber option the other way from JLCPCB's: one flag removed or
+    added, before --check-zones, and nothing else changed."""
+    options = Jlcpcb.gerbers
+    expected = gerber_calls(tmp_path, monkeypatch, options)
+    if removed is not None:
+        expected[call].remove(removed)
+    if added is not None:
+        expected[call].insert(expected[call].index("--check-zones"), added)
+    flipped = replace(options, **{option: not getattr(options, option)})
+    assert gerber_calls(tmp_path, monkeypatch, flipped) == expected
 
 
 def test_odb_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -338,10 +400,19 @@ sources = ["docs"]
 }
 
 
-def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, list[list[str]]]:
-    """Release the fixture board with the fake kicad-cli and PARTS; return
-    the repository and kicad-cli's calls, the root as ROOT and the work
-    directory as WORK."""
+def builtin_parts(cls: type[Parts]) -> Parts:
+    return PARTS
+
+
+def release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    builtin: Callable[[type[Parts]], Parts] = builtin_parts,
+    args: tuple[str, ...] = (),
+) -> tuple[Path, list[list[str]]]:
+    """Release the fixture board with the fake kicad-cli, builtin for
+    Parts.builtin and args after --date; return the repository and
+    kicad-cli's calls, the root as ROOT and the work directory as WORK."""
     root = tmp_path / "repo"
     for name, text in FIXTURE.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
@@ -363,8 +434,8 @@ def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, list
     monkeypatch.setenv("FAKE_KICAD_LOG", str(log))
     monkeypatch.setenv("FAKE_OUTPUTS", json.dumps(FAKE_OUTPUTS))
     monkeypatch.setattr(tempfile, "tempdir", str(work))
-    monkeypatch.setattr(Parts, "builtin", classmethod(lambda cls: PARTS))
-    monkeypatch.setattr(sys, "argv", ["jlcpcb-release", "--date", "20261118"])
+    monkeypatch.setattr(Parts, "builtin", classmethod(builtin))
+    monkeypatch.setattr(sys, "argv", ["jlcpcb-release", "--date", "20261118", *args])
     monkeypatch.chdir(root)
     main()
     text = re.sub(re.escape(str(work)) + r"/[^/\"]+", "WORK", log.read_text())
@@ -656,3 +727,21 @@ def test_release_files(
         "b-1-source/pdf/b-board.pdf": "board PDF\n",
         "b-1-source/pdf/b-schematic.pdf": "schematic PDF\n",
     }
+
+
+def test_release_stops_on_bad_parts_before_anything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A parts.toml that does not load stops the release before ERC, and
+    before a --force replaces the release."""
+
+    def broken(cls: type[Parts]) -> Parts:
+        raise tomllib.TOMLDecodeError("bad parts.toml")
+
+    old = tmp_path / "repo/production/20261118-1/old.txt"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        release(tmp_path, monkeypatch, broken, ("--force",))
+    assert not (tmp_path / "kicad-cli.log").exists()
+    assert old.read_text() == "kept\n"
