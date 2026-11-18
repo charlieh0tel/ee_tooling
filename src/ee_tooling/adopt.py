@@ -24,7 +24,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ee_tooling.atomic import write_text
+from ee_tooling.atomic import LEFTOVER, write_text
 from ee_tooling.fab_release import CONFIG, DRU, FAB, GONE_KEYS, string, strings
 from ee_tooling.git_environment import environment
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
@@ -515,6 +515,26 @@ def unsaved(root: Path, path: Path) -> str | None:
     return None
 
 
+# Why a scratch file of an interrupted write is removed.
+LEFTOVER_WHY = "left by a write that was interrupted"
+# Directories not searched for them: git's, the venv's.
+NOT_SEARCHED = {".git", ".venv"}
+
+
+def leftovers(root: Path) -> list[Path]:
+    """The scratch files an interrupted write left (atomic.LEFTOVER), from
+    root; not in another repository (a directory with a .git)."""
+    found = []
+    for here, directories, names in root.walk():
+        directories[:] = [
+            d
+            for d in directories
+            if d not in NOT_SEARCHED and not os.path.lexists(here / d / ".git")
+        ]
+        found += [(here / n).relative_to(root) for n in names if LEFTOVER.match(n)]
+    return sorted(found)
+
+
 def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
     """What moves the project files ee_tooling renamed to their new names
     (a file's new text is among files()), and adds the keys fab.toml
@@ -807,6 +827,7 @@ def plan(layout: Layout) -> list[Step]:
     steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
+    steps += [Remove(p, LEFTOVER_WHY) for p in leftovers(root)]
     refuse_links(root, steps)
     # git's and git-lfs's set-up first: .gitattributes routes files to Git
     # LFS already, and a uv step that fails must not leave them unset.
@@ -920,8 +941,9 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
             case Edit():
                 write(root / step.path, step.text)
             case Rename():
-                (root / step.source).rename(root / step.target)
-                for f in sorted((root / step.target).rglob("*.md")):
+                # Its files first, then the directory: a run stopped between
+                # leaves the old directory, which the next run renames.
+                for f in sorted((root / step.source).rglob("*.md")):
                     try:
                         text = read(f)
                     except ValueError as e:
@@ -930,6 +952,7 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
                     for old, new in step.names:
                         text = text.replace(old, new)
                     write(f, text)
+                (root / step.source).rename(root / step.target)
 
 
 def run_command(args: Sequence[str], directory: Path) -> None:
@@ -953,8 +976,9 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
     """What --check fails on, each with what it awaits: the managed files
     not there ("missing") or that differ from what would be written ("out
     of date"), the project
-    files still to be migrated ("to be migrated"), and the project files
-    whose rules or settings are still to be installed ("to be updated")."""
+    files still to be migrated ("to be migrated"), the project files
+    whose rules or settings are still to be installed ("to be updated"),
+    and the scratch files of an interrupted write ("left over")."""
     root = layout.root
     planned = files(layout)
     # A managed file's action: "create" (not there) or "update".
@@ -968,6 +992,7 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
         *(("missing" if a == "create" else "out of date", f.path) for f, a in managed if a),
         *(("to be migrated", p) for p in renamed),
         *(("to be updated", p) for p in rules),
+        *(("left over", p) for p in leftovers(root)),
     ]
 
 

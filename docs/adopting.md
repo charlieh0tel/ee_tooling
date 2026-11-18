@@ -82,7 +82,9 @@ it is, named on stderr.
 `.kicad_pro`, say) before it does anything, and stops naming the first
 it cannot.  It writes each file beside it and renames it over the old,
 the old file's mode kept, so an interrupted run leaves each file whole,
-old or new.
+old or new.  The scratch file such a run may leave beside one
+(`.NAME.PID.ee_tooling-tmp`) is named by `--check` ("left over") and
+removed by `--yes`.
 
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
@@ -128,7 +130,9 @@ time `adopt` changes files the project owns:
   that does not parse, or lacks a key, stops `adopt`, naming it.
 - `.claude/skills/jlcpcb-release/`, with no `.claude/skills/fab-release/`:
   moved there, and `jlcpcb-release` and `jlcpcb.toml` in its `.md` files
-  renamed `fab-release` and `fab.toml`.
+  renamed `fab-release` and `fab.toml`: the files first, then the
+  directory, so a run stopped between leaves the old directory, which
+  `--check` names and the next `--yes` moves.
 - With both the old and the new there, the old is left as it is, named
   on stderr.
 - `fab.toml` with a board lacking a `[board.fab]` key: each key it

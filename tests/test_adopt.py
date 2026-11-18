@@ -1693,3 +1693,51 @@ def test_git_set_up_before_uv(tmp_path: Path) -> None:
     assert ran_commands[:2] == [("git", "config", "core.hooksPath", ".githooks"), LFS_INSTALL]
     assert adopt.git(layout.root, "config", "core.hooksPath") == ".githooks"
     assert 'name = "my-board-hardware"' in (layout.root / "hardware/pyproject.toml").read_text()
+
+
+def test_skill_move_interrupted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stopped while rewriting the old skill's files: the old directory is
+    still there, so --check fails and a rerun finishes the move."""
+    layout = adopted(tmp_path, "main")
+    old = tmp_path / ".claude/skills/jlcpcb-release"
+    (old / "more.md").write_text("jlcpcb-release\n")
+    real = adopt.write
+
+    def stopped(target: Path, text: str) -> None:
+        if target.name == "more.md":
+            raise KeyboardInterrupt
+        real(target, text)
+
+    with monkeypatch.context() as m:
+        m.setattr(adopt, "write", stopped)
+        with pytest.raises(KeyboardInterrupt):
+            apply(tmp_path, plan(layout), lambda *_: None)
+    assert old.is_dir()
+    assert Path(".claude/skills/jlcpcb-release") in stale(layout)
+    apply(tmp_path, plan(layout), lambda *_: None)
+    new = tmp_path / ".claude/skills/fab-release"
+    assert not old.exists()
+    assert (new / "more.md").read_text() == "fab-release\n"
+    assert "fab-release" in (new / "SKILL.md").read_text()
+    assert stale(layout) == []
+
+
+def test_leftover_scratch_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A scratch file an interrupted write left: --check names it, --yes
+    removes it; one in another repository is left."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    left = tmp_path / "hardware/main/.main.kicad_pro.4242.ee_tooling-tmp"
+    left.write_text("{")
+    other = tmp_path / "hardware/lib/.x.kicad_pro.1.ee_tooling-tmp"
+    other.parent.mkdir()
+    (other.parent / ".git").write_text("gitdir: x\n")
+    other.write_text("{")
+    assert ("left over", Path("hardware/main/.main.kicad_pro.4242.ee_tooling-tmp")) in pending(
+        layout
+    )
+    steps = [s for s in plan(layout) if isinstance(s, Remove)]
+    assert steps == [Remove(left.relative_to(tmp_path), "left by a write that was interrupted")]
+    apply(tmp_path, steps, lambda *_: None)
+    assert not left.exists() and other.exists()
+    assert stale(layout) == []
