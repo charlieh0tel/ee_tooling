@@ -12,6 +12,7 @@ ee_tooling renamed (jlcpcb.toml, the release's skill).
 import argparse
 import importlib.resources
 import json
+import os
 import re
 import subprocess
 import sys
@@ -663,6 +664,42 @@ def files(layout: Layout) -> list[File]:
     return out
 
 
+def link_on_the_way(root: Path, path: Path) -> Path | None:
+    """The first of path's components, from root, that is a symbolic link,
+    or None."""
+    here = root
+    for part in path.parts:
+        here = here / part
+        if here.is_symlink():
+            return here.relative_to(root)
+    return None
+
+
+def refuse_links(root: Path, steps: Sequence[Step]) -> None:
+    """ValueError naming a symbolic link a step would write, edit, rename or
+    remove through (the link's target, perhaps outside the repository, is
+    not adopt's to change): a file's path, a renamed directory, or a
+    Markdown file in it that is renamed in."""
+    for step in steps:
+        match step:
+            case File() | Edit() | Remove():
+                paths = [step.path]
+            case Rename():
+                source = root / step.source
+                inside = [] if source.is_symlink() else sorted(source.rglob("*.md"))
+                paths = [step.source, step.target, *(p.relative_to(root) for p in inside)]
+            case Command():
+                paths = []
+        for p in paths:
+            link = link_on_the_way(root, p)
+            if link is not None:
+                raise ValueError(
+                    f"{link.as_posix()} is a symbolic link (to {os.readlink(root / link)}):"
+                    f" adopt changes no file through a link; nothing done: replace it with"
+                    f" what it links to, or remove it"
+                )
+
+
 def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
@@ -670,6 +707,7 @@ def plan(layout: Layout) -> list[Step]:
     steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
+    refuse_links(root, steps)
     venv = root / hardware / ".venv"
     reason = unsupported()
     if reason is not None:
@@ -768,13 +806,17 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
     of date"), the project
     files still to be migrated ("to be migrated"), and the project files
     whose rules or settings are still to be installed ("to be updated")."""
+    root = layout.root
     planned = files(layout)
     # A managed file's action: "create" (not there) or "update".
-    managed = [(f.path, f.action(layout.root)) for f in planned if f.owner is Owner.MANAGED]
-    renamed = [s.source if isinstance(s, Rename) else s.path for s in migrations(layout)]
-    rules = [s.path for s in rules_edits(layout.root, planned_config(layout.root, planned))]
+    managed = [(f, f.action(root)) for f in planned if f.owner is Owner.MANAGED]
+    migrating = migrations(layout)
+    edits = rules_edits(root, planned_config(root, planned))
+    refuse_links(root, [*(f for f, a in managed if a), *migrating, *edits])
+    renamed = [s.source if isinstance(s, Rename) else s.path for s in migrating]
+    rules = [s.path for s in edits]
     return [
-        *(("missing" if a == "create" else "out of date", p) for p, a in managed if a),
+        *(("missing" if a == "create" else "out of date", f.path) for f, a in managed if a),
         *(("to be migrated", p) for p in renamed),
         *(("to be updated", p) for p in rules),
     ]

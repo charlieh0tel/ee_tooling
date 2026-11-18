@@ -64,6 +64,13 @@ missing, then the project's.
 | each board's `NAME.kicad_dru` | managed section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
 | each board's `NAME.kicad_pro` | project | Board Setup's design rule minimums raised to the profile's, never lowered; the ERC severities set from `erc_severities.json`, each kept where the board's is stricter, and the connection grid (`docs/kicad-rules.md`) |
 
+`adopt` changes no file through a symbolic link: a file it would
+write, edit, rename or remove, or a directory on the way to one, that is
+a link stops it, naming the link, before anything is done (`--check`
+too).  The link's target, perhaps outside the repository, is not
+`adopt`'s to change: replace the link with what it links to, or remove
+it.
+
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad
 overwrites the change.  `--check` fails while a board's rules section

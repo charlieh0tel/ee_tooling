@@ -1334,3 +1334,89 @@ def test_git_ignores_a_callers_repository(tmp_path: Path, monkeypatch: pytest.Mo
     adopt.run_command(("git", "config", "core.hooksPath", ".githooks"), board)
     assert adopt.git(board, "config", "core.hooksPath") == ".githooks"
     assert (other / ".git/config").read_text() == before
+
+
+def link(path: Path, target: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.symlink_to(target)
+
+
+def refused_through(layout: Layout, name: str) -> None:
+    """plan and --check refuse, naming the link name."""
+    for run in (plan, stale):
+        with pytest.raises(
+            ValueError, match=rf"^{re.escape(name)} is a symbolic link \(to .*\): adopt changes no"
+        ):
+            run(layout)
+
+
+def test_managed_file_through_a_link_refused(tmp_path: Path) -> None:
+    """A managed hook linked to the project's own script: the script kept."""
+    layout = repository(tmp_path, "main")
+    script = tmp_path / "scripts/pre-push.sh"
+    script.parent.mkdir()
+    script.write_text("#!/bin/sh\nmake lint\n")
+    link(tmp_path / ".githooks/pre-push", Path("../scripts/pre-push.sh"))
+    refused_through(layout, ".githooks/pre-push")
+    assert script.read_text() == "#!/bin/sh\nmake lint\n"
+
+
+def test_file_in_a_linked_directory_refused(tmp_path: Path) -> None:
+    """A project file in a directory linked outside the repository."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    layout = repository(tmp_path / "board", "main")
+    link(tmp_path / "board/.claude", outside)
+    with pytest.raises(ValueError, match=r"^\.claude is a symbolic link"):
+        plan(layout)
+    assert list(outside.iterdir()) == []
+
+
+def test_edit_through_a_link_refused(tmp_path: Path) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "shared.toml").write_text(NO_FAB)
+    link(tmp_path / "fab.toml", Path("shared.toml"))
+    refused_through(layout, "fab.toml")
+    assert (tmp_path / "shared.toml").read_text() == NO_FAB
+
+
+def test_rules_edit_through_a_link_refused(tmp_path: Path) -> None:
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    (tmp_path / "rules.kicad_dru").write_text(dru.read_text())
+    dru.unlink()
+    link(dru, Path("../../rules.kicad_dru"))
+    refused_through(layout, "hardware/main/main.kicad_dru")
+
+
+def test_remove_through_a_link_refused(tmp_path: Path) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "old.toml").write_text(OLD_CONFIG)
+    link(tmp_path / "jlcpcb.toml", Path("old.toml"))
+    with pytest.raises(ValueError, match=r"^jlcpcb.toml is a symbolic link"):
+        plan(layout)
+    assert (tmp_path / "jlcpcb.toml").is_symlink()
+
+
+@pytest.mark.parametrize("linked", ["directory", "md"])
+def test_rename_through_a_link_refused(tmp_path: Path, linked: str) -> None:
+    """The old skill's directory, or a Markdown file in it, linked outside
+    the repository: its .md files there are not rewritten."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "SKILL.md").write_text("jlcpcb-release\n")
+    layout = adopted(tmp_path / "board", "main")
+    skill = tmp_path / "board/.claude/skills/jlcpcb-release"
+    if linked == "directory":
+        for f in skill.iterdir():
+            f.unlink()
+        skill.rmdir()
+        link(skill, outside)
+        name = ".claude/skills/jlcpcb-release"
+    else:
+        (skill / "SKILL.md").unlink()
+        link(skill / "SKILL.md", outside / "SKILL.md")
+        name = ".claude/skills/jlcpcb-release/SKILL.md"
+    with pytest.raises(ValueError, match=rf"^{re.escape(name)} is a symbolic link"):
+        plan(layout)
+    assert (outside / "SKILL.md").read_text() == "jlcpcb-release\n"
