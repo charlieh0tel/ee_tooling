@@ -35,6 +35,7 @@ from ee_tooling.fab_release import (
     project_variants,
     release_name_problem,
     repository_root,
+    resolved_revision,
     revision,
     settings_variants,
     silkscreen_only,
@@ -2587,3 +2588,36 @@ def test_release_refuses_a_sheet_missing_or_outside(
     with pytest.raises(SystemExit, match=re.escape(error) + "$"):
         release(tmp_path, monkeypatch)
     assert kicad_calls(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("rev", "variables", "found"),
+    [
+        ("1", {}, "1"),
+        ("${REV}", {"REV": "2.1"}, "2.1"),
+        ("A${N}", {"N": "${M}", "M": "3"}, "A3"),
+    ],
+)
+def test_resolved_revision(rev: str, variables: dict[str, str], found: str) -> None:
+    assert resolved_revision(rev, {"text_variables": variables}) == found
+
+
+@pytest.mark.parametrize(
+    ("rev", "variables"), [("${REVISION}", {}), ("${A}", {"A": "${A}"}), ("${X}", {"X": 1})]
+)
+def test_resolved_revision_refused(rev: str, variables: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="title block's rev"):
+        resolved_revision(rev, {"text_variables": variables})
+
+
+def test_release_resolves_a_rev_variable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rev a project text variable: the directory, files and tag take
+    its value, as KiCad's title block shows it."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace('(rev "1")', '(rev "${REV}")')
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    project = json.loads(FIXTURE["hw/b.kicad_pro"])
+    project["text_variables"] = {"REV": "1"}
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", json.dumps(project))
+    root, _ = release(tmp_path, monkeypatch)
+    assert (root / "production/20261118-1/b-1-bom.csv").exists()
+    assert git(root, "tag") == "b-20261118-1"

@@ -757,6 +757,32 @@ def revision(pcb_text: str) -> str | None:
     return m.group(1) if m else None
 
 
+# A text variable in a title-block field.
+TEXT_VARIABLE = re.compile(r"\$\{([^}]*)\}")
+# The passes resolving variables in variables' values take, at most.
+VARIABLE_DEPTH = 8
+
+
+def resolved_revision(rev: str, settings: object) -> str:
+    """The title block's rev with its text variables resolved from the
+    project's (the .kicad_pro's text_variables), as KiCad 10.0.8 resolves
+    them on the title block; ValueError naming one it does not define."""
+    variables = settings.get("text_variables", {}) if isinstance(settings, dict) else {}
+    found = rev
+    for _ in range(VARIABLE_DEPTH):
+        names = TEXT_VARIABLE.findall(found)
+        if not names:
+            return found
+        unknown = [n for n in names if not isinstance(variables.get(n), str)]
+        if unknown:
+            raise ValueError(
+                f"the title block's rev {rev!r} uses ${{{unknown[0]}}}, which the project's"
+                " text variables (Project Setup, Text Variables) do not define"
+            )
+        found = TEXT_VARIABLE.sub(lambda m: str(variables[m.group(1)]), found)
+    raise ValueError(f"the title block's rev {rev!r}: its text variables do not resolve")
+
+
 def report(path: Path) -> str:
     """A kicad-cli report's text, for the message that stops a release: its
     work directory goes with it."""
@@ -1434,6 +1460,11 @@ def main() -> None:
     rev = revision(pcb_text)
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")
+    try:
+        settings = json.loads((root / b.project).read_text())
+        rev = resolved_revision(rev, settings)
+    except (OSError, ValueError) as e:
+        sys.exit(f"{b.project}: {e}")
     if problem := release_name_problem(root, b.name, a.date, rev):
         sys.exit(problem)
     dest = root / b.production / f"{a.date}-{rev}"
@@ -1450,10 +1481,6 @@ def main() -> None:
             "".join(f"{b.pcb.name}: {f.message}\n" for f in table)
             + f"write or refresh it with: stackup-table {b.pcb}"
         )
-    try:
-        settings = json.loads((root / b.project).read_text())
-    except (OSError, ValueError) as e:
-        sys.exit(f"{b.project}: {e}")
     errors, warnings = check_variants(b.variants, project_variants(settings, pcb, schematic))
     if errors:
         sys.exit("\n".join(f"{b.name}: {e}" for e in errors))

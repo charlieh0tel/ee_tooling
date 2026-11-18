@@ -203,7 +203,10 @@ only when the owner says to.
 ## Before running
 
 1. The board's title-block revision is the release's REV: bump it in the
-   board and schematic first if this is a new revision.  `YYYYMMDD-REV`
+   board and schematic first if this is a new revision.  A text variable
+   in it (`${REVISION_NUMBER}`) takes its value from the project's text
+   variables (Project Setup, Text Variables), as KiCad's title block
+   shows it; one the project does not define stops the release.  `YYYYMMDD-REV`
    must be one path component and `NAME-YYYYMMDD-REV` a git tag name
    (`git check-ref-format`: no spaces, `..`, `~`, `^`, `:`, ...): the
    release refuses one that is not, before anything runs.

@@ -71,6 +71,10 @@ electrical_test = "100% netlist test per IPC-9252"
   uncommitted-sources check leaves every production directory out);
   inside a board's directory is allowed (the repository-root layout).
   Every git call of the check stops the release on a failure.
+- The title block's rev's text variables are resolved from the
+  project's `text_variables`, as KiCad 10.0.8 draws the title block
+  (`kicad-cli pcb export svg` of a board whose rev is `${MYREV}` showed
+  the variable's value); one the project does not define is refused.
 - `DATE-REV` (`--date` and the title block's rev) is one path
   component, and the tag `NAME-DATE-REV` a name `git check-ref-format`
   takes, or the release stops before anything runs, naming the value
@@ -510,36 +514,38 @@ Breaking changes:
 11. A title-block rev (or `--date`) that makes the release directory more
     than one path component, or the tag not a git tag name (`Rev A`), is
     refused before anything runs.
-12. A board with no stackup is refused (now a warning).
-13. A board without a stackup table on User.Drawings matching its stackup
+12. A title-block rev using a text variable the project does not define
     is refused.
-14. DRC runs with the profile's current rules: a board clean today may
+13. A board with no stackup is refused (now a warning).
+14. A board without a stackup table on User.Drawings matching its stackup
+    is refused.
+15. DRC runs with the profile's current rules: a board clean today may
     not be.
-15. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+16. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-16. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-17. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+17. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+18. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-18. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+19. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-19. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+20. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-20. `adopt --yes` sets the board's ERC severities and connection grid.
-21. `adopt` and `adopt --check` require git-lfs.
-22. `adopt --check` fails on a plain blob of an LFS-tracked type at
+21. `adopt --yes` sets the board's ERC severities and connection grid.
+22. `adopt` and `adopt --check` require git-lfs.
+23. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-23. `adopt --yes` writes a managed section of `.gitattributes` and
+24. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-24. A push without git-lfs is refused.
-25. The release refuses a board whose inputs hold an unfetched LFS
+25. A push without git-lfs is refused.
+26. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-26. A board repository's host must support Git LFS: a push to one that
+27. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".
