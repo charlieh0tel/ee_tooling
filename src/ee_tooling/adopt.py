@@ -16,6 +16,7 @@ import importlib.resources
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1060,11 +1061,35 @@ def warn_plain_at_head(root: Path, submodule: Path) -> None:
     )
 
 
+def warn_unfetched_submodules(layout: Layout) -> None:
+    """Name each submodule (a library, but ee_tooling) whose files Git LFS
+    tracks are pointers, with the commands that fetch them: adopt sets up
+    the board repository's clone alone, and changes no other repository's
+    config."""
+    root = layout.root
+    found = git(root, "config", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$")
+    for line in found.splitlines():
+        path = Path(line.split(" ", 1)[1])
+        if path == layout.submodule or not os.path.lexists(root / path / ".git"):
+            continue
+        listed = git_lfs(root / path, "ls-files").stdout.splitlines()
+        count = sum(1 for entry in listed if entry.split(" ", 2)[1:2] == ["-"])
+        if count:
+            where = shlex.quote(path.as_posix())
+            print(
+                f"{path.as_posix()}: {count} files Git LFS tracks are pointers, not fetched"
+                f" (adopt sets up this clone only): git -C {where} lfs install --local"
+                f" --skip-repo && git -C {where} lfs pull",
+                file=sys.stderr,
+            )
+
+
 def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
     planned = files(layout)
     warn_plain_at_head(root, submodule)
+    warn_unfetched_submodules(layout)
     steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))

@@ -245,6 +245,11 @@ It never runs `git lfs migrate`, never renormalizes and never commits.
   on a machine whose own git config sets git-lfs's filters (`git lfs
   install --skip-repo`, the user's step, or the distribution's package
   setting them system-wide): `adopt`'s filters are this clone's alone.
+  The dry run and `--yes` name each submodule (but ee_tooling) whose
+  tracked files are pointers, with the commands that fetch them, `git -C
+  SUBMODULE lfs install --local --skip-repo && git -C SUBMODULE lfs
+  pull`; `adopt` does not run them, as it changes no other repository's
+  config.
 - The remote must support Git LFS: a push to one that does not is
   refused by the hook, after git-lfs's error.
 - The attribution job fails on any commit already in the history that

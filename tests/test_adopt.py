@@ -2131,3 +2131,31 @@ def test_no_plain_blobs_no_word(tmp_path: Path, capsys: pytest.CaptureFixture[st
     layout = repository(tmp_path, "main")
     plan(layout)
     assert "plain blobs" not in capsys.readouterr().err
+
+
+@needs_lfs
+def test_library_submodule_pointers_named_with_the_commands(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A library submodule whose STEP files are pointers: named, with the
+    commands that fetch them, which do."""
+    library = lfs_clone(tmp_path / "library")
+    origin = (tmp_path / "library/origin.git").as_uri()
+    layout = repository(tmp_path / "board", "main")
+    git("-C", str(layout.root), "submodule", "add", "-q", "-b", "main", origin, "hardware/lib")
+    lib = layout.root / "hardware/lib"
+    assert (lib / "hardware/main/u1.step").read_text().startswith("version https://git-lfs")
+    capsys.readouterr()
+    plan(layout)
+    err = capsys.readouterr().err
+    command = "git -C hardware/lib lfs install --local --skip-repo && git -C hardware/lib lfs pull"
+    assert (
+        "hardware/lib: 1 files Git LFS tracks are pointers, not fetched (adopt sets up this"
+        f" clone only): {command}\n" in err
+    )
+    subprocess.run(command, shell=True, cwd=layout.root, check=True, capture_output=True)
+    assert (lib / "hardware/main/u1.step").read_text() == "ISO-10303-21;"
+    capsys.readouterr()
+    plan(layout)
+    assert "pointers, not fetched" not in capsys.readouterr().err
+    assert library.root.exists()
