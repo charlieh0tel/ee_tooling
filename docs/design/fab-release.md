@@ -13,8 +13,8 @@ BOM, CPL, IPC-2581 and ODB++ per variant and the Gerbers and fab
 documents shared; a Gerber zip per variant when the variants'
 silkscreens differ; a variant that differs in copper, mask, paste,
 outline or drill, or that overrides a part's Footprint field, refused.
-The source tgz leaves out libraries outside the repository, and says
-so; `adopt` skips production and hidden directories when finding
+A library a board reads lives inside its repository (house style); the
+source tgz holds only `sources` beside the project's files; `adopt` skips production and hidden directories when finding
 projects; Git LFS (`docs/design/git-lfs.md`) lands in the same merge.
 Deferred: the fab notes and the no-extra-cost via rules.  Nothing
 is open.
@@ -94,11 +94,13 @@ electrical_test = "100% netlist test per IPC-9252"
 - The source tgz: the project's `.kicad_pcb`, `.kicad_sch`,
   `.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
   `sym-lib-table` that exist, `sources`, the PDFs and `COMMIT`.  A
-  library outside the repository (a sibling clone named by a relative
-  path in a library table or a 3D model path) is not in it.  The board
-  file embeds each footprint and the schematic each symbol, so the
-  archive rebuilds the board and its outputs; the 3D models of parts
-  from such a library are missing from it.
+  library a board reads lives inside the repository, normally a git
+  submodule (`docs/kicad-style.md`, Files); a clone beside the
+  repository is not supported.  A library is in the archive only as one
+  of `sources`.  The board file embeds each footprint and the schematic
+  each symbol, so the archive rebuilds the board and its outputs; the 3D
+  models of a library not in `sources`, and of KiCad's stock libraries,
+  are not in it.
 
 ### JLCPCB profile (`profiles/jlcpcb.py`)
 
@@ -480,9 +482,9 @@ The breaking work:
 6. `adopt`: write and migrate `fab.toml`; move the skill; skip the
    production directories and hidden directories when finding projects.
 7. `sources` limited to the repository.  Docs:
-   `skills/fab-release/SKILL.md` says what the source tgz holds, and
-   that it leaves out libraries outside the repository and their 3D
-   models.
+   `skills/fab-release/SKILL.md` says what the source tgz holds; a
+   library lives inside the repository and is in the archive only as one
+   of `sources`.
 8. Copper layers from the stackup; refuse a board with none.
 9. `[board.fab]` required.
 10. The house BOM; JLCPCB's files take its name; the Gerber zip's name.

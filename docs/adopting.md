@@ -142,6 +142,12 @@ It never runs `git lfs migrate`, never renormalizes and never commits.
   `jlcpcb-release` and `jlcpcb.toml` elsewhere in the repository.
 - `fab.toml`: each board's production directory, `sources`, profile and
   `[board.fab]` values (`skills/fab-release/SKILL.md` gives the keys).
+- Each library a board reads (footprints, symbols, 3D models) other than
+  KiCad's own inside the repository, normally as a git submodule, and
+  the project's library tables and 3D model paths naming it by a
+  `${KIPRJMOD}`-relative path (`docs/kicad-style.md`, Files).  A clone
+  beside the repository is not supported.  Add a library to `sources`
+  for the source tgz to hold it.
 - Each board's stackup, in Board Setup, Physical Stackup: the release
   takes the copper layers from it, and refuses a board without one; and
   its stackup table on User.Drawings, which `stackup-table` writes: the

@@ -106,13 +106,13 @@ variants.
 the schematic and board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty`
 if built from uncommitted sources, and when it was built).
 
-It leaves out every library outside the repository: a sibling clone
-named by a relative path (`${KIPRJMOD}/../lib`) in a library table or a
-3D model path.  The board file embeds each footprint and the schematic
-each symbol, so the archive rebuilds the board and its outputs; the 3D
-models of parts from such a library are missing from it.  A library the
-archive must hold goes inside the repository (a submodule) and in
-`sources`.
+A library the board reads (footprints, symbols, 3D models) lives inside
+the repository, normally a git submodule (`docs/kicad-style.md`,
+Files); a clone beside the repository is not supported.  The archive
+holds a library only when it is one of `sources`.  The board file embeds
+each footprint and the schematic each symbol, so the archive rebuilds
+the board and its outputs; the 3D models of a library not in `sources`,
+and of KiCad's stock libraries, are not in it.
 
 It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not

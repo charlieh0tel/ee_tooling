@@ -11,6 +11,11 @@ Rules for schematics and boards, for anyone (or any agent) editing them.
   and commit a step only once it has been reviewed.
 - The schematic's notes, text blocks and title block are documentation:
   keep them current in the same commit as the design change.
+- A library a board reads (footprints, symbols, 3D models) other than
+  KiCad's own lives inside the board's repository, normally as a git
+  submodule, named in the project's library tables by a
+  `${KIPRJMOD}`-relative path.  A clone beside the repository is not
+  supported.
 
 ## Schematic drawing
 
