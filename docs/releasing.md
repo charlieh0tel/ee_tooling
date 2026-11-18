@@ -11,7 +11,7 @@ repository takes ee_tooling as a git submodule following `main`
   any.  Before 1.0, a breaking change bumps the minor version; anything
   else the patch.
 - A breaking change is one a board repository must act on: a command,
-  option, `jlcpcb.toml` key, Python or Rust API, skill or output file
+  option, `fab.toml` key, Python or Rust API, skill or output file
   that is removed, renamed or changed in meaning.
 - A release is an annotated tag `vX.Y.Z` on a commit of `main` that
   has passed every check.  Its notes, breaking changes first, are its

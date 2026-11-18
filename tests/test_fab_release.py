@@ -33,12 +33,14 @@ directory = "hardware/main"
 copper = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
 production = "production"
 sources = ["hardware/main/main.kicad_sym", "docs"]
+profile = "jlcpcb"
 
 [[board]]
 name = "jig"
 directory = "hardware/jig"
 copper = ["F.Cu", "B.Cu"]
 production = "production/jig"
+profile = "jlcpcb"
 """
 
 
@@ -51,6 +53,18 @@ def test_config_boards_in_order() -> None:
     assert main.layers[:4] == ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
     assert "Edge.Cuts" in main.layers
     assert boards["jig"].sources == ()
+    assert main.profile == "jlcpcb"
+
+
+# A board with every key, for the config's error tests.
+BOARD = """\
+[[board]]
+name = "b"
+directory = "hw"
+copper = ["F.Cu", "B.Cu"]
+production = "production"
+profile = "jlcpcb"
+"""
 
 
 def test_config_without_boards() -> None:
@@ -58,9 +72,37 @@ def test_config_without_boards() -> None:
         load_config("")
 
 
-def test_config_missing_key() -> None:
-    with pytest.raises(KeyError):
-        load_config('[[board]]\nname = "x"\n')
+@pytest.mark.parametrize("key", ["name", "directory", "copper", "production", "profile"])
+def test_config_missing_key(key: str) -> None:
+    text = "".join(line + "\n" for line in BOARD.splitlines() if not line.startswith(key))
+    with pytest.raises(ValueError, match=f"no '{key}'$"):
+        load_config(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        (f"version = 1\n{BOARD}", r"^unknown key 'version'$"),
+        (f'{BOARD}colour = "red"\n', r"^\[\[board\]\] 'b': unknown key 'colour'$"),
+        (f"{BOARD}[board.pcbway]\n", r"^\[\[board\]\] 'b': unknown key 'pcbway'$"),
+        (BOARD.replace('"jlcpcb"', '"pcbway"'), r"profile 'pcbway' is not one of jlcpcb$"),
+        (BOARD.replace('"hw"', "1"), r"'directory' is not a string$"),
+        (BOARD.replace('["F.Cu", "B.Cu"]', '"F.Cu"'), r"'copper' is not a list of strings$"),
+        (f"{BOARD}sources = [1]\n", r"'sources' is not a list of strings$"),
+        (BOARD + BOARD, r"^\[\[board\]\] 'b' is there twice$"),
+        ('board = "b"\n', r"no \[\[board\]\]"),
+        ('board = ["b"]\n', r"no \[\[board\]\]"),
+    ],
+)
+def test_config_errors(text: str, error: str) -> None:
+    """Each bad config is an error naming what is wrong."""
+    with pytest.raises(ValueError, match=error):
+        load_config(text)
+
+
+def test_config_board_without_name() -> None:
+    with pytest.raises(ValueError, match=r"^\[\[board\]\] 1: no 'name'$"):
+        load_config(BOARD.replace('name = "b"\n', ""))
 
 
 def test_source_paths_only_present_project_files(tmp_path: Path) -> None:
@@ -87,7 +129,7 @@ def test_revision() -> None:
 
 
 def test_board_is_frozen() -> None:
-    b = Board("x", Path("d"), ("F.Cu",), Path("p"), ())
+    b = Board("x", Path("d"), ("F.Cu",), Path("p"), (), "jlcpcb")
     with pytest.raises(AttributeError):
         b.name = "y"  # type: ignore[misc]
 
@@ -147,7 +189,7 @@ def gerber_calls(
             (out / name).write_text(text)
 
     monkeypatch.setattr(Release, "kicad", kicad)
-    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), ())
+    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), (), "jlcpcb")
     work = tmp_path / str(options)
     work.mkdir()
     Release(tmp_path, b, work).gerbers(work / "b.zip", "b 1", options)
@@ -364,13 +406,14 @@ FAKE_OUTPUTS = {
 
 # The fixture board's repository: its files, by path from the root.
 FIXTURE = {
-    "jlcpcb.toml": """\
+    "fab.toml": """\
 [[board]]
 name = "b"
 directory = "hw"
 copper = ["F.Cu", "In1.Cu", "B.Cu"]
 production = "production"
 sources = ["docs"]
+profile = "jlcpcb"
 """,
     "hw/b.kicad_pcb": """\
 (kicad_pcb (version 20250114) (general (thickness 1.6))
@@ -439,7 +482,7 @@ def release(
     monkeypatch.setenv("FAKE_OUTPUTS", json.dumps(FAKE_OUTPUTS))
     monkeypatch.setattr(tempfile, "tempdir", str(work))
     monkeypatch.setattr(Corrections, "builtin", classmethod(builtin))
-    monkeypatch.setattr(sys, "argv", ["jlcpcb-release", "--date", "20261118", *args])
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", *args])
     monkeypatch.chdir(root)
     main()
     text = re.sub(re.escape(str(work)) + r"/[^/\"]+", "WORK", log.read_text())

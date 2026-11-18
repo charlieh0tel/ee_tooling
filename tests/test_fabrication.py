@@ -104,7 +104,7 @@ def test_gerbers_zip_holds_the_map(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(Release, "kicad", kicad)
     work = tmp_path / "work"
     work.mkdir()
-    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), ())
+    b = Board("b", Path("hw"), ("F.Cu", "In1.Cu", "B.Cu"), Path("production"), (), "jlcpcb")
     out = tmp_path / "b-1-jlcpcb.zip"
     files = Release(tmp_path, b, work).gerbers(out, "b 1", Jlcpcb.gerbers)
     with zipfile.ZipFile(out) as z:
@@ -207,7 +207,7 @@ def test_stackup_document() -> None:
 def test_release_fabrication_warns_without_stackup(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    b = Board("b", Path("hw"), ("F.Cu", "B.Cu"), Path("production"), ())
+    b = Board("b", Path("hw"), ("F.Cu", "B.Cu"), Path("production"), (), "jlcpcb")
     (tmp_path / "hw").mkdir()
     (tmp_path / "hw/b.kicad_pro").write_text(json.dumps(PROJECT))
     (tmp_path / "gerbers").mkdir()

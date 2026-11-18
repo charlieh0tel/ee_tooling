@@ -1,0 +1,50 @@
+# JLCPCB
+
+A board with `profile = "jlcpcb"` in `fab.toml` (`SKILL.md`).
+
+## Its files
+
+| File | Use |
+|---|---|
+| `NAME-REV-jlcpcb.zip` | the PCB order's upload: Protel extensions, no X2, soldermask subtracted from silk; Excellon in mm, PTH and NPTH separate, absolute origin |
+| `NAME-REV-bom.csv` | assembly BOM: Comment, Designator, Footprint, LCSC Part #; not-fitted parts left out |
+| `NAME-REV-cpl.csv` | assembly placement: Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; only parts in the BOM, with `parts.toml`'s corrections |
+
+IPC-2581's distributor is LCSC, its part number the `LCSC` field.  A
+fitted part with no LCSC number is a warning naming it.
+
+The Gerber zip is the PCB order's upload: JLCPCB's help forum says it
+takes Gerbers, not ODB++
+(https://jlc3dp.com/help/answers/detail/197-Can-ODB++-files-be-used-to-order,
+2023-12).  Check the order page before uploading the ODB++ or IPC-2581
+instead.
+
+## Every order
+
+- In the BOM preview, compare each matched part's MPN and package with
+  the BOM's.
+- Check stock for the scarce parts.
+- Check the DFM review before paying.
+
+## Rotations and offsets
+
+JLCPCB draws each LCSC part from its own model, whose zero can differ
+from KiCad's footprint, so corrections go by LCSC part and hold for
+every board: `src/ee_tooling/parts.toml` in ee_tooling.  In JLCPCB's
+placement preview, compare each part's magenta pin-1 dot with our pin 1
+(silk mark or pad 1):
+
+- turned: add the LCSC part and degrees to `[rotation]` (JLCPCB's dot
+  90 deg counter-clockwise from ours: -90);
+- shifted: add the LCSC part and the shift in mm to `[offset]`, in the
+  part's own frame (KiCad rotation 0, y up);
+- a part not yet seen in a preview goes in `[unchecked]`, and the tool
+  says to check it.
+
+Then commit in ee_tooling, update the board repository's copy, and
+rebuild with `--force`.  A screenshot of the preview can be measured
+against two features a known distance apart, such as mounting holes.
+
+Passives, LEDs and SOD diodes have needed no correction so far.
+Coordinates are KiCad's absolute ones (Y negative), which line up with
+the Gerbers in JLCPCB's preview.

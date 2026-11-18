@@ -1,7 +1,7 @@
 # KiCad rules
 
 ee_tooling's rules for KiCad 10's own checks, in `src/ee_tooling/rules/`.
-DRC and ERC check them live in the editor, and `jlcpcb-release` refuses
+DRC and ERC check them live in the editor, and `fab-release` refuses
 a board with DRC or ERC violations.
 
 | File | What |
@@ -23,7 +23,7 @@ a board with DRC or ERC violations.
   clearance, copper to edge and a via's hole clearance, which are lower
   at JLCPCB than a board would choose and which shape zone fills, are
   Board Setup minimums, not rules.
-- `jlcpcb-release` runs `kicad-cli ... --exit-code-violations`, which
+- `fab-release` runs `kicad-cli ... --exit-code-violations`, which
   fails on a warning as on an error.
 
 ## Installing in a board repository
@@ -160,7 +160,7 @@ connection grid, 50 mils (1.27 mm, `docs/kicad-style.md`), which
 Check).  `pin_to_pin` at `ignore` turns off the pin conflict map's
 warnings and errors; at anything else they stay as the map has them.
 An error is always a mistake; a
-warning is for the owner to judge; both fail `jlcpcb-release`.
+warning is for the owner to judge; both fail `fab-release`.
 
 | Check | KiCad's default | Here | Why |
 |---|---|---|---|

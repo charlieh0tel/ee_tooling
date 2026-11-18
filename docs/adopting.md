@@ -26,7 +26,7 @@ to date; `--check` fails if one is stale.  A fresh clone needs
 The submodule's parent need not be `hardware/`.  With the submodule at
 `ee_tooling/` and the KiCad project at the repository root, the hardware
 tools' uv project is the root: `pyproject.toml`, `.venv` and the
-`./ee_tooling` editable source are there, and `jlcpcb.toml` has
+`./ee_tooling` editable source are there, and `fab.toml` has
 `directory = "."`.  (`tests/test_adopt.py`, `test_root_layout`.)
 
 ## What it writes
@@ -41,8 +41,8 @@ missing, then the project's.
 | `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
 | `hardware/pyproject.toml` | project | the hardware tools' uv project |
-| `jlcpcb.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/` |
-| `.claude/skills/jlcpcb-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
+| `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/`, profile `jlcpcb` |
+| `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
 
 The `AGENTS.md` section imports `docs/kicad-style.md`, says how the
 submodule and venv are kept, and says: before writing new tooling in
@@ -67,9 +67,9 @@ What it runs, each only when needed:
 
 ## What is left to do
 
-- `jlcpcb.toml`: each board's production directory and `sources`, and
+- `fab.toml`: each board's production directory, `sources` and profile, and
   its copper layers if the board file was missing
-  (`skills/jlcpcb-release/SKILL.md` gives the keys).
+  (`skills/fab-release/SKILL.md` gives the keys).
 - The skill's ordering checklist and part corrections.
 - Any other CI job that runs ee_tooling's tools needs `submodules: true`
   on its checkout.

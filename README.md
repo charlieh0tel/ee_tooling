@@ -6,9 +6,9 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 
 | Path | What |
 |---|---|
-| `src/ee_tooling/fab_release.py` | `jlcpcb-release`: a board's JLCPCB order package from its KiCad files |
+| `src/ee_tooling/fab_release.py` | `fab-release`: a board's order package for its fab, from its KiCad files and `fab.toml` |
 | `src/ee_tooling/profiles/` | what a release shapes for one fab: `PROFILES`, by name; `profile.py`, the interface (`Profile`, `GerberOptions`, `Part`, `Placement`); `jlcpcb.py`, JLCPCB's Gerber options, IPC-2581 distributor, assembly BOM and placement, and its corrections from `parts.toml` |
-| `src/ee_tooling/fabrication.py` | a board's fabrication documents for `jlcpcb-release`: the Gerber map, the stackup and the fabrication notes |
+| `src/ee_tooling/fabrication.py` | a board's fabrication documents for `fab-release`: the Gerber map, the stackup and the fabrication notes |
 | `src/ee_tooling/placement*.py` | `placement-score`: a board's ratsnest crossings and length, decoupling distances and order, courtyard overlaps, and a render (`docs/placement.md`) |
 | `src/ee_tooling/stitch*.py` | `stitch BOARD`: ground stitching vias along every board edge and on a grid, checked by KiCad's DRC (`docs/stitch.md`) |
 | `src/ee_tooling/stackup_table.py`, `drawing_sheet.py` | `stackup-table BOARD`: a board's stackup table on User.Drawings, written or refreshed from its physical stackup, inside the drawing sheet's frame (`docs/stackup-table.md`) |
@@ -19,7 +19,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `src/ee_tooling/parts.toml` | JLCPCB's rotation and offset corrections, by LCSC part |
 | `tools/odb_current/` | DC resistance and current capacity of a net, from ODB++ |
 | `src/ee_tooling/review*.py` | `design-review`: the evidence (kicad-cli exports, netlist, board and ERC summaries, pair routing gaps) findings lint and punch-list check of an adversarial design review (`docs/design-review.md`) |
-| `skills/` | agent skills for the tools: `jlcpcb-release`, `pcb-current-path`, `design-review` |
+| `skills/` | agent skills for the tools: `fab-release` (with each profile's ordering steps), `pcb-current-path`, `design-review` |
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
 | `docs/adopting.md` | taking ee_tooling into a board repository |
@@ -35,11 +35,11 @@ As a git submodule following `main`, with the rest put in place by its
 ```
 git submodule add -b main https://github.com/charlieh0tel/ee_tooling.git hardware/ee_tooling
 hardware/ee_tooling/adopt --yes
-cd hardware && uv run jlcpcb-release
+cd hardware && uv run fab-release
 ```
 
-`jlcpcb-release` reads `jlcpcb.toml` at the repository root; the
-`jlcpcb-release` skill says what goes in it.  It needs `kicad-cli`
+`fab-release` reads `fab.toml` at the repository root; the
+`fab-release` skill says what goes in it.  It needs `kicad-cli`
 (KiCad 10) on the path.
 
 ## Development

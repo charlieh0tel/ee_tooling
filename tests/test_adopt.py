@@ -15,11 +15,12 @@ from ee_tooling.adopt import (
     agents_text,
     apply,
     copper_layers,
-    jlcpcb_config,
+    fab_config,
     locate,
     plan,
     stale,
 )
+from ee_tooling.fab_release import load_config
 
 SUBMODULE = Path("hardware/ee_tooling")
 
@@ -90,28 +91,30 @@ def test_agents_adopted_by_hand_left_alone() -> None:
     assert agents_text("@hardware/ee_tooling/docs/kicad-style.md\n", "new\n") is None
 
 
-def test_jlcpcb_config(tmp_path: Path) -> None:
+def test_fab_config(tmp_path: Path) -> None:
     layout = repository(tmp_path, "main", "jig")
     (tmp_path / "hardware/ee_tooling/x").mkdir(parents=True)
     (tmp_path / "hardware/ee_tooling/x/x.kicad_pro").write_text("{}")
-    config = jlcpcb_config(layout)
+    config = fab_config(layout)
     assert config is not None
     assert '[[board]]\nname = "jig"\ndirectory = "hardware/jig"\n' in config
     assert (
         'copper = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]\nproduction = "production/jig"\n' in config
     )
     assert 'production = "production/main"' in config
+    assert config.count('profile = "jlcpcb"\n') == 2
+    assert list(load_config(config)) == ["jig", "main"]
     assert '"x"' not in config
 
 
-def test_jlcpcb_config_one_board(tmp_path: Path) -> None:
-    config = jlcpcb_config(repository(tmp_path, "main"))
+def test_fab_config_one_board(tmp_path: Path) -> None:
+    config = fab_config(repository(tmp_path, "main"))
     assert config is not None
     assert 'production = "production"\n' in config
 
 
-def test_jlcpcb_config_no_project(tmp_path: Path) -> None:
-    assert jlcpcb_config(repository(tmp_path)) is None
+def test_fab_config_no_project(tmp_path: Path) -> None:
+    assert fab_config(repository(tmp_path)) is None
 
 
 def test_root_layout(tmp_path: Path) -> None:
@@ -122,7 +125,7 @@ def test_root_layout(tmp_path: Path) -> None:
     (tmp_path / "ee_tooling/x").mkdir(parents=True)
     (tmp_path / "ee_tooling/x/x.kicad_pro").write_text("{}")
     layout = Layout(tmp_path, Path("ee_tooling"))
-    config = jlcpcb_config(layout)
+    config = fab_config(layout)
     assert config is not None
     assert '[[board]]\nname = "main"\ndirectory = "."\n' in config
     assert '"x"' not in config
@@ -136,10 +139,10 @@ def test_root_layout(tmp_path: Path) -> None:
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
         ".github/workflows/ee-tooling.yml": Owner.MANAGED,
-        ".claude/skills/jlcpcb-release/SKILL.md": Owner.PROJECT,
+        ".claude/skills/fab-release/SKILL.md": Owner.PROJECT,
         "pyproject.toml": Owner.PROJECT,
         "AGENTS.md": Owner.MANAGED,
-        "jlcpcb.toml": Owner.PROJECT,
+        "fab.toml": Owner.PROJECT,
     }
     apply(tmp_path, steps, lambda *_: None)
     assert (
@@ -161,10 +164,10 @@ def test_plan_fresh_repository(tmp_path: Path) -> None:
     assert written(steps) == {
         ".githooks/commit-msg": Owner.MANAGED,
         ".github/workflows/ee-tooling.yml": Owner.MANAGED,
-        ".claude/skills/jlcpcb-release/SKILL.md": Owner.PROJECT,
+        ".claude/skills/fab-release/SKILL.md": Owner.PROJECT,
         "hardware/pyproject.toml": Owner.PROJECT,
         "AGENTS.md": Owner.MANAGED,
-        "jlcpcb.toml": Owner.PROJECT,
+        "fab.toml": Owner.PROJECT,
     }
 
 
@@ -196,9 +199,9 @@ def test_apply_writes_files(tmp_path: Path) -> None:
 
 def test_project_files_not_overwritten(tmp_path: Path) -> None:
     ran(tmp_path)
-    (tmp_path / "jlcpcb.toml").write_text("# edited\n")
+    (tmp_path / "fab.toml").write_text("# edited\n")
     steps = plan(Layout(tmp_path, SUBMODULE))
-    assert "jlcpcb.toml" not in written(steps)
+    assert "fab.toml" not in written(steps)
 
 
 def test_managed_files_updated(tmp_path: Path) -> None:

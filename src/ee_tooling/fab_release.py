@@ -1,6 +1,6 @@
-"""Build a JLCPCB release package for a KiCad board.
+"""Build a board's release package for its fab.
 
-Reads jlcpcb.toml at the root of the git repository it is run in, and writes
+Reads fab.toml at the root of the git repository it is run in, and writes
 the board's production directory, YYYYMMDD-REV/, with:
   NAME-REV-jlcpcb.zip   Gerbers and drill files, for the PCB order, and
                         README.txt, the Gerber map
@@ -15,7 +15,8 @@ the board's production directory, YYYYMMDD-REV/, with:
   NAME-REV-cpl.csv      placement in JLCPCB's columns, for assembly
   NAME-REV-source.tgz   the design files, PDFs and docs it was made from
 
-NAME is the KiCad project, REV its board's title-block revision.  ERC and
+NAME is the KiCad project, REV its board's title-block revision; the
+board's profile (profiles/) names the fab whose files these are.  ERC and
 DRC must be clean and the release's sources committed, unless --allow-dirty.
 The commit it was built from gets an annotated tag NAME-YYYYMMDD-REV, which
 it does not push: it prints the command.  A build from uncommitted sources
@@ -51,11 +52,22 @@ from ee_tooling.fabrication import (
     stackup,
     stackup_document,
 )
-from ee_tooling.profiles import DEFAULT, PROFILES
+from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.profile import GerberOptions, Part, Placement
 from ee_tooling.sexpr import Expression, ParseError, parse
 
-CONFIG = "jlcpcb.toml"
+CONFIG = "fab.toml"
+# fab.toml's top-level keys.
+TOP_KEYS = ("board",)
+# A [[board]]'s keys whose values are a string, then those that are a list
+# of strings, each with its default (None: required).
+STRING_KEYS: dict[str, str | None] = {
+    "name": None,
+    "directory": None,
+    "production": None,
+    "profile": None,
+}
+LIST_KEYS: dict[str, list[str] | None] = {"copper": None, "sources": []}
 # The Gerber map's name in the Gerber zip.
 GERBER_README = "README.txt"
 # The work directory's subdirectory kicad-cli writes the Gerbers and drill into.
@@ -102,13 +114,14 @@ IPC2581_BOM = (
 
 @dataclass(frozen=True)
 class Board:
-    """A board that can be released (a [[board]] in jlcpcb.toml)."""
+    """A board that can be released (a [[board]] in fab.toml)."""
 
     name: str  # the KiCad project
     directory: Path  # holds NAME.kicad_pcb and NAME.kicad_sch, from the repository root
     copper: tuple[str, ...]  # copper layers, top to bottom
     production: Path  # where its YYYYMMDD-REV/ releases go, from the repository root
     sources: tuple[Path, ...]  # in the source tgz after the project's files, from the root
+    profile: str  # its fab's, a key of PROFILES
 
     @property
     def pcb(self) -> Path:
@@ -135,21 +148,67 @@ class Board:
         return [*(c for c in candidates if (root / c).exists()), *self.sources]
 
 
-def load_config(text: str) -> dict[str, Board]:
-    """jlcpcb.toml's boards, by name, the first being the default."""
-    boards: list[dict[str, Any]] = tomllib.loads(text).get("board", [])
-    if not boards:
-        raise ValueError(f"{CONFIG} has no [[board]]")
-    return {
-        b["name"]: Board(
-            name=b["name"],
-            directory=Path(b["directory"]),
-            copper=tuple(b["copper"]),
-            production=Path(b["production"]),
-            sources=tuple(Path(s) for s in b.get("sources", ())),
+def string(where: str, table: dict[str, Any], key: str, default: str | None) -> str:
+    """table[key], a string, or default; ValueError naming the key if it is
+    missing with no default, or not a string."""
+    found = table.get(key, default)
+    if found is None:
+        raise ValueError(f"{where}: no {key!r}")
+    if not isinstance(found, str):
+        raise ValueError(f"{where}: {key!r} is not a string")
+    return found
+
+
+def strings(where: str, table: dict[str, Any], key: str, default: list[str] | None) -> list[str]:
+    """table[key], a list of strings, or default; ValueError naming the key
+    if it is missing with no default, or not a list of strings."""
+    found = table.get(key, default)
+    if found is None:
+        raise ValueError(f"{where}: no {key!r}")
+    if not isinstance(found, list) or not all(isinstance(x, str) for x in found):
+        raise ValueError(f"{where}: {key!r} is not a list of strings")
+    return found
+
+
+def board(table: dict[str, Any], number: int) -> Board:
+    """A [[board]], the number-th; ValueError naming a bad key."""
+    where = f"[[board]] {number}"
+    name = string(where, table, "name", None)
+    where = f"[[board]] {name!r}"
+    if unknown := sorted(set(table) - set(STRING_KEYS) - set(LIST_KEYS)):
+        raise ValueError(f"{where}: unknown key {', '.join(repr(k) for k in unknown)}")
+    text = {k: string(where, table, k, d) for k, d in STRING_KEYS.items()}
+    lists = {k: strings(where, table, k, d) for k, d in LIST_KEYS.items()}
+    if text["profile"] not in PROFILES:
+        raise ValueError(
+            f"{where}: profile {text['profile']!r} is not one of {', '.join(PROFILES)}"
         )
-        for b in boards
-    }
+    return Board(
+        name=name,
+        directory=Path(text["directory"]),
+        copper=tuple(lists["copper"]),
+        production=Path(text["production"]),
+        sources=tuple(Path(s) for s in lists["sources"]),
+        profile=text["profile"],
+    )
+
+
+def load_config(text: str) -> dict[str, Board]:
+    """fab.toml's boards, by name, the first being the default; ValueError
+    naming a bad key."""
+    config = tomllib.loads(text)
+    if unknown := sorted(set(config) - set(TOP_KEYS)):
+        raise ValueError(f"unknown key {', '.join(repr(k) for k in unknown)}")
+    tables = config.get("board", [])
+    if not isinstance(tables, list) or not tables or not all(isinstance(t, dict) for t in tables):
+        raise ValueError(f"{CONFIG} has no [[board]]")
+    out: dict[str, Board] = {}
+    for number, table in enumerate(tables, 1):
+        b = board(table, number)
+        if b.name in out:
+            raise ValueError(f"[[board]] {b.name!r} is there twice")
+        out[b.name] = b
+    return out
 
 
 def revision(pcb_text: str) -> str | None:
@@ -458,8 +517,8 @@ def main() -> None:
     root = repository_root()
     try:
         boards = load_config((root / CONFIG).read_text())
-    except (OSError, tomllib.TOMLDecodeError, KeyError, ValueError) as e:
-        sys.exit(f"{root / CONFIG}: {e!r}")
+    except (OSError, tomllib.TOMLDecodeError, ValueError) as e:
+        sys.exit(f"{root / CONFIG}: {e}")
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     ap.add_argument("board", nargs="?", choices=boards, default=next(iter(boards)))
@@ -484,7 +543,7 @@ def main() -> None:
         pcb = parse(pcb_text)
     except ParseError as e:
         sys.exit(f"{b.pcb}: {e}")
-    profile = PROFILES[DEFAULT]()
+    profile = PROFILES[b.profile]()
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp))
         commit = r.check(a.allow_dirty)

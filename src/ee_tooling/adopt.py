@@ -22,6 +22,7 @@ from pathlib import Path
 
 from ee_tooling.fab_release import CONFIG
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
+from ee_tooling.profiles.jlcpcb import Jlcpcb
 
 # This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
 CHECKOUT = Path(__file__).resolve().parents[2]
@@ -31,6 +32,10 @@ AGENTS_BEGIN = "<!-- ee_tooling: begin; written by ee-tooling-adopt -->"
 AGENTS_END = "<!-- ee_tooling: end -->"
 # What a hand-adopted AGENTS.md has: the house style's import line.
 STYLE = "docs/kicad-style.md"
+# The profile of each board adopt finds.
+PROFILE = Jlcpcb.name
+# The release's skill in a board repository, from the root.
+SKILL = Path(".claude/skills/fab-release/SKILL.md")
 
 
 class Owner(Enum):
@@ -118,8 +123,8 @@ def copper_layers(pcb_text: str) -> list[str]:
     return sorted(names, key=depth)
 
 
-def jlcpcb_config(layout: Layout) -> str | None:
-    """A starting jlcpcb.toml, one [[board]] per KiCad project under the
+def fab_config(layout: Layout) -> str | None:
+    """A starting fab.toml, one [[board]] per KiCad project under the
     hardware directory, or None if there is none."""
     projects = sorted(
         p
@@ -129,7 +134,7 @@ def jlcpcb_config(layout: Layout) -> str | None:
     if not projects:
         return None
     lines = [
-        "# The boards jlcpcb-release builds; the first is the default.  Paths are",
+        "# The boards fab-release builds; the first is the default.  Paths are",
         "# from the repository root.  Written by ee-tooling-adopt: check each",
         "# board's production directory and add its sources.",
     ]
@@ -149,6 +154,7 @@ def jlcpcb_config(layout: Layout) -> str | None:
             f"copper = [{', '.join(f'"{c}"' for c in copper)}]",
             f'production = "{production}"',
             "sources = []",
+            f'profile = "{PROFILE}"',
         ]
     return "\n".join(lines) + "\n"
 
@@ -187,11 +193,7 @@ def files(layout: Layout) -> list[File]:
         File(
             Path(".github/workflows/ee-tooling.yml"), layout.fill("ee-tooling.yml"), Owner.MANAGED
         ),
-        File(
-            Path(".claude/skills/jlcpcb-release/SKILL.md"),
-            layout.fill("jlcpcb-release-skill.md"),
-            Owner.PROJECT,
-        ),
+        File(SKILL, layout.fill("fab-release-skill.md"), Owner.PROJECT),
         File(
             layout.hardware / "pyproject.toml",
             layout.fill("hardware-pyproject.toml"),
@@ -204,7 +206,7 @@ def files(layout: Layout) -> list[File]:
         print(f"{AGENTS}: adopted by hand; left as it is", file=sys.stderr)
     else:
         out.append(File(AGENTS, text, Owner.MANAGED))
-    config = jlcpcb_config(layout)
+    config = fab_config(layout)
     if config is None:
         print(f"no KiCad project under {layout.hardware}; no {CONFIG}", file=sys.stderr)
     else:
