@@ -638,24 +638,27 @@ class Release:
     def drc_project(self, rules: Installed) -> Path:
         """A scratch copy of the board's project with the rules installed;
         return its .kicad_pcb.  Its directory's files are copied and its
-        directories linked, at the board directory's own absolute path
-        under the scratch directory, beside a link to every other entry of
-        each of its ancestors: so a library path relative to the project
-        (${KIPRJMOD}/../lib), which DRC checks footprints against, finds
-        what it finds for the board.  The board's own files are not
-        written."""
+        directories linked, at the board directory's own path from the
+        repository's root under the scratch directory, beside a link to
+        every other entry of each of its ancestors up to the root: so a
+        library path relative to the project (${KIPRJMOD}/../lib), which
+        DRC checks footprints against, finds what it finds for the board
+        (a library is inside the repository: main refuses one outside).
+        The board's own files are not written."""
         b = self.board
-        source = (self.root / b.directory).resolve()
+        root = self.root.resolve()
+        source = (root / b.directory).resolve()
         top = self.work / DRC_PROJECT
-        scratch = top / source.relative_to(source.anchor)
+        scratch = top / source.relative_to(root)
         scratch.mkdir(parents=True)
         for entry in sorted(source.iterdir()):
             if entry.is_dir():
                 (scratch / entry.name).symlink_to(entry, target_is_directory=True)
             else:
                 shutil.copyfile(entry, scratch / entry.name)
-        for here, parent in zip([source, *source.parents], source.parents, strict=False):
-            mirror = top / parent.relative_to(parent.anchor)
+        ancestors = [p for p in source.parents if p.is_relative_to(root)]
+        for here, parent in zip([source, *ancestors], ancestors, strict=False):
+            mirror = top / parent.relative_to(root)
             try:
                 entries = sorted(parent.iterdir())
             except OSError as e:

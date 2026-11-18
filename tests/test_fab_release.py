@@ -718,8 +718,8 @@ RELEASE_CALLS = [
         "--exit-code-violations",
         "-o",
         "WORK/drc.rpt",
-        # The scratch copy, at the board directory's absolute path.
-        "WORK/projectROOT/hw/b.kicad_pcb",
+        # The scratch copy, at the board directory's path in the repository.
+        "WORK/project/hw/b.kicad_pcb",
     ],
     [
         "sch",
@@ -1660,10 +1660,10 @@ def test_drc_project(tmp_path: Path) -> None:
     rules = install(f"(version 1)\n{OWN_RULE}", {}, SECTION, board_setup(Jlcpcb.rules))
     (root / "lib").mkdir()
     pcb = r.drc_project(rules)
-    scratch = work / "project" / board.resolve().relative_to("/")
+    scratch = work / "project/hw"
     assert pcb == scratch / "b.kicad_pcb"
     assert (scratch / "../lib").resolve() == (root / "lib").resolve()
-    assert (scratch.parent.parent / "work").is_symlink()
+    assert sorted(p.name for p in (work / "project").iterdir()) == ["hw", "lib"]
     assert not (scratch.parent / "hw").is_symlink()
     assert sorted(p.name for p in scratch.iterdir()) == sorted(p.name for p in board.iterdir())
     assert (scratch / "lib").is_symlink()

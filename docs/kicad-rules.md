@@ -60,9 +60,10 @@ overwrites the change.
    file's (Formatting, Connection grid).
 
 `fab-release` runs DRC on a scratch copy of the project (its directory's
-files copied, its directories linked, at its own absolute path under the
-scratch directory beside links to its ancestors' other entries, so a
-library path relative to the project finds the same library) with the same rules installed and
+files copied, its directories linked, at its own path from the
+repository's root under the scratch directory beside links to its
+ancestors' other entries up to the root, so a library path relative to
+the project finds the same library) with the same rules installed and
 Board Setup raised, so a release is checked against this ee_tooling's
 rules whatever the board's files hold; it never writes the board's
 files.  It warns when the board's `.kicad_dru` lacks the current
