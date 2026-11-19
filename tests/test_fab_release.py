@@ -43,6 +43,7 @@ from ee_tooling.fab_release import (
     revision,
     settings_variants,
     silkscreen_only,
+    status_entries,
     tag_plan,
     tag_refused,
     variant_names,
@@ -2018,22 +2019,22 @@ def test_release_refuses_a_library_outside_the_repository(
     assert kicad_calls(tmp_path) == []
 
 
-def library_submodule(tmp_path: Path, root: Path) -> Path:
-    """A library repository added to root as the submodule libs/shared,
-    the fixture board's fp-lib-table naming its x.pretty; committed."""
+def library_submodule(tmp_path: Path, root: Path, where: str = "libs/shared") -> Path:
+    """A library repository added to root as the submodule where, the
+    fixture board's fp-lib-table naming its x.pretty; committed."""
     lib = tmp_path / "lib"
     (lib / "x.pretty").mkdir(parents=True)
     (lib / "x.pretty/R.kicad_mod").write_text("(footprint R)\n")
     git(lib, "init", "-q")
     git(lib, "add", ".")
     git(lib, "commit", "-q", "-m", "lib")
-    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "libs/shared")
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), where)
     (root / "hw/fp-lib-table").write_text(
-        '(fp_lib_table (lib (name "x")(uri "${KIPRJMOD}/../libs/shared/x.pretty")))\n'
+        f'(fp_lib_table (lib (name "x")(uri {quote(f"${{KIPRJMOD}}/../{where}/x.pretty")})))\n'
     )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "library")
-    return root / "libs/shared"
+    return root / where
 
 
 @pytest.mark.parametrize(
@@ -2177,7 +2178,7 @@ def test_release_stops_when_git_fails(tmp_path: Path, monkeypatch: pytest.Monkey
     real = subprocess.run
 
     def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if list(args[:2]) == ["git", "status"]:
+        if args[0] == "git" and "status" in args:
             return subprocess.CompletedProcess(args, 128, "", "fatal: bad pathspec\n")
         return real(args, **kwargs)  # type: ignore[call-overload,no-any-return]
 
@@ -3091,3 +3092,23 @@ def test_push_line_is_quoted(
     line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("tagged"))
     assert line.endswith("push it with: git push origin 'refs/tags/b-20261118-A$B'")
     assert shlex.split(line.split(": ", 1)[1])[-1] == "refs/tags/b-20261118-A$B"
+
+
+@pytest.mark.parametrize("where", ["libs/ünïcode lib", 'libs/a "quoted" lib'])
+def test_release_with_a_submodule_git_quotes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    """A library submodule whose path git quotes (non-ASCII, a space, a
+    quote): the release reads it, and a change in it is uncommitted."""
+    root, _ = release(tmp_path, monkeypatch)
+    submodule = library_submodule(tmp_path, root, where)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    (submodule / "x.pretty/R.kicad_mod").write_text("(footprint R2)\n")
+    rebuild_refused(monkeypatch, re.escape(where))
+
+
+def test_status_entries() -> None:
+    """-z's entries, a rename's old path dropped, a leading space kept."""
+    text = " M a b.txt\0R  new\0old\0?? ü\0"
+    assert status_entries(text) == [" M a b.txt", "R  new", "?? ü"]

@@ -118,6 +118,16 @@ VARIANT_FUNCTIONS = {("Legend",), ("Other",)}
 GERBER_README = "README.txt"
 # git's own directory (or, in a submodule or worktree, file).
 GIT_DIRECTORY = ".git"
+# git's settings for the commands whose output the release reads, whatever
+# the user's: paths from the repository's root, no branch line, no color.
+GIT_OPTIONS = (
+    "-c",
+    "status.relativePaths=false",
+    "-c",
+    "status.branch=false",
+    "-c",
+    "color.ui=false",
+)
 # git ls-files --stage's mode of a submodule (a gitlink).
 GITLINK = "160000 "
 # A release is built in its production directory, in .DATE-REV plus this,
@@ -492,6 +502,39 @@ def lfs_pointers(root: Path, paths: Iterable[Path], left_out: Iterable[Path] = (
     return list(out)
 
 
+def git_out(cwd: Path, *args: str) -> str:
+    """git's output in cwd; a failure stops the release, with git's
+    message.  Paths in it are as git -z writes them, never quoted."""
+    r = subprocess.run(
+        ["git", *GIT_OPTIONS, *args],
+        cwd=cwd,
+        env=environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        sys.exit(f"git {' '.join(args)} in {cwd} failed ({r.returncode}):\n{r.stderr}")
+    return r.stdout
+
+
+def status_entries(text: str) -> list[str]:
+    """git status --porcelain -z's entries, each "XY PATH" (a rename's or
+    copy's new path; its old one, the next field, dropped)."""
+    fields = text.split("\0")
+    out = []
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if not entry:
+            continue
+        out.append(entry)
+        if "R" in entry[:2] or "C" in entry[:2]:
+            i += 1
+    return out
+
+
 def submodules(root: Path) -> list[Path]:
     """The repository's submodules (gitlinks) and theirs, at any depth, each
     checked out, from root; deepest first, so the first holding a path is
@@ -500,19 +543,9 @@ def submodules(root: Path) -> list[Path]:
     todo = [Path(".")]
     while todo:
         here = todo.pop()
-        r = subprocess.run(
-            ["git", "ls-files", "--stage"],
-            cwd=root / here,
-            env=environment(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if r.returncode != 0:
-            sys.exit(f"git ls-files --stage in {here} failed ({r.returncode}):\n{r.stderr}")
-        for line in r.stdout.splitlines():
-            if line.startswith(GITLINK):
-                found = normal(here / line.split("\t", 1)[1])
+        for entry in git_out(root / here, "ls-files", "-z", "--stage").split("\0"):
+            if entry.startswith(GITLINK):
+                found = normal(here / entry.split("\t", 1)[1])
                 out.append(found)
                 if (root / found / GIT_DIRECTORY).exists():
                     todo.append(found)
@@ -1192,34 +1225,40 @@ class Release:
                 ] = None
         excluded = [f":(exclude,literal){p}" for p in productions]
         literal = [f":(literal){p}" for p in paths]
-        lines = self.git(
-            "status", "--porcelain", "--ignore-submodules=none", "--", *literal, *excluded
-        ).splitlines()
-        ignored = self.git(
-            "status",
-            "--porcelain",
-            "--ignored",
-            "--ignore-submodules=none",
-            "--",
-            *(f":(literal){p}" for p in reads if p not in modules),
-            *excluded,
-        ).splitlines()
+        lines = status_entries(
+            git_out(
+                self.root,
+                "status",
+                "--porcelain",
+                "-z",
+                "--ignore-submodules=none",
+                "--",
+                *literal,
+                *excluded,
+            )
+        )
+        ignored = status_entries(
+            git_out(
+                self.root,
+                "status",
+                "--porcelain",
+                "-z",
+                "--ignored",
+                "--ignore-submodules=none",
+                "--",
+                *(f":(literal){p}" for p in reads if p not in modules),
+                *excluded,
+            )
+        )
         lines += [line for line in ignored if line.startswith("!! ")]
         # A submodule's own status, its submodules' too, whatever their
         # ignore settings: the superproject's may not show a nested one.
         for m in modules:
             if any(m == p or m.is_relative_to(p) for p in paths):
-                r = subprocess.run(
-                    ["git", "status", "--porcelain", "--ignore-submodules=none"],
-                    cwd=self.root / m,
-                    env=environment(),
-                    capture_output=True,
-                    text=True,
-                    check=False,
+                found = git_out(
+                    self.root / m, "status", "--porcelain", "-z", "--ignore-submodules=none"
                 )
-                if r.returncode != 0:
-                    sys.exit(f"git status in {m} failed ({r.returncode}):\n{r.stderr}")
-                lines += [f"{line[:3]}{m}/{line[3:]}" for line in r.stdout.splitlines()]
+                lines += [f"{line[:3]}{m}/{line[3:]}" for line in status_entries(found)]
         return "\n".join(dict.fromkeys(lines))
 
     def tagged(self, name: str) -> str | None:
