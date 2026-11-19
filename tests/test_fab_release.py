@@ -56,6 +56,7 @@ from ee_tooling.kicad_rules import board_setup, install, installed
 from ee_tooling.kicad_style_stackup import HEADER, check_stackup
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
+from ee_tooling.project_libraries import TABLE_FIX
 from ee_tooling.sexpr import Expression, parse, quote
 from ee_tooling.stackup_table import layer_names, stackup_rows
 
@@ -2014,9 +2015,9 @@ def test_release_refuses_a_library_outside_the_repository(
         release(tmp_path, monkeypatch)
     assert str(e.value) == (
         "b: libraries outside the repository, or under a variable not KiCad's own (its library"
-        " tables and 3D model paths, as written):\n  ${KIPRJMOD}/../../a.pretty\nput each"
-        " library in the repository (a git submodule) and name it by a ${KIPRJMOD}-relative"
-        " path (ee_tooling's docs/kicad-style.md, Files)"
+        " tables' and 3D models' paths, as written, each with its fix):\n"
+        f"  ${{KIPRJMOD}}/../../a.pretty: {TABLE_FIX}\n"
+        "a library lives inside the repository (ee_tooling's docs/kicad-style.md, Files)"
     )
     assert kicad_calls(tmp_path) == []
 

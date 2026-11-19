@@ -1852,10 +1852,9 @@ def main() -> None:
     if found_libraries.outside:
         sys.exit(
             f"{b.name}: libraries outside the repository, or under a variable not KiCad's own"
-            " (its library tables and 3D model paths, as written):\n"
-            + "".join(f"  {p}\n" for p in found_libraries.outside)
-            + "put each library in the repository (a git submodule) and name it by a"
-            " ${KIPRJMOD}-relative path (ee_tooling's docs/kicad-style.md, Files)"
+            " (its library tables' and 3D models' paths, as written, each with its fix):\n"
+            + "".join(f"  {p}: {found_libraries.fixes[p]}\n" for p in found_libraries.outside)
+            + "a library lives inside the repository (ee_tooling's docs/kicad-style.md, Files)"
         )
     for model in found_libraries.unresolved:
         print(

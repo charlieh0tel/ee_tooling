@@ -2,7 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from ee_tooling.project_libraries import Libraries, libraries, model_paths, table_uris
+from ee_tooling.project_libraries import (
+    LIBRARY_MODEL_FIX,
+    MODEL_FIX,
+    TABLE_FIX,
+    Libraries,
+    libraries,
+    model_paths,
+    table_uris,
+)
 from ee_tooling.sexpr import parse
 
 FP_TABLE = """(fp_lib_table
@@ -191,3 +199,28 @@ def test_link_out_of_the_repository(tmp_path: Path) -> None:
     found = libraries(root, Path("."), parse("(kicad_pcb)"))
     assert found.outside == ["${KIPRJMOD}/lib.pretty"]
     assert found.inside == [Path("here.pretty")]
+
+
+def test_fixes_by_kind(tmp_path: Path) -> None:
+    """A table's path is repointed; a model's relative to its footprint's
+    library needs no change once the library is inside; another model's
+    is renamed."""
+    root = tmp_path / "repo"
+    board = root / "hw"
+    board.mkdir(parents=True)
+    (tmp_path / "lib.pretty").mkdir()
+    (tmp_path / "3d").mkdir()
+    (tmp_path / "3d/R.step").write_text("model\n")
+    (board / "fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "lib")(uri "${KIPRJMOD}/../../lib.pretty")))'
+    )
+    pcb = parse(
+        '(kicad_pcb (footprint "lib:R" (property "Reference" "R1") (model "../3d/R.step"))'
+        ' (footprint "lib:C" (property "Reference" "C1") (model "/elsewhere/C.step")))'
+    )
+    found = libraries(root, Path("hw"), pcb)
+    assert found.fixes == {
+        "${KIPRJMOD}/../../lib.pretty": TABLE_FIX,
+        "../3d/R.step": LIBRARY_MODEL_FIX,
+        "/elsewhere/C.step": MODEL_FIX,
+    }

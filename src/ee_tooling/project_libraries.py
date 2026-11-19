@@ -10,7 +10,7 @@ repository's; any other variable is the user's, unknown here.
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ee_tooling.sexpr import Expression, ParseError, child, children, parse
@@ -28,6 +28,19 @@ STOCK = re.compile(r"KICAD\d*_(FOOTPRINT|SYMBOL|3DMODEL)_DIR|KISYS3DMOD|KISYSMOD
 # KiCad 5's $(NAME) form, or a home directory, ~ or ~user.
 UNKNOWN_FORMS = ("$(",)
 HOME = "~"
+# What makes each kind of outside path inside the repository.
+TABLE_FIX = (
+    "a library table's: put the library in the repository (a git submodule) and point the"
+    " table at it, ${KIPRJMOD}-relative"
+)
+MODEL_FIX = (
+    "a 3D model's: put the model in the repository and name it ${KIPRJMOD}-relative, or"
+    " relative to its footprint's library there"
+)
+LIBRARY_MODEL_FIX = (
+    "a 3D model's, relative to its footprint's library: no change, once that library is in"
+    " the repository"
+)
 # A 3D model embedded in the board file, not a path.
 EMBEDDED = "kicad-embed://"
 
@@ -42,6 +55,7 @@ class Libraries:
     outside: list[str]  # each path as written that leads outside it or is unknown
     stock: list[str]  # each path as written under a KiCad install variable
     unresolved: list[str]  # a relative 3D model path found nowhere: its footprint and path
+    fixes: dict[str, str] = field(default_factory=dict)  # each outside path to what makes it inside
 
 
 @dataclass(frozen=True)
@@ -114,7 +128,7 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
     top = root.resolve()
     project = top / directory
     inside: dict[Path, None] = {}
-    outside: dict[str, None] = {}
+    outside: dict[str, str] = {}  # each path as written, to its fix
     stock: dict[str, None] = {}
     unresolved: list[str] = []
 
@@ -126,7 +140,7 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
             return "stock"
         return "unknown" if any(n != PROJECT for n in names) else "project"
 
-    def place(path: str, written: Path) -> None:
+    def place(path: str, written: Path, fix: str) -> None:
         # Links followed: a link inside the repository may lead out of it.
         resolved = written.resolve()
         if resolved.is_relative_to(top):
@@ -136,7 +150,7 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
                 inside[plain.relative_to(top)] = None
             inside[resolved.relative_to(top)] = None
         else:
-            outside[path] = None
+            outside[path] = fix
 
     for table in tables.values():
         for path in table.values():
@@ -144,9 +158,9 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
                 case "stock":
                     stock[path] = None
                 case "unknown":
-                    outside[path] = None
+                    outside[path] = TABLE_FIX
                 case _:
-                    place(path, expand(path, project))
+                    place(path, expand(path, project), TABLE_FIX)
     footprints = tables.get(TABLES[0], {})
     for m in models(pcb):
         match kind(m.path):
@@ -154,10 +168,10 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
                 stock[m.path] = None
                 continue
             case "unknown":
-                outside[m.path] = None
+                outside[m.path] = MODEL_FIX
                 continue
         if VARIABLE.search(m.path) or os.path.isabs(m.path):
-            place(m.path, expand(m.path, project))
+            place(m.path, expand(m.path, project), MODEL_FIX)
             continue
         nickname = m.footprint.split(":", 1)[0] if ":" in m.footprint else ""
         library = footprints.get(nickname)
@@ -166,10 +180,11 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
             candidates.append(Path(os.path.normpath(expand(library, project) / m.path)))
         found = next((c for c in candidates if c.exists()), None)
         if found is not None:
-            place(m.path, found)
+            fix = MODEL_FIX if found == candidates[0] else LIBRARY_MODEL_FIX
+            place(m.path, found, fix)
         elif library is not None and kind(library) == "stock":
             stock[m.path] = None  # from a stock library's directory, KiCad's own
         else:
             why = "" if library is not None else f" (library {nickname!r} not in fp-lib-table)"
             unresolved.append(f"{m.reference} ({m.footprint}): {m.path}{why}")
-    return Libraries(list(inside), list(outside), list(stock), unresolved)
+    return Libraries(list(inside), list(outside), list(stock), unresolved, outside)

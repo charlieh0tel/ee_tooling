@@ -150,7 +150,11 @@ anything runs, a path in the project's `fp-lib-table` or
 repository (links followed) or uses a variable other than `${KIPRJMOD}`
 and KiCad's stock library variables (`${KICADn_FOOTPRINT_DIR}`,
 `${KICADn_SYMBOL_DIR}`, `${KICADn_3DMODEL_DIR}`, `${KISYSMOD}`,
-`${KISYS3DMOD}`), or a `$(NAME)` or `~` path, naming each.  A relative 3D model path is looked
+`${KISYS3DMOD}`), or a `$(NAME)` or `~` path, naming each with its
+fix: a library table's path is pointed at the library once it is in the
+repository; a 3D model's path relative to its footprint's library needs
+no change once that library is in; another model's is renamed
+`${KIPRJMOD}`-relative.  A relative 3D model path is looked
 up as KiCad does, from the project's directory, then from the
 footprint's library's directory (`fp-lib-table`); one found nowhere is a
 warning naming the footprint and the path.
