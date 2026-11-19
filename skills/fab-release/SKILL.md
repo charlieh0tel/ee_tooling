@@ -252,9 +252,9 @@ only when the owner says to.
    board without one.
 3. Run `uv run stackup-table PATH/TO/NAME.kicad_pcb` (from the hardware
    tools' uv project, `hardware/` or the repository root; close the
-   board in KiCad first; the release's
-   refusal prints the command with the path from where it was run) if its
-   stackup table is missing or out of date: the release refuses it.
+   board in KiCad first) if its stackup table is missing or out of date:
+   the release refuses it, printing the command that runs from where it
+   ran, `uv run --project PROJECT stackup-table PATH`.
 4. Commit the board and its sources.
 
 ## What it writes

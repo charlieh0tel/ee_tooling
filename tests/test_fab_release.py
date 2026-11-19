@@ -53,7 +53,7 @@ from ee_tooling.fab_release import (
 )
 from ee_tooling.fabrication import Fab, GerberFile, stackup
 from ee_tooling.kicad_rules import board_setup, install, installed
-from ee_tooling.kicad_style_stackup import HEADER
+from ee_tooling.kicad_style_stackup import HEADER, check_stackup
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
 from ee_tooling.sexpr import Expression, parse, quote
@@ -1752,7 +1752,8 @@ def test_release_refuses_a_board_without_a_matching_stackup_table(
     message = str(e.value)
     for error in errors:
         assert f"b.kicad_pcb: {error}" in message
-    assert message.endswith("\nwrite or refresh it with: uv run stackup-table hw/b.kicad_pcb")
+    assert message.endswith(" stackup-table hw/b.kicad_pcb")
+    assert "\nwrite or refresh it with: uv run --project " in message
     assert kicad_calls(tmp_path) == []
     assert not (tmp_path / "repo/production").exists()
 
@@ -3186,22 +3187,30 @@ def test_variant_text_warning_names_what_it_is_on() -> None:
     assert "the same on every variant's board PDFs:" in found
 
 
-def test_release_stackup_hint_from_the_current_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("where", ["hw", "."])
+def test_release_stackup_hint_runs_from_the_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
 ) -> None:
-    """Run from the board's directory: the path from there, with uv run."""
+    """The printed command, run from where the release ran (the board's
+    directory, or the root), writes the table."""
     pcb = FIXTURE["hw/b.kicad_pcb"]
     monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb[: pcb.index("\n  (table ")] + ")\n")
     real = os.chdir
 
-    def into_hw(path: object) -> None:
-        real(Path(str(path)) / "hw")
+    def into(path: object) -> None:
+        real(Path(str(path)) / where)
 
-    monkeypatch.setattr(os, "chdir", into_hw)
-    with pytest.raises(
-        SystemExit, match=r"write or refresh it with: uv run stackup-table b.kicad_pcb$"
-    ):
+    monkeypatch.setattr(os, "chdir", into)
+    with pytest.raises(SystemExit) as e:
         release(tmp_path, monkeypatch)
+    command = str(e.value).rsplit("write or refresh it with: ", 1)[1]
+    assert command.startswith("uv run --project ")
+    done = subprocess.run(
+        shlex.split(command), cwd=tmp_path / "repo" / where, capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stderr
+    written = parse((tmp_path / "repo/hw/b.kicad_pcb").read_text())
+    assert check_stackup(written).findings == []
 
 
 def test_help_without_a_config(

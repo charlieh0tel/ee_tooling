@@ -1159,6 +1159,21 @@ def recover(dest: Path, tagged: str | None) -> None:
     )
 
 
+def tool_command(tool: str, path: Path, root: Path) -> str:
+    """The command that runs one of ee_tooling's tools on path from the
+    current directory: with the uv project whose venv runs this one, when
+    there is one, so it works from any directory (from here when the
+    repository holds it, else absolute); the paths quoted for a shell."""
+    here = Path(os.getcwd())
+    project = Path(sys.prefix).parent
+    target = shlex.quote(os.path.relpath(path, here))
+    if not (project / "pyproject.toml").is_file():
+        return f"{tool} {target}"
+    inside = project.resolve().is_relative_to(root.resolve())
+    named = os.path.relpath(project, here) if inside else str(project)
+    return f"uv run --project {shlex.quote(named)} {tool} {target}"
+
+
 def tag_refused(tag: str, tagged: str, commit: str) -> str:
     """Why a rebuild stops on a tag on another commit, and the choices."""
     return (
@@ -1919,8 +1934,8 @@ def main() -> None:
             sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
         if table := check_stackup(pcb).findings:
             sys.exit(
-                "".join(f"{b.pcb.name}: {f.message}\n" for f in table) + "write or refresh it with:"
-                f" uv run stackup-table {shlex.quote(os.path.relpath(root / b.pcb))}"
+                "".join(f"{b.pcb.name}: {f.message}\n" for f in table)
+                + f"write or refresh it with: {tool_command('stackup-table', root / b.pcb, root)}"
             )
         errors, warnings = check_variants(b.variants, project_variants(settings, pcb, schematic))
         if errors:
