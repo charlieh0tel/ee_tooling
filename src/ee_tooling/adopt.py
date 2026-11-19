@@ -81,8 +81,8 @@ LFS_PULL = ("git", "lfs", "pull")
 # blobs at HEAD, and how to store them through Git LFS.
 NOT_IN_LFS = "not stored through Git LFS"
 RENORMALIZE = (
-    "with git-lfs's filters set ({adopt} --yes sets them), run git add"
-    " --renormalize . in a clean work tree, and commit"
+    "with git-lfs's filters set ({adopt} --yes sets them), run git add -A && git add"
+    " --renormalize . and commit"
 )
 # What a hand-adopted AGENTS.md has: the house style's import line.
 STYLE = "docs/kicad-style.md"
@@ -1088,8 +1088,8 @@ def warn_plain_at_head(root: Path, submodule: Path) -> None:
     print(
         f"{len(found)} files at HEAD of types Git LFS tracks are plain blobs ({shown}):"
         f" once .gitattributes is committed, {adopt_command(submodule)} --check fails on"
-        " them.  Commit them as pointers with adopt's files: after --yes, in a clean work"
-        " tree, git add --renormalize . and commit",
+        " them.  Commit them as pointers with adopt's files: after --yes, git add -A &&"
+        " git add --renormalize . and commit",
         file=sys.stderr,
     )
 

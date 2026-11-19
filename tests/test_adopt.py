@@ -1236,8 +1236,8 @@ def test_lfs_migration(
     assert "main.kicad_pcb" not in err
     assert err.endswith(
         "not stored through Git LFS: the files above; with git-lfs's filters set"
-        " (hardware/ee_tooling/adopt --yes sets them), run git add --renormalize . in a clean"
-        " work tree, and commit\n"
+        " (hardware/ee_tooling/adopt --yes sets them), run git add -A && git add --renormalize ."
+        " and commit\n"
     )
     git("-C", str(tmp_path), "add", "--renormalize", ".")
     commit(tmp_path, "renormalize")
@@ -1694,8 +1694,8 @@ def test_fsck_message() -> None:
     )
     assert adopt.fsck_message(found, SUBMODULE).endswith(
         "\nnot stored through Git LFS: the files above; with git-lfs's filters set"
-        " (hardware/ee_tooling/adopt --yes sets them), run git add --renormalize . in a clean"
-        " work tree, and commit"
+        " (hardware/ee_tooling/adopt --yes sets them), run git add -A && git add --renormalize ."
+        " and commit"
     )
     failed = "fatal: bad object HEAD"
     assert adopt.fsck_message(failed, SUBMODULE) == (
@@ -2125,7 +2125,7 @@ def test_plain_blobs_at_head_said_before_the_commit(
         "2 files at HEAD of types Git LFS tracks are plain blobs (docs/U1.PDF,"
         " production/1/b.zip): once .gitattributes is committed,"
         " hardware/ee_tooling/adopt --check fails on them.  Commit them as pointers with"
-        " adopt's files: after --yes, in a clean work tree, git add --renormalize . and commit\n"
+        " adopt's files: after --yes, git add -A && git add --renormalize . and commit\n"
     ) in capsys.readouterr().err
 
 
@@ -2289,3 +2289,26 @@ def test_board_file_linked_out_of_the_repository_refused(tmp_path: Path) -> None
         ValueError, match=r"hardware/main/main.kicad_pro is outside the repository: adopt edits"
     ):
         plan(layout)
+
+
+@needs_lfs
+def test_documented_upgrade_of_a_v0_2_2_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """jlcpcb.toml, the old skill and a plain zip committed, as a v0.2.2
+    board repository has them: adopt --yes, then the documented
+    `git add -A && git add --renormalize .` and a commit; --check passes."""
+    layout = adopted(tmp_path, "main")
+    (tmp_path / "production/1").mkdir(parents=True)
+    (tmp_path / "production/1/b.zip").write_text("PK zip")
+    commit(tmp_path, "v0.2.2 board", ".")
+    assert adopt_main(layout, monkeypatch, capsys, "--yes")[0] is None
+    assert not (tmp_path / "jlcpcb.toml").exists()
+    alone = subprocess.run(
+        ["git", "add", "--renormalize", "."], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert alone.returncode == 128 and "unable to stat" in alone.stderr
+    subprocess.run("git add -A && git add --renormalize .", shell=True, cwd=tmp_path, check=True)
+    git("-C", str(tmp_path), "commit", "-q", "--no-verify", "-m", "ee_tooling 0.4.0")
+    code, err = adopt_main(layout, monkeypatch, capsys, "--check")
+    assert code == 0, err

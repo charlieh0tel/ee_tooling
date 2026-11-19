@@ -296,8 +296,10 @@ plain, `*.png filter=lfs diff=lfs merge=lfs -text` adds a type.  A
 `--check` runs `git lfs fsck --pointers HEAD`: a file of a tracked
 type stored at HEAD as a plain blob, not a pointer, fails it, named in
 git-lfs's words ("should have been a pointer but was not"), with the
-fix: with git-lfs's filters set, `git add --renormalize .` in a clean
-work tree (it stages every tracked file's changes), and a commit.  When
+fix: with git-lfs's filters set, `git add -A && git add --renormalize
+.` and a commit (`git add -A` first: after `--yes` moved or removed a
+file, `--renormalize` alone fails, "unable to stat"; together they
+stage every change in the work tree).  When
 fsck fails otherwise (its output naming no file: a damaged repository,
 say), `--check` says that fsck failed, with its error, and no fix.  It
 examines HEAD's tree alone: history and uncommitted files pass, and it
@@ -322,9 +324,8 @@ first two steps on each machine, the third once:
 1. Install git-lfs (the distribution's `git-lfs` package).
 2. `hardware/ee_tooling/adopt --yes`: the section, the hook, the
    filters for this clone, and `git lfs pull`.
-3. In a clean work tree but for `adopt`'s files: `git add
-   --renormalize .`, then commit `adopt`'s files and the renormalized
-   ones together, and push.
+3. `git add -A && git add --renormalize .`, then commit `adopt`'s files
+   and the renormalized ones together, and push.
 
 The commit stores pointers from then on; older commits keep their
 blobs, and the repository does not shrink.  Shrinking it rewrites
@@ -394,8 +395,9 @@ hardware/ee_tooling/adopt --yes
 ```
 
 and commit the new pointer with any files it rewrote, any files it
-named as plain blobs renormalized (`git add --renormalize .`, Git LFS
-above), and `hardware/uv.lock` if it changed, in one commit.  A bump
+named as plain blobs renormalized (`git add -A && git add --renormalize
+.`, Git LFS above), and `hardware/uv.lock` if it changed, in one
+commit.  A bump
 across breaking changes takes the steps of "Upgrading a board
 repository" below.  `hardware/uv.lock` records the
 submodule's version and dependencies, so a bump that changes either
@@ -423,8 +425,10 @@ project at the repository root, `ee_tooling/` stands for
    blobs at HEAD, library submodules' pointers, lines dropped from the
    rules section).
 4. `hardware/ee_tooling/adopt --yes`.
-5. `git add --renormalize .` when step 3 or 4 named plain blobs, and run
-   the commands it gave for each library submodule's pointers.
+5. `git add -A && git add --renormalize .` (stages everything `--yes`
+   changed, moved or removed, and stores the files step 3 or 4 named as
+   plain blobs as pointers), and run the commands it gave for each
+   library submodule's pointers.
 6. In `hardware/`: `uv lock` (or any `uv run`), so `hardware/uv.lock`
    records the new ee_tooling.
 7. Remove any hand copy of the profile's rules below the end marker of
