@@ -11,6 +11,7 @@ ee_tooling renamed (jlcpcb.toml, the release's skill).
 
 import argparse
 import codecs
+import difflib
 import fnmatch
 import importlib.resources
 import json
@@ -114,11 +115,11 @@ BOM = "\ufeff"
 
 
 def read(path: Path) -> str:
-    """A file's text, without a leading UTF-8 byte order mark, its line
-    endings \n (write restores both); ValueError naming it if it is not
-    UTF-8."""
+    """A file's text, without a leading UTF-8 byte order mark, each \r\n
+    line ending \n (write restores both; a lone \r is kept as it is);
+    ValueError naming it if it is not UTF-8."""
     try:
-        return path.read_text(encoding="utf-8-sig")
+        return path.read_text(encoding="utf-8-sig", newline="").replace("\r\n", "\n")
     except UnicodeDecodeError as e:
         raise ValueError(f"{path}: not UTF-8 (byte {e.start}: {e.reason})") from e
 
@@ -802,7 +803,7 @@ def marked_text(existing: str | None, block: str, markers: Markers) -> str:
     gets one blank line before it).  ValueError, from marked_span, if the
     markers are not where they belong."""
     section = f"{markers.begin}\n{block.rstrip()}\n{markers.end}\n"
-    if existing is None:
+    if existing is None or existing == "":
         return section
     span = marked_span(existing, markers)
     if span is not None:
@@ -1270,16 +1271,28 @@ def describe(step: Step, root: Path) -> str:
 
 def in_style(target: Path, text: str) -> str:
     """text, with \n line endings and no byte order mark, as target has
-    its own: its first line's line ending (\r\n in a checkout that
-    converts them) and a leading UTF-8 byte order mark, if it has one; text
-    as it is for a file not there yet."""
+    its own: each line target had keeps its own line ending (\r\n or
+    \n), a new line takes target's more common one (\n in a tie or an
+    empty file), a lone \r is left as it is, and a leading UTF-8 byte
+    order mark stays first; text as it is for a file not there yet."""
     if not target.exists():
         return text
     raw = target.read_bytes()
-    first = raw.find(b"\n")
-    if first > 0 and raw[first - 1 : first] == b"\r":
-        text = text.replace("\n", "\r\n")
-    return BOM + text if raw.startswith(codecs.BOM_UTF8) else text
+    old = raw.removeprefix(codecs.BOM_UTF8).decode("utf-8", errors="replace").split("\n")
+    endings = ["\r\n" if line.endswith("\r") else "\n" for line in old[:-1]]
+    contents = [line.removesuffix("\r") for line in old[:-1]] + old[-1:]
+    common = "\r\n" if endings.count("\r\n") > endings.count("\n") else "\n"
+    new = text.split("\n")
+    chosen = [common] * (len(new) - 1)
+    # A line target had, matched by content, keeps its ending.
+    match = difflib.SequenceMatcher(None, contents, new, autojunk=False)
+    for block in match.get_matching_blocks():
+        for k in range(block.size):
+            i_old, i_new = block.a + k, block.b + k
+            if i_old < len(endings) and i_new < len(chosen):
+                chosen[i_new] = endings[i_old]
+    out = "".join(line + ending for line, ending in zip(new[:-1], chosen, strict=True)) + new[-1]
+    return BOM + out if raw.startswith(codecs.BOM_UTF8) else out
 
 
 def write(target: Path, text: str) -> None:

@@ -93,10 +93,12 @@ belongs, say) stops it, naming it, before anything is done.  A file `adopt` read
 before anything is done; a Markdown file in a skill it moves is left as
 it is, named on stderr.
 
-A file `adopt` edits or rewrites keeps its own line endings (its first
-line's: `\r\n` in a checkout that converts them) and a leading UTF-8
-byte order mark, which stays first (before `.gitattributes`'s section,
-say); a new file is written with `\n` and no mark.
+A file `adopt` edits or rewrites keeps its line endings: each line it
+had keeps its own (`\r\n` or `\n`), a line it adds takes the file's
+more common one (`\n` in a tie or an empty file), and a lone `\r`
+inside a line is left as it is.  A leading UTF-8 byte order mark stays
+first (before `.gitattributes`'s section, say).  A new file is written
+with `\n` and no mark; an empty `AGENTS.md` gets just the section.
 
 `--yes` checks that it can write every file it writes (a read-only
 `.kicad_pro`, say) before it does anything, and stops naming the first

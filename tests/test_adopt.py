@@ -2436,3 +2436,37 @@ def test_leftover_in_the_old_skill_removed_before_the_move(tmp_path: Path) -> No
     assert new.is_dir() and not (tmp_path / ".claude/skills/jlcpcb-release").exists()
     assert not (new / left.name).exists()
     assert stale(layout) == []
+
+
+def test_in_style_keeps_each_line_ending(tmp_path: Path) -> None:
+    """Each line the file had keeps its own ending; a new one takes the
+    file's more common; a lone CR is left; the mark stays first."""
+    target = tmp_path / "f"
+    target.write_bytes(b"\xef\xbb\xbfa\r\nb\nc\r\nd\re\r\n")
+    text = adopt.read(target)
+    assert text == "a\nb\nc\nd\re\n"
+    out = adopt.in_style(target, "new\na\nb\nc\nd\re\n")
+    assert out.encode() == b"\xef\xbb\xbfnew\r\na\r\nb\nc\r\nd\re\r\n"
+    target.write_bytes(b"x\ny\n")
+    assert adopt.in_style(target, "x\nz\ny\n") == "x\nz\ny\n"
+    target.write_bytes(b"")
+    assert adopt.in_style(target, "s\n") == "s\n"
+
+
+def test_empty_agents_gets_just_the_section(tmp_path: Path) -> None:
+    layout = repository(tmp_path, "main")
+    (tmp_path / "AGENTS.md").write_text("")
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    assert (tmp_path / "AGENTS.md").read_text().startswith(AGENTS_BEGIN)
+
+
+def test_mixed_line_endings_kept(tmp_path: Path) -> None:
+    """.gitattributes with mixed endings and a lone CR in a line: the
+    project's lines as they were, byte for byte; then nothing to do."""
+    layout = repository(tmp_path, "main")
+    own = b"*.png -text\r\n*.jpg -text\n# a\rb\r\n"
+    (tmp_path / ".gitattributes").write_bytes(own)
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    raw = (tmp_path / ".gitattributes").read_bytes()
+    assert raw.endswith(b"follow and win\r\n" + own)
+    assert Path(".gitattributes") not in stale(layout)
