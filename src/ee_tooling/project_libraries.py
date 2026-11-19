@@ -36,7 +36,9 @@ EMBEDDED = "kicad-embed://"
 class Libraries:
     """What a project's library paths resolve to."""
 
-    inside: list[Path]  # each inside the repository, from its root, once
+    inside: list[
+        Path
+    ]  # each inside the repository, from its root, once; through a link, as written too
     outside: list[str]  # each path as written that leads outside it or is unknown
     stock: list[str]  # each path as written under a KiCad install variable
     unresolved: list[str]  # a relative 3D model path found nowhere: its footprint and path
@@ -128,6 +130,10 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
         # Links followed: a link inside the repository may lead out of it.
         resolved = written.resolve()
         if resolved.is_relative_to(top):
+            # As written too, when a link leads there: the link is an input.
+            plain = Path(os.path.normpath(written))
+            if plain != resolved and plain.is_relative_to(top):
+                inside[plain.relative_to(top)] = None
             inside[resolved.relative_to(top)] = None
         else:
             outside[path] = None

@@ -2798,28 +2798,51 @@ def test_uncommitted_source_in_a_submodule(tmp_path: Path, monkeypatch: pytest.M
     rebuild_refused(monkeypatch, "libs/shared")
 
 
-def test_uncommitted_through_a_link(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A source that is a link inside the repository: its target's change
-    refused; a link out of the repository refused as such."""
+@pytest.mark.parametrize("source", ["docs/linked", "linked/notes.txt"])
+def test_release_refuses_a_source_through_a_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """A source that is, or goes through, a link: refused, naming it (the
+    tgz would hold the bare link)."""
     monkeypatch.setitem(FIXTURE, "shared/notes.txt", "notes\n")
-    root, _ = release(tmp_path, monkeypatch)
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', f'sources = ["{source}"]')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    root = tmp_path / "repo"
+    (root / "docs").mkdir(parents=True)
     (root / "docs/linked").symlink_to(root / "shared")
-    git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "link")
-    (root / "fab.toml").write_text(
-        (root / "fab.toml").read_text().replace('sources = ["docs"]', 'sources = ["docs/linked"]')
+    (root / "linked").symlink_to(root / "shared")
+    with pytest.raises(SystemExit, match=r"^fab.toml: source .* goes through the link"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
+def test_uncommitted_library_through_a_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A library named through a link: a change to its target refused, and
+    the link retargeted refused; a link out of the repository refused."""
+    monkeypatch.setitem(FIXTURE, "libs/a/x.pretty/R.kicad_mod", "(footprint A)\n")
+    monkeypatch.setitem(FIXTURE, "libs/b/x.pretty/R.kicad_mod", "(footprint B)\n")
+    monkeypatch.setitem(
+        FIXTURE,
+        "hw/fp-lib-table",
+        '(fp_lib_table (lib (name "x")(uri "${KIPRJMOD}/../lib/x.pretty")))\n',
     )
-    git(root, "commit", "-q", "-am", "linked source")
-    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
-    main()
-    (root / "shared/notes.txt").write_text("changed\n")
-    rebuild_refused(monkeypatch, "shared/notes.txt")
-    git(root, "checkout", "--", "shared")
-    (root / "docs/linked").unlink()
-    (root / "docs/linked").symlink_to(tmp_path)
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    (root / "lib").symlink_to("libs/a")
+    release(tmp_path, monkeypatch)
+    (root / "libs/a/x.pretty/R.kicad_mod").write_text("(footprint A2)\n")
+    rebuild_refused(monkeypatch, "libs/a/x.pretty")
+    git(root, "checkout", "--", "libs")
+    (root / "lib").unlink()
+    (root / "lib").symlink_to("libs/b")
+    rebuild_refused(monkeypatch, re.escape(" M lib"))
+    (root / "lib").unlink()
+    (root / "lib").symlink_to(tmp_path)
     git(root, "commit", "-q", "-am", "out")
     monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
-    with pytest.raises(SystemExit, match=r"^docs/linked leads out of the repository \(a link\)"):
+    with pytest.raises(SystemExit, match=r"libraries outside the repository"):
         main()
 
 

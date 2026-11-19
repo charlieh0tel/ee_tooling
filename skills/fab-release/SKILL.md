@@ -60,7 +60,9 @@ directory is allowed.
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  There is no `copper` key: the copper layers, top to
 bottom, are the stackup's.  Each `sources` path is inside the repository: one that
-is absolute or leads out of it (`..`) is an error naming it.  A
+is absolute or leads out of it (`..`) is an error naming it, and one
+that is, or goes through, a symbolic link is refused, naming the link
+(the tgz would hold the bare link): name the link's target.  A
 `fab.toml` that does not parse, a board name not in it, a file it names
 that is not there, or a `[board.<profile>]` the profile refuses stops
 the release, naming it.

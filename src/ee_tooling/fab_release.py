@@ -445,6 +445,20 @@ def production_errors(boards: Iterable[Board]) -> list[str]:
     )
 
 
+def through_link(root: Path, path: Path) -> Path | None:
+    """The first of a path's leading parts, from the root, that is a
+    symbolic link, the path itself too; None if none."""
+    parts = normal(path).parts
+    return next(
+        (
+            Path(*parts[:i])
+            for i in range(1, len(parts) + 1)
+            if (root / Path(*parts[:i])).is_symlink()
+        ),
+        None,
+    )
+
+
 def located(root: Path, path: Path) -> Path | None:
     """A path from the root with its links followed, from the root again;
     None if it leads out of the repository."""
@@ -563,6 +577,8 @@ def tracked(root: Path, paths: Iterable[Path], productions: Iterable[Path]) -> l
     left_out = [q for p in productions for q in (normal(p), located(root, p)) if q is not None]
     out: dict[Path, None] = {}
     for p in paths:
+        if through_link(root, p) not in (None, normal(p)):
+            continue  # its target is among the paths too
         repo = repository_of(normal(p), modules)
         rel = normal(p).relative_to(repo)
         listed = git_out(
@@ -1266,7 +1282,9 @@ class Release:
             target = located(self.root, p)
             if target is None:
                 sys.exit(f"{p} leads out of the repository (a link): the release reads it")
-            for q in (normal(p), target):
+            # A path through a link is asked as the link (git refuses a
+            # path beyond one), and as its target.
+            for q in (through_link(self.root, p) or normal(p), target):
                 asked[q] = asked.get(q, False) or by_name
         left_out = {
             q for p in productions for q in (normal(p), located(self.root, p)) if q is not None
@@ -1680,6 +1698,10 @@ def main() -> None:
     if name not in boards:
         sys.exit(f"{CONFIG} has no board {name!r}: one of {', '.join(boards)}")
     b = boards[name]
+    # A source through a link would be archived as the bare link.
+    for s in b.sources:
+        if link := through_link(root, s):
+            sys.exit(f"{CONFIG}: source {str(s)!r} goes through the link {link}: name its target")
     missing = [str(s) for s in (b.pcb, b.sch, *b.sources) if not (root / s).exists()]
     if missing:
         sys.exit(f"{CONFIG} names files that are not there: {', '.join(missing)}")

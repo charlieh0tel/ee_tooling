@@ -145,17 +145,24 @@ require_lcsc = true              # default false
 - What the release reads: `fab.toml`, the board's directory, the
   project's files, its sheet files, `sources`, each library path its
   tables and 3D models name inside the repository, and the ee_tooling
-  checkout it runs from when the repository holds it (its `parts.toml`,
-  its rules).  Every production directory is left out.
-- `git status --porcelain --ignore-submodules=none` over those paths,
-  literal pathspecs, each path as written and with its links followed; a
-  path that is a link out of the repository is refused.  A path in a
-  submodule counts as the submodule (git status names a submodule,
-  never a path inside it).  Each submodule among them, at any depth,
-  adds its own `git status`, whatever its or its parent's `ignore`
-  setting.  A file the release reads that git ignores counts as
-  uncommitted.  Every git call of the check stops the release on a
-  failure.
+  checkout it runs from when the repository holds it as a submodule or
+  tracked files (its `parts.toml`, its rules; a package installed in a
+  venv is not).  Every production directory is left out, as written and
+  through a link.
+- `git status --porcelain -z --untracked-files=all
+  --ignore-submodules=none` over those paths, in the repository that
+  holds each, literal pathspecs, git's output options set whatever the
+  user's configuration; each path as written (a path through a link as
+  the link: git refuses a path beyond one) and with its links followed;
+  a path that is a link out of the repository is refused.  Each
+  submodule holding a path, at every level, is asked of its parent by
+  its gitlink (moved, or with modified or untracked content); each under
+  a path asked also by its own status; whatever any `ignore` setting.
+  An untracked file under the board's directory or a source counts; an
+  ignored one there does not (the tgz holds tracked files only); an
+  ignored file the release reads by name (`fab.toml`, the project's own
+  files, a sheet, a library table, a library) counts.  Every git call
+  of the check stops the release on a failure.
 - HEAD's full hash is read once, at the check; COMMIT, the tag (`git
   tag -a NAME -m MSG <hash>`) and the printed line name it.  After the
   last export, before the old release is replaced, HEAD and the check
@@ -189,11 +196,14 @@ require_lcsc = true              # default false
 
 ### The source tgz and the libraries
 
-- The source tgz: the project's `.kicad_pcb`, `.kicad_sch`,
+- The source tgz: the files git tracks (`git ls-files -z
+  --recurse-submodules`) of the project's `.kicad_pcb`, `.kicad_sch`,
   `.kicad_pro`, `.kicad_dru`, `NAME.pretty`, `NAME.3dshapes`,
-  `fp-lib-table` and `sym-lib-table` that exist, every sheet file of
-  the schematic's hierarchy, `sources`, the PDFs and `COMMIT`; each file
-  once; never `.git` or a production directory under a source.
+  `fp-lib-table` and `sym-lib-table`, every sheet file of the
+  schematic's hierarchy, and `sources`; the PDFs and `COMMIT`; each file
+  once; never `.git`, a production directory, or an untracked or
+  ignored file under a source.  A `sources` path that is, or goes
+  through, a link is refused (it would be archived as the bare link).
 - A library a board reads lives inside the repository, normally a git
   submodule (`docs/kicad-style.md`, Files); a clone beside the
   repository is not supported.  Besides the project's own `NAME.pretty`
@@ -602,7 +612,9 @@ Breaking changes (`docs/releasing.md`: a board repository must act):
    two `[[board]]` of one name are an error.
 6. A `sources` path outside the repository (absolute, or leading out of
    it with `..`) is an error naming it.
-7. A `production` outside the repository, the same as or holding a
+7. A `sources` path that is, or goes through, a symbolic link is refused,
+   naming the link.
+8. A `production` outside the repository, the same as or holding a
    board's `directory` or a `sources` path, two boards' `production`
    the same or one inside the other, a `production` a link leads out of
    the repository, or two that a link makes one directory: an error
@@ -610,25 +622,25 @@ Breaking changes (`docs/releasing.md`: a board repository must act):
 
 ### adopt
 
-8. `adopt --yes` writes `fab.toml` (one board per project, or migrated
+9. `adopt --yes` writes `fab.toml` (one board per project, or migrated
    from `jlcpcb.toml`, which it removes when git holds it as it is;
    comments are not carried over), adds each missing `[board.fab]` key
    with the profile's house value, and moves
    `.claude/skills/jlcpcb-release/` to `.claude/skills/fab-release/`,
    renaming `jlcpcb-release` and `jlcpcb.toml` in its `.md` files.
-9. `adopt --yes` edits each board's `NAME.kicad_dru` (the profile's
-   rules between markers, the board's own after them) and
-   `NAME.kicad_pro` (Board Setup minimums raised, never lowered; ERC
-   severities from `erc_severities.json`, each kept where the board's is
-   stricter; the connection grid 50 mil).
-10. `adopt --check` also fails while `fab.toml` is missing and a KiCad
+10. `adopt --yes` edits each board's `NAME.kicad_dru` (the profile's
+    rules between markers, the board's own after them) and
+    `NAME.kicad_pro` (Board Setup minimums raised, never lowered; ERC
+    severities from `erc_severities.json`, each kept where the board's is
+    stricter; the connection grid 50 mil).
+11. `adopt --check` also fails while `fab.toml` is missing and a KiCad
     project is there ("missing"), a file is still to be migrated ("to be
     migrated"), a board's rules section is missing or stale, its Board
     Setup below the minimums or its ERC severities or connection grid
     differ ("to be updated"), a managed hook is not executable in the
     work tree or the index ("out of date"), or an interrupted write left
     a scratch file ("left over").
-11. `adopt`, every mode, stops before anything is done on: a symbolic
+12. `adopt`, every mode, stops before anything is done on: a symbolic
     link it would write, remove or rename through (but `AGENTS.md`,
     `.gitattributes` and a file it edits, linked to a regular file
     inside the repository), a link leaving the repository among them; a
@@ -645,104 +657,104 @@ Breaking changes (`docs/releasing.md`: a board repository must act):
 
 ### The release's checks
 
-12. A board with no stackup is refused (a warning before 0.4.0), as is
+13. A board with no stackup is refused (a warning before 0.4.0), as is
     a stackup with no copper layer.
-13. A board without a stackup table on User.Drawings matching its
+14. A board without a stackup table on User.Drawings matching its
     stackup (kicad-style-check's stackup table rules, waivers not
     honored) is refused.
-14. DRC runs on a scratch copy with the profile's current rules and
+15. DRC runs on a scratch copy with the profile's current rules and
     Board Setup raised to its minimums: a board clean before may not
     be.
-15. A board whose `.kicad_dru` kicad-cli does not parse (so DRC would
+16. A board whose `.kicad_dru` kicad-cli does not parse (so DRC would
     run with no custom rule) is refused.
-16. The uncommitted-sources check covers `fab.toml`, the board's
+17. The uncommitted-sources check covers `fab.toml`, the board's
     directory, its sheet files, `sources`, each library path inside the
     repository, the ee_tooling checkout when the repository holds it,
     every submodule among them at any depth whatever its `ignore`
     setting, and a file the release reads that git ignores; a path it
     reads that is a link out of the repository is refused.
-17. A library path (a project library table's, a 3D model's) outside
+18. A library path (a project library table's, a 3D model's) outside
     the repository, through a link out of it, under a variable other
     than `${KIPRJMOD}` and KiCad's stock library variables, in KiCad 5's
     `$(NAME)` form or under `~` is refused, naming each as written.
-18. A schematic sheet file that is not there, or is outside the
+19. A schematic sheet file that is not there, or is outside the
     repository, is refused, naming it and the sheet that names it.
-19. A title-block rev using a text variable the project does not define
+20. A title-block rev using a text variable the project does not define
     is refused; a rev (or `--date`) that makes the release directory
     more than one path component, or the tag not a git tag name
     (`Rev A`), is refused before anything runs.
-20. A part DNP in the schematic and fitted on the board, or the
+21. A part DNP in the schematic and fitted on the board, or the
     reverse, or whose Value or footprint differs between them, is
     refused, for the default build as for a variant's.
-21. A build from uncommitted sources (`--allow-dirty`) of a release
+22. A build from uncommitted sources (`--allow-dirty`) of a release
     whose tag exists is refused, `--retag` or not.
-22. `--force` stops on a release directory holding a file not the
+23. `--force` stops on a release directory holding a file not the
     board's (`NAME-REV-*`).
-23. A commit, or a change to what the release reads, during the build
+24. A commit, or a change to what the release reads, during the build
     stops it, nothing replaced; another run's building directory stops
     a run.
 
 ### Outputs and names
 
-24. Script `jlcpcb-release` is removed; `fab-release` replaces it, with
+25. Script `jlcpcb-release` is removed; `fab-release` replaces it, with
     no alias.
-25. Skill `skills/jlcpcb-release` is renamed `skills/fab-release`
+26. Skill `skills/jlcpcb-release` is renamed `skills/fab-release`
     (`SKILL.md`, and JLCPCB's steps in `jlcpcb.md`); a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt --yes` moves it).
-26. `NAME-REV-bom.csv` is the house BOM; JLCPCB's BOM is
+27. `NAME-REV-bom.csv` is the house BOM; JLCPCB's BOM is
     `NAME-REV-jlcpcb-bom.csv`.
-27. `NAME-REV-cpl.csv` is renamed `NAME-REV-jlcpcb-cpl.csv`.
-28. `NAME-REV-jlcpcb.zip` is renamed `NAME-REV-gerbers-jlcpcb.zip`, and
+28. `NAME-REV-cpl.csv` is renamed `NAME-REV-jlcpcb-cpl.csv`.
+29. `NAME-REV-jlcpcb.zip` is renamed `NAME-REV-gerbers-jlcpcb.zip`, and
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`;
     the board PDF gains a User.Drawings page.
-29. The fab notes take the IPC class, base material, Tg and electrical
+30. The fab notes take the IPC class, base material, Tg and electrical
     test from `[board.fab]` (the base material from the stackup's
     dielectrics before 0.4.0).
-30. The source tgz holds every sheet file of the schematic, and leaves
+31. The source tgz holds every sheet file of the schematic, and leaves
     out `.git` and every production directory; its `COMMIT` names the
     full hash.
-31. The tag's message is `NAME REV: fab release PRODUCTION/DATE-REV`
+32. The tag's message is `NAME REV: fab release PRODUCTION/DATE-REV`
     (`JLCPCB release` before 0.4.0).
-32. `rules/jlcpcb.kicad_dru` is in sections; JLCPCB's track width, via
+33. `rules/jlcpcb.kicad_dru` is in sections; JLCPCB's track width, via
     diameter, hole size, via annular ring and hole-to-hole minimums are
     Board Setup values in `rules/jlcpcb_board_setup.json`, not rules;
     the no-extra-cost via rules are removed.
-33. A release is built in the production directory's hidden
+34. A release is built in the production directory's hidden
     `.DATE-REV.building/`, and the old one is kept aside in
     `.DATE-REV.old/` until the tag is made.
 
 ### Git LFS (`docs/design/git-lfs.md`)
 
-34. `adopt` and `adopt --check` require git-lfs.
-35. `adopt --check` fails on a plain blob of an LFS-tracked type at
+35. `adopt` and `adopt --check` require git-lfs.
+36. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-36. `adopt --yes` writes a managed section at the top of
+37. `adopt --yes` writes a managed section at the top of
     `.gitattributes` and `.githooks/pre-push`; a board repository's own
     `pre-push` is replaced.
-37. A push without git-lfs is refused.
-38. The release refuses a board whose inputs hold an unfetched LFS
+38. A push without git-lfs is refused.
+39. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-39. A board repository's host must support Git LFS: a push to one that
+40. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 ### Python API
 
-40. `ee_tooling.jlcpcb_release` is removed.  `Board`, `Release`,
+41. `ee_tooling.jlcpcb_release` is removed.  `Board`, `Release`,
     `load_config`, `revision`, `TagPlan`, `tag_plan` and
     `repository_root` are in `ee_tooling.fab_release`; `CONFIG` is
     `"fab.toml"`; `Board` has no `copper` and has `profile`, `fab`,
     `options` and `variants`; `Release` takes the copper layers.
-41. `Parts` is renamed `Corrections`, in `ee_tooling.profiles.jlcpcb`
+42. `Parts` is renamed `Corrections`, in `ee_tooling.profiles.jlcpcb`
     with `jlcpcb_bom` and `jlcpcb_cpl` (taking `Part` and `Placement`
     rows), `BOM_HEADER` and `CPL_HEADER`; `write_csv`, `Part`,
     `Placement` and `GerberOptions` are in
     `ee_tooling.profiles.profile`.
-42. `fabrication.notes()` takes the board's `Fab`, its last argument;
+43. `fabrication.notes()` takes the board's `Fab`, its last argument;
     `fabrication.IPC_CLASS`, `TG`, `ELECTRICAL_TEST` and
     `BASE_MATERIAL` are removed.
-43. `stitch_kicad.point` is removed: `kicad_style_board.parse_point`.
+44. `stitch_kicad.point` is removed: `kicad_style_board.parse_point`.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" is "`fab.toml` key".
 
