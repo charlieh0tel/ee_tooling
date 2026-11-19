@@ -27,6 +27,23 @@ VERSION = "(version 1)"
 # A section heading of a profile's .kicad_dru: "# --- <name> ---", with
 # dashes to fill the line.
 SECTION = re.compile(r"^# --- (.+?) -+[ \t]*$", re.M)
+# The rules ee_tooling's rules files have had and no longer have (git log
+# -p -- src/ee_tooling/rules/): a board's hand copy of an older file keeps
+# them in force below the markers.
+RETIRED = frozenset(
+    {
+        "Differential pair coupled",
+        "JLCPCB hole size",
+        "JLCPCB hole to hole",
+        "JLCPCB small via hole at no extra cost",
+        "JLCPCB track width",
+        "JLCPCB via annular ring",
+        "JLCPCB via diameter",
+        "JLCPCB via hole at no extra cost",
+        "Mounting hole ring",
+        "No right-angle bends",
+    }
+)
 # A rule's name in a .kicad_dru.
 RULE_NAME = re.compile(r'^[ \t]*\(rule[ \t]+"((?:[^"\\]|\\.)*)"', re.M)
 
@@ -91,6 +108,12 @@ class Dru:
         the section."""
         names = set(RULE_NAME.findall(section))
         return [n for n in RULE_NAME.findall(self.own) if n in names]
+
+    def retired(self) -> list[str]:
+        """The names of the board's own rules that are rules ee_tooling's
+        rules files once had and no longer have (RETIRED): a copy of an
+        older file, in force and no longer wanted."""
+        return [n for n in RULE_NAME.findall(self.own) if n in RETIRED]
 
 
 def board_setup(rules: Rules) -> dict[str, Any]:
@@ -223,6 +246,7 @@ class Installed:
     stale: bool  # the board's .kicad_dru lacks the section, or has another
     raised: list[str]  # the Board Setup values raised, as raised() gives them
     copied: list[str]  # the board's own rules that copy the section's
+    retired: list[str]  # the board's own rules ee_tooling's files no longer have
 
 
 def install(
@@ -242,6 +266,7 @@ def install(
         found.section != section,
         changes,
         found.copied(section),
+        found.retired(),
     )
 
 
@@ -277,6 +302,18 @@ def erc_set(project: dict[str, Any], house: dict[str, Any]) -> tuple[dict[str, A
 
     walk(out, house, "")
     return out, changes
+
+
+def retired_message(path: str, names: list[str]) -> str:
+    """What to do about the board's own rules in path that ee_tooling's
+    rules files no longer have (Dru.retired)."""
+    one = len(names) == 1
+    return (
+        f"{path}: {len(names)} {'rule' if one else 'rules'} below ee_tooling's end marker"
+        f" {'is' if one else 'are'} retired from ee_tooling's rules and still in force:\n"
+        + "".join(f"  {n}\n" for n in names)
+        + f"remove {'this rule' if one else 'these rules'} from below the end marker in {path}"
+    )
 
 
 def copied_message(path: str, names: list[str]) -> str:

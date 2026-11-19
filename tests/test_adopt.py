@@ -2161,3 +2161,19 @@ def test_library_submodule_pointers_named_with_the_commands(
     plan(layout)
     assert "pointers, not fetched" not in capsys.readouterr().err
     assert library.root.exists()
+
+
+def test_retired_rules_below_the_marker_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    dru.write_text(
+        dru.read_text() + '(rule "JLCPCB via diameter"\n\t(constraint via_diameter (min 0.25mm)))\n'
+    )
+    capsys.readouterr()
+    plan(layout)
+    assert (
+        "hardware/main/main.kicad_dru: 1 rule below ee_tooling's end marker is retired from"
+        " ee_tooling's rules and still in force:\n  JLCPCB via diameter\n"
+    ) in capsys.readouterr().err

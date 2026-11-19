@@ -9,6 +9,7 @@ from ee_tooling.kicad_rules import (
     BEGIN,
     END,
     ERC_SETTINGS,
+    RULE_NAME,
     Dru,
     board_setup,
     copied_message,
@@ -19,6 +20,7 @@ from ee_tooling.kicad_rules import (
     installed,
     raised,
     resource,
+    retired_message,
     sections,
 )
 from ee_tooling.profiles.jlcpcb import Jlcpcb, Options
@@ -357,3 +359,26 @@ def test_raised_each_net_class() -> None:
     assert [c.get("microvia_diameter") for c in out["net_settings"]["classes"]] == [0.25, 0.4, None]
     assert changes == ["net_settings.classes[Default].microvia_diameter: 0.2 -> 0.25"]
     assert raised({}, least) == ({"net_settings": {}}, [])
+
+
+def test_retired_rules_named() -> None:
+    """A hand copy of an older rules file below the end marker: its rules
+    ee_tooling no longer has named, in force, to be removed."""
+    own = (
+        '(rule "JLCPCB track width"\n\t(constraint track_width (min 0.1mm)))\n'
+        '(rule "JLCPCB via hole at no extra cost"\n\t(constraint hole_size (min 0.3mm)))\n'
+        '(rule "Mine"\n\t(constraint track_width (min 0.2mm)))\n'
+    )
+    found = install(f"(version 1)\n{own}", {}, SECTION, {})
+    assert found.retired == ["JLCPCB track width", "JLCPCB via hole at no extra cost"]
+    assert retired_message("hw/b.kicad_dru", found.retired) == (
+        "hw/b.kicad_dru: 2 rules below ee_tooling's end marker are retired from ee_tooling's"
+        " rules and still in force:\n  JLCPCB track width\n  JLCPCB via hole at no extra cost\n"
+        "remove these rules from below the end marker in hw/b.kicad_dru"
+    )
+
+
+def test_retired_not_current() -> None:
+    """No rule the profile has now is among the retired."""
+    current = set(RULE_NAME.findall(resource(Jlcpcb.rules.dru)))
+    assert current and not current & kicad_rules.RETIRED

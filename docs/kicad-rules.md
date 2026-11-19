@@ -80,7 +80,13 @@ overwrites the change.
    stderr, with each such rule's name, as they go.
    A rule of the board's own with the name of one of the section's (a
    copy made by hand) is named on stderr, and left: it wins over the
-   section's.  Markers other than one begin line, then one end line (an
+   section's.  So is a rule of the board's own with the name of one
+   ee_tooling's rules once had and no longer has (a hand copy of an
+   older rules file: `JLCPCB track width`, `JLCPCB via diameter`,
+   `JLCPCB hole size`, `JLCPCB via annular ring`, `JLCPCB hole to hole`,
+   the two `via hole at no extra cost` rules, `Mounting hole ring`, `No
+   right-angle bends`, `Differential pair coupled`): retired, still in
+   force; remove it.  Markers other than one begin line, then one end line (an
    end before the begin, two of either) stop `adopt` ("install the rules
    by hand") and `fab-release`, naming the file: fix them by hand.
 2. `NAME.kicad_pro`: each of `board.design_settings.rules` raised to at

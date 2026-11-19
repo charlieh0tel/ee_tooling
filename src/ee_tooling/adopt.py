@@ -52,6 +52,7 @@ from ee_tooling.kicad_rules import (
     installed,
     raised,
     resource,
+    retired_message,
 )
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.jlcpcb import Jlcpcb
@@ -717,6 +718,8 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             raise ValueError(f"[[board]] {name!r}: the rules are not where they belong; {by_hand}")
         if found.copied:
             print(copied_message(dru.as_posix(), found.copied), file=sys.stderr)
+        if found.retired:
+            print(retired_message(dru.as_posix(), found.retired), file=sys.stderr)
         close = "close the board in KiCad first"
         count, names = dropped(Dru.split(existing).section, found.section)
         if found.stale and count:
