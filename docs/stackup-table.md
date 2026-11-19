@@ -10,6 +10,12 @@ the result (`docs/kicad-style-check.md`, Stackup table).
 uv run stackup-table NAME/NAME.kicad_pcb
 ```
 
+Close the board in KiCad first: KiCad does not reload a board changed
+under it, and saving from KiCad overwrites the change.  While KiCad's
+lock file for the board (`~NAME.kicad_pcb.lck` beside it) is there,
+`stackup-table` writes nothing and exits 2, naming it; KiCad leaves it
+behind when it crashes: remove it when KiCad is not running.
+
 from `hardware/` in a board repository (the repository root with the
 KiCad project there: `uv run stackup-table NAME.kicad_pcb`).
 

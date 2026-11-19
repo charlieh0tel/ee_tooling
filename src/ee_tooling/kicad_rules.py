@@ -13,6 +13,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ee_tooling.profiles.profile import Rules
@@ -47,6 +48,26 @@ RETIRED = frozenset(
 )
 # A rule's name in a .kicad_dru.
 RULE_NAME = re.compile(r'^[ \t]*\(rule[ \t]+"((?:[^"\\]|\\.)*)"', re.M)
+
+
+# KiCad's lock file for a file it has open: ~NAME.EXT.lck beside it
+# (libkicommon's "~*.lck").
+LOCK = "~{}.lck"
+
+
+def lock_of(path: Path) -> Path | None:
+    """KiCad's lock file for path, if it is there."""
+    lock = path.with_name(LOCK.format(path.name))
+    return lock if lock.exists() else None
+
+
+def lock_message(lock: str, what: str) -> str:
+    """Why nothing is written while lock is there: KiCad has what open,
+    or crashed with it open and left the lock behind."""
+    return (
+        f"{lock}: KiCad has {what} open, which it would overwrite; close it, then rerun.  KiCad"
+        " leaves this lock file behind when it crashes: remove it when KiCad is not running"
+    )
 
 
 def resource(path: str) -> str:

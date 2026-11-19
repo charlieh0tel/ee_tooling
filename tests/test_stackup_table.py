@@ -437,3 +437,27 @@ def test_linked_board_written_through(tmp_path: Path, monkeypatch: pytest.Monkey
     assert link.is_symlink()
     assert real.read_text() != board()
     assert "(table" in real.read_text()
+
+
+def test_refused_while_kicad_has_the_board_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """KiCad's lock file beside the board: nothing written, the lock named,
+    and how to clear one a crash left."""
+    pcb = tmp_path / "b.kicad_pcb"
+    pcb.write_text(board())
+    lock = tmp_path / "~b.kicad_pcb.lck"
+    lock.write_text("{}")
+    monkeypatch.setattr(sys, "argv", ["stackup-table", str(pcb)])
+    with pytest.raises(SystemExit) as e:
+        stackup_table_main()
+    assert e.value.code == 2
+    assert capsys.readouterr().err == (
+        f"{lock}: KiCad has b.kicad_pcb open, which it would overwrite; close it, then rerun."
+        "  KiCad leaves this lock file behind when it crashes: remove it when KiCad is not"
+        " running\n"
+    )
+    assert pcb.read_text() == board()
+    lock.unlink()
+    stackup_table_main()
+    assert pcb.read_text() != board()

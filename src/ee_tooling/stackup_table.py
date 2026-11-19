@@ -40,6 +40,7 @@ from ee_tooling.fabrication import (
     mm,
     stackup,
 )
+from ee_tooling.kicad_rules import lock_message, lock_of
 from ee_tooling.kicad_style_board import Point, edge, parse_point, where
 from ee_tooling.kicad_style_stackup import (
     EPSILON_R,
@@ -488,6 +489,8 @@ def main() -> None:
             print(f"{a.board}: {change}")
         sys.exit(1 if result.changes else 0)
     out = a.output or a.board
+    if (result.changes or out != a.board) and (lock := lock_of(out)) is not None:
+        fail(lock_message(str(lock), out.name))
     if result.changes or out != a.board:
         try:
             write_bytes(out, result.text.encode("utf-8"))

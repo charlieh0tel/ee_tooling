@@ -2025,7 +2025,10 @@ def test_refused_while_kicad_has_the_board_open(tmp_path: Path, suffix: str) -> 
     for run in (plan, stale):
         with pytest.raises(
             ValueError,
-            match=rf"^hardware/main/~main{re.escape(suffix)}\.lck: KiCad has main open; close it",
+            match=rf"^hardware/main/~main{re.escape(suffix)}\.lck: KiCad has main's main.kicad_pro,"
+            r" main.kicad_dru open, which it would overwrite; close it, then rerun\.  KiCad"
+            r" leaves this lock file behind when it crashes: remove it when KiCad is not"
+            r" running$",
         ):
             run(layout)
     lock.unlink()
