@@ -419,29 +419,38 @@ project at the repository root, `ee_tooling/` stands for
    there.
 2. Install git-lfs (the distribution's `git-lfs` package), on every
    machine that clones, commits or pushes.
-3. `git submodule update --remote hardware/ee_tooling`, then
-   `hardware/ee_tooling/adopt` (the dry run): read what it would do and
+3. Bump the submodule to the release: `git -C hardware/ee_tooling fetch
+   --tags && git -C hardware/ee_tooling checkout <the release's tag>`
+   (or `git submodule update --remote hardware/ee_tooling` for `main`).
+4. `hardware/ee_tooling/adopt` (the dry run): read what it would do and
    its warnings (hooks that stop running, a `pre-push` replaced, plain
-   blobs at HEAD, library submodules' pointers, lines dropped from the
-   rules section).
-4. `hardware/ee_tooling/adopt --yes`.
-5. `git add -A && git add --renormalize .` (stages everything `--yes`
-   changed, moved or removed, and stores the files step 3 or 4 named as
-   plain blobs as pointers), and run the commands it gave for each
-   library submodule's pointers.
-6. In `hardware/`: `uv lock` (or any `uv run`), so `hardware/uv.lock`
+   blobs at HEAD, library submodules' pointers, rules dropped from or
+   retired below the rules section).
+5. `hardware/ee_tooling/adopt --yes`.
+6. Run the commands it gave for each library submodule's pointers.
+7. In `hardware/`: `uv lock` (or any `uv run`), so `hardware/uv.lock`
    records the new ee_tooling.
-7. Remove any hand copy of the profile's rules below the end marker of
-   each board's `.kicad_dru` (`adopt` names them); they win over the
-   section's.
-8. Open each board in KiCad: refill the zones and run DRC and ERC.
-   Board Setup is raised to the profile's minimums and its rules apply,
-   and the release fails on a warning as on an error
-   (`--exit-code-violations`).  Fix what they find; draw or refresh the
-   stackup table (`stackup-table`).
-9. Commit it all in one commit (the submodule pointer, `adopt`'s files,
-   the renormalized files, `uv.lock`, the boards), and push: the
-   `pre-push` hook uploads the Git LFS objects.
+8. Remove from below the end marker of each board's `.kicad_dru` every
+   rule `adopt` named: a hand copy of the profile's rules, which wins
+   over the section's, and a retired rule (`JLCPCB track width`,
+   `JLCPCB via diameter`, `JLCPCB hole size`, `JLCPCB via annular
+   ring`, `JLCPCB hole to hole`, the two `via hole at no extra cost`
+   rules, among others), which stays in force.
+9. Move each library outside the repository in, as below.
+10. Open each board in KiCad: refill the zones and run DRC and ERC.
+    Board Setup is raised to the profile's minimums and its rules apply,
+    and the release fails on a warning as on an error
+    (`--exit-code-violations`).  Fix what they find; draw or refresh the
+    stackup table (`stackup-table`); close KiCad again.
+11. `git add -A && git add --renormalize .`: every change `--yes` and
+    the steps above made, moved or removed, and the files of tracked
+    types stored as pointers.
+12. One commit of it all (the submodule pointer, `adopt`'s files, the
+    renormalized files, `uv.lock`, the boards, the libraries'
+    submodules), then push each library's repository before the board's,
+    then the board's: the `pre-push` hook uploads the Git LFS objects.
+13. On every other clone: install git-lfs, `git pull`, `git submodule
+    update --init --recursive`, then `hardware/ee_tooling/adopt --yes`.
 
 `adopt --check` passing means the files `adopt` manages are current and
 nothing at HEAD is a plain blob of a tracked type; it does not mean a
@@ -450,17 +459,24 @@ the libraries and the committed sources besides.
 
 ### Moving a library into the repository
 
-`fab-release` refuses a library outside the repository.  To move one in,
-as a submodule:
+`fab-release` refuses a library outside the repository.  To move one
+in, as a submodule:
 
-1. Give the library a repository of its own (`git init`, or use the
-   one it has); if it holds 3D models or PDFs, copy the lines of
-   `hardware/ee_tooling/src/ee_tooling/templates/gitattributes` into its
-   `.gitattributes`, commit, and push it to its host.
-2. In the board repository: `git submodule add URL hardware/LIB`.
-3. Repoint the board's `fp-lib-table` and `sym-lib-table`, and its 3D
-   model paths, at it by a `${KIPRJMOD}`-relative path
-   (`${KIPRJMOD}/../LIB/...`; `docs/kicad-style.md`, Files).
-4. List it in the board's `sources` in `fab.toml` if the source tgz is
-   to hold it.
-5. Commit, and check with `fab-release` as above.
+1. Give the library a repository of its own (`git init`, or use the one
+   it has), on a host with Git LFS.
+2. If it holds 3D models or PDFs: copy the lines of
+   `hardware/ee_tooling/src/ee_tooling/templates/gitattributes` into
+   its `.gitattributes`, then, in the library's repository, `git
+   lfs install --local --skip-repo`, `git add -A && git add
+   --renormalize .`, commit, and push.  Without the renormalize its
+   files show as modified in every clone and `fab-release` refuses.
+3. In the board repository: `git submodule add URL hardware/LIB`.
+4. Repoint the board's `fp-lib-table` and `sym-lib-table` at it by a
+   `${KIPRJMOD}`-relative path (`${KIPRJMOD}/../LIB/...`;
+   `docs/kicad-style.md`, Files).  A 3D model path relative to its
+   footprint's own library keeps resolving when the library moves in
+   whole; only a path relative to the project needs rewriting.
+5. List it in the board's `sources` in `fab.toml` for the source tgz to
+   hold it.
+6. Commit, with the upgrade's other changes above; push the library's
+   repository before the board's.
