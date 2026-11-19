@@ -312,6 +312,13 @@ class Profile(Protocol):
   checked against the current rules, and a change to ee_tooling's rules
   never blocks a release just for being newer.  A rule a board breaks
   fails DRC as any other.
+- A `.kicad_dru` that does not parse makes `kicad-cli pcb drc` (10.0.8)
+  drop every custom rule, the profile's too, with no message and exit
+  status 0 (a board's rule file with an unclosed rule: 94 violations
+  fell to 60, all Board Setup's).  So a first DRC runs on a scratch copy
+  whose rules end with a canary rule every item breaks
+  (`ee_tooling canary`, an assertion of false); its report must name it,
+  or the release stops, naming the board's `.kicad_dru`.
 - It checks Board Setup against the profile's minimums the same way, on
   the scratch copy, raised to at least the profile's values.
 - It never writes the board's files.  The scratch copy is the project's
@@ -551,50 +558,52 @@ Breaking changes:
     is a link out of the repository is refused.
 11. A build from uncommitted sources (`--allow-dirty`) of a release that
     has its tag is refused, `--retag` or not.
-12. Two boards' production directories the same, or one inside the
+12. A board whose `.kicad_dru` kicad-cli cannot parse (so that DRC
+    would run with no custom rule) is refused.
+13. Two boards' production directories the same, or one inside the
     other, are an error naming both; `--force` stops on a release
     directory holding a file not the board's (`NAME-REV-*`).
-13. A `production` outside the repository, or the same as or holding a
+14. A `production` outside the repository, or the same as or holding a
     board's `directory` or a `sources` path, is an error.
-14. A production directory that a link leads out of the repository, or
+15. A production directory that a link leads out of the repository, or
     two production paths that a link makes one directory, are an error; a
     library path through a link out of the repository, under
     `${KICADn_TEMPLATE_DIR}`, in `$(NAME)` form or under `~` is refused.
-15. A title-block rev (or `--date`) that makes the release directory more
+16. A title-block rev (or `--date`) that makes the release directory more
     than one path component, or the tag not a git tag name (`Rev A`), is
     refused before anything runs.
-16. A title-block rev using a text variable the project does not define
+17. A title-block rev using a text variable the project does not define
     is refused.
-17. A board with no stackup is refused (now a warning).
-18. A board without a stackup table on User.Drawings matching its stackup
+18. A board with no stackup is refused (now a warning).
+19. A board without a stackup table on User.Drawings matching its stackup
     is refused.
-19. DRC runs with the profile's current rules: a board clean today may
+20. DRC runs with the profile's current rules: a board clean today may
     not be.
-20. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
+21. `NAME-REV-bom.csv` becomes the house BOM; JLCPCB's is
     `NAME-REV-jlcpcb-bom.csv`.
-21. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
-22. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
+22. `NAME-REV-cpl.csv` renamed `NAME-REV-jlcpcb-cpl.csv`.
+23. `NAME-REV-jlcpcb.zip` renamed `NAME-REV-gerbers-jlcpcb.zip`, and it
     gains a User.Drawings Gerber, `stackup.txt` and `fab-notes.txt`; the
     board PDF gains User.Drawings.
-23. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
+24. Skill `skills/jlcpcb-release` renamed `skills/fab-release`; a board
     repository's `.claude/skills/jlcpcb-release/` becomes
     `.claude/skills/fab-release/` (`adopt` moves it).
-24. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
+25. Python: `ee_tooling.jlcpcb_release` removed; `Board` and `Release`
     move to `ee_tooling.fab_release`; `Parts`, renamed `Corrections`,
     and the BOM and CPL to `ee_tooling.profiles.jlcpcb`; `Part` and
     `Placement` are in `ee_tooling.profiles.profile`.
-25. `adopt --yes` sets the board's ERC severities and connection grid.
-26. `adopt` and `adopt --check` require git-lfs.
-27. `adopt --check` fails on a plain blob of an LFS-tracked type at
+26. `adopt --yes` sets the board's ERC severities and connection grid.
+27. `adopt` and `adopt --check` require git-lfs.
+28. `adopt --check` fails on a plain blob of an LFS-tracked type at
     HEAD: a repository with committed archives, PDFs, STEP or VRML files
     renormalizes and commits.
-28. `adopt --yes` writes a managed section of `.gitattributes` and
+29. `adopt --yes` writes a managed section of `.gitattributes` and
     `.githooks/pre-push`; a board repository's own `pre-push` is
     replaced.
-29. A push without git-lfs is refused.
-30. The release refuses a board whose inputs hold an unfetched LFS
+30. A push without git-lfs is refused.
+31. The release refuses a board whose inputs hold an unfetched LFS
     pointer.
-31. A board repository's host must support Git LFS: a push to one that
+32. A board repository's host must support Git LFS: a push to one that
     does not is refused.
 
 `docs/releasing.md`'s "`jlcpcb.toml` key" becomes "`fab.toml` key".

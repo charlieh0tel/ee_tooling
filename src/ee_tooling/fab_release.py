@@ -129,6 +129,12 @@ OLD = ".old"
 # The work directory's subdirectory DRC's scratch copy of the project is
 # in, and the suffix of a project's custom rules.
 DRC_PROJECT = "project"
+# The work directory's subdirectory of the scratch copy whose rules end with
+# CANARY, a rule every item breaks, named CANARY_NAME: DRC there reports
+# it only if kicad-cli read the rules.
+RULES_PROJECT = "rules"
+CANARY_NAME = "ee_tooling canary"
+CANARY = f'(rule "{CANARY_NAME}"\n\t(constraint assertion "false"))\n'
 # The work directory's subdirectory of the scratch copy of the project, as
 # the board has it, that every other kicad-cli command reads.
 EXPORT_PROJECT = "board"
@@ -1030,6 +1036,22 @@ class Release:
             return str(self.inputs / p.name)
         return str(self.root / p)
 
+    def rules_read(self, rules: Installed) -> None:
+        """Stop unless kicad-cli reads the rules: on a .kicad_dru it cannot
+        parse it drops every custom rule, the profile's too, and says
+        nothing (10.0.8).  A DRC run on a scratch copy whose rules end with
+        CANARY, a rule every item breaks, must report it."""
+        project = json.dumps(rules.project, indent=2) + "\n"
+        scratch = self.scratch_project(RULES_PROJECT, f"{rules.dru}\n{CANARY}", project)
+        out = self.work / "rules.rpt"
+        self.run("kicad-cli", "pcb", "drc", "-o", str(out), str(scratch / self.board.pcb.name))
+        if CANARY_NAME not in report(out):
+            dru = self.board.directory / f"{self.board.name}{DRU}"
+            sys.exit(
+                f"{dru}: kicad-cli reads none of the custom rules, ee_tooling's or the board's:"
+                " one does not parse (Board Setup, Custom Rules, Check rule syntax)"
+            )
+
     def drc_project(self, rules: Installed) -> Path:
         """A scratch copy of the board's project with the rules installed
         (scratch_project); return its .kicad_pcb."""
@@ -1108,6 +1130,7 @@ class Release:
             "kicad-cli", "sch", "erc", "--exit-code-violations", "-o", str(erc), self.path(b.sch)
         ).returncode:
             sys.exit(f"ERC is not clean:\n{report(erc)}")
+        self.rules_read(rules)
         drc = self.work / "drc.rpt"
         if self.run(
             "kicad-cli",

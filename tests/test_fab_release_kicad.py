@@ -169,7 +169,8 @@ def test_release_with_kicad_cli(
     assert ["--exclude-dnp" in c for c in exports] == [False, True, False, True]
     placements = [c for c in calls if c[:4] == ("kicad-cli", "pcb", "export", "pos")]
     assert [c[c.index("--variant") + 1] for c in placements] == ["lite", "lite", "full", "full"]
-    drc = next(c for c in calls if c[:3] == ("kicad-cli", "pcb", "drc"))
+    canary, drc = (c for c in calls if c[:3] == ("kicad-cli", "pcb", "drc"))
+    assert canary[-1].endswith(f"rules/{BOARD}/{NAME}.kicad_pcb")
     assert drc[-1].endswith(f"project/{BOARD}/{NAME}.kicad_pcb")
     with zipfile.ZipFile(dest / "StickHub-A-gerbers-jlcpcb.zip") as z:
         assert "StickHub-User_Drawings.gbr" in z.namelist()

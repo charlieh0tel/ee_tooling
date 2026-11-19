@@ -495,6 +495,14 @@ board = pathlib.Path(args[-1])
 board.with_suffix(".kicad_prl").write_text("{}\\n")
 for name, text in outputs[key].items():
     (out / name if name else out).write_text(text)
+if key == "pcb drc":
+    # As kicad-cli: a rule file that parses (here, its parentheses balance)
+    # has its rules reported, the canary among them.
+    dru = board.with_suffix(".kicad_dru")
+    rules = dru.read_text() if dru.exists() else ""
+    if "ee_tooling canary" in rules and rules.count("(") == rules.count(")"):
+        with out.open("a") as f:
+            f.write("[assertion_failure]: Assertion failure (rule 'ee_tooling canary')\\n")
 sys.exit(5 if key in os.environ.get("FAKE_FAIL", "").split(",") else 0)
 """
 
@@ -757,6 +765,8 @@ def kicad_calls(tmp_path: Path) -> list[list[str]]:
 
 RELEASE_CALLS = [
     ["sch", "erc", "--exit-code-violations", "-o", "WORK/erc.rpt", "WORK/board/hw/b.kicad_sch"],
+    # The canary DRC: kicad-cli reads the rules.
+    ["pcb", "drc", "-o", "WORK/rules.rpt", "WORK/rules/hw/b.kicad_pcb"],
     [
         "pcb",
         "drc",
@@ -1120,7 +1130,7 @@ def test_release_refused_by_its_profile_before_anything(
         release(
             tmp_path, monkeypatch, args=("--force",), config="[board.jlcpcb]\nrequire_lcsc = true\n"
         )
-    assert kicad_calls(tmp_path) == RELEASE_CALLS[:6]
+    assert kicad_calls(tmp_path) == RELEASE_CALLS[:7]
     assert old.read_text() == "kept\n"
     assert git(tmp_path / "repo", "tag") == ""
 
@@ -1139,7 +1149,7 @@ def test_release_refuses_a_part_not_placed_before_anything(
     monkeypatch.setitem(FAKE_OUTPUTS, "pcb export pos all", {"": every})
     with pytest.raises(SystemExit, match=r"^in the BOM but not placed: U2$"):
         release(tmp_path, monkeypatch, args=("--force",))
-    assert kicad_calls(tmp_path) == RELEASE_CALLS[:6]
+    assert kicad_calls(tmp_path) == RELEASE_CALLS[:7]
     assert sorted(p.name for p in old.parent.iterdir()) == ["old.txt"]
     assert git(tmp_path / "repo", "tag") == ""
 
@@ -1496,10 +1506,13 @@ def test_release_variants(
     err = profile_quiet(capsys.readouterr().err)
     assert "warning" not in err
     assert "differ" not in err
-    erc, drc, bom, fitted, pos, every, gerbers, drill, odb, ipc, sch_pdf, pcb_pdf = RELEASE_CALLS
+    erc, canary, drc, bom, fitted, pos, every, gerbers, drill, odb, ipc, sch_pdf, pcb_pdf = (
+        RELEASE_CALLS
+    )
     v = ("lite", "full")
     assert calls == [
         erc,
+        canary,
         drc,
         *(
             c
@@ -1634,7 +1647,7 @@ def test_release_variants_cross_checks(
     variant and the part, after the exports, before anything is written."""
     with pytest.raises(SystemExit, match=f"^{re.escape(error)}$"):
         variant_release(tmp_path, monkeypatch, outputs)
-    assert all(c[2] in ("bom", "pos") for c in kicad_calls(tmp_path)[2:])
+    assert all(c[2] in ("bom", "pos") for c in kicad_calls(tmp_path)[3:])
     assert not (tmp_path / "repo/production").exists()
 
 
@@ -2995,3 +3008,16 @@ def test_release_tag_failure_keeps_the_old_release(
     assert {f.name: f.read_bytes() for f in dest.iterdir()} == before
     assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
     assert git(root, "rev-parse", "b-20261118-1^{commit}") == tagged
+
+
+def test_release_refuses_rules_kicad_cli_does_not_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A board's own rule that does not parse: kicad-cli drops every
+    custom rule unsaid; the release refuses, naming the file."""
+    dru = FIXTURE["hw/b.kicad_dru"] + '(rule "broken"\n\t(constraint track_width (min 1mm)\n'
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_dru", dru)
+    with pytest.raises(SystemExit, match=r"^hw/b.kicad_dru: kicad-cli reads none of the custom"):
+        release(tmp_path, monkeypatch)
+    assert [c[:2] for c in kicad_calls(tmp_path)] == [["sch", "erc"], ["pcb", "drc"]]
+    assert not (tmp_path / "repo/production").exists()

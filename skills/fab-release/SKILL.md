@@ -159,7 +159,9 @@ User.Drawings matching it (kicad-style-check's rules, waivers not
 honored: `stackup-table` writes or refreshes the table), ERC is clean,
 DRC (with schematic parity, the profile's rules and Board Setup
 minimums, on a scratch copy of the project: `docs/kicad-rules.md`) is
-clean,
+clean, kicad-cli having read the custom rules (a rule that does not
+parse makes it drop them all, silently: the release checks with a
+canary rule, and stops naming the board's `.kicad_dru`),
 what it reads has no uncommitted changes: `fab.toml`, the board's
 directory, its sheets, `sources`, each library its tables and 3D model
 paths name (in `sources` or not), and the ee_tooling submodule it runs
