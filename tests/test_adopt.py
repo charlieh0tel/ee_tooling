@@ -1983,7 +1983,7 @@ def test_submodule_path_with_a_space(tmp_path: Path) -> None:
             ]
 
 
-@pytest.mark.parametrize("name", ["widget", "café", "board \U0001f680", 'q"uote\\'])
+@pytest.mark.parametrize("name", ["widget", "caf\u00e9", "board \U0001f680", 'q"uote\\'])
 def test_toml_string(name: str) -> None:
     """A project's name in fab.toml, whatever its characters."""
     assert tomllib.loads(f"x = {adopt.toml_string(name)}\n") == {"x": name}
