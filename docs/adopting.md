@@ -112,7 +112,10 @@ A board whose `directory` in `fab.toml` resolves outside the
 repository, or into another repository (a directory with a `.git` on the
 way: a library's submodule, a clone), stops `adopt` (every mode),
 naming it, before any edit is planned: it edits no `.kicad_dru` or
-`.kicad_pro` there.
+`.kicad_pro` there.  So does a board whose `name` is not one path
+component (a `/` or `\` in it, or `.` or `..`), since the files are named
+by it, and one whose `.kicad_pro` or `.kicad_dru` resolves (through a
+link) outside the repository or into another repository.
 
 Close the boards in KiCad before `--yes`: KiCad does not reload a
 `.kicad_dru` or `.kicad_pro` changed under it, and saving from KiCad

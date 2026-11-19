@@ -682,11 +682,23 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         name, directory = b.get("name"), b.get("directory")
         if not isinstance(name, str) or not isinstance(directory, str):
             continue
+        if name in (".", "..", "") or "/" in name or "\\" in name:
+            raise ValueError(
+                f"{CONFIG}: [[board]] {name!r}: a board's name is its project's file name, one"
+                " path component: adopt edits no file by it"
+            )
         if (why := foreign_directory(root, Path(directory))) is not None:
             raise ValueError(
                 f"{CONFIG}: [[board]] {name!r}: directory {directory!r} {why}: adopt edits no"
                 " file there"
             )
+        for destination in (f"{name}.kicad_pro", f"{name}{DRU}"):
+            where = (root / directory / destination).resolve().parent
+            if (why := foreign_directory(root, where)) is not None:
+                raise ValueError(
+                    f"{CONFIG}: [[board]] {name!r}: {Path(directory, destination).as_posix()}"
+                    f" {why}: adopt edits no file there"
+                )
         profile = PROFILES[b["profile"]]()
         try:
             options = profile.options(b.get(profile.name, {}))

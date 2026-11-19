@@ -2254,3 +2254,38 @@ def test_commands_in_messages_quoted(tmp_path: Path) -> None:
     one shell word."""
     assert adopt.adopt_command(Path("hard ware/ee tooling")) == "'hard ware/ee tooling/adopt'"
     assert adopt.adopt_command(SUBMODULE) == "hardware/ee_tooling/adopt"
+
+
+@pytest.mark.parametrize("name", ["../sibling/main", "..", ".", "a/b", "a\\b"])
+def test_board_name_not_one_path_component_refused(tmp_path: Path, name: str) -> None:
+    """A name that would build a path elsewhere: refused, nothing planned
+    there."""
+    layout = repository(tmp_path / "board", "main")
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    (sibling / "main.kicad_pro").write_text("{}")
+    config = (fab_config(layout) or "").replace('name = "main"', f"name = {json.dumps(name)}")
+    config = config.replace('directory = "hardware/main"', 'directory = "."')
+    (tmp_path / "board/fab.toml").write_text(config)
+    for run in (plan, stale):
+        with pytest.raises(
+            ValueError, match=r"a board's name is its project's file name, one path"
+        ):
+            run(layout)
+    assert (sibling / "main.kicad_pro").read_text() == "{}"
+
+
+def test_board_file_linked_out_of_the_repository_refused(tmp_path: Path) -> None:
+    """The board's .kicad_pro a link to another repository's: refused."""
+    layout = repository(tmp_path / "board", "main")
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "x.kicad_pro").write_text("{}")
+    project = tmp_path / "board/hardware/main/main.kicad_pro"
+    project.unlink()
+    project.symlink_to(other / "x.kicad_pro")
+    (tmp_path / "board/fab.toml").write_text(fab_config(layout) or "")
+    with pytest.raises(
+        ValueError, match=r"hardware/main/main.kicad_pro is outside the repository: adopt edits"
+    ):
+        plan(layout)
