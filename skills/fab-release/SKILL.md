@@ -240,8 +240,10 @@ in `PRODUCTION/.YYYYMMDD-REV.building/`, made by this run alone (a
 lock in it names the host and process; another run's stops this one; a
 killed run's, its process gone from this host, is removed, said on
 stderr; one from another host is left for you to remove), and put in place, replacing an
-old release (`--force`), only after the last export: a failure leaves
-the old release and the tag as they were, and no partial directory.  With
+old release (`--force`), only after the last export, the old one kept
+aside until the tag is made: a failure, `git tag`'s too, leaves the old
+release and its tag as they were, and no partial directory (but one a
+killed run leaves, removed by the next run).  With
 `variants`, the BOMs, CPL, ODB++ and IPC-2581 are per variant,
 `NAME-REV-VARIANT-...`, and the Gerber zip too where the silkscreens
 differ (Design variants):

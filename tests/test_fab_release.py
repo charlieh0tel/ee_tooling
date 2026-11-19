@@ -453,14 +453,13 @@ def test_tag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     name = "jig-20261102-1"
     assert r.tagged(name) is None
     first = r.head()
-    r.tag(name, "jig 1: fab release production/20261102-1", move=False)
+    assert r.tag(name, "jig 1: fab release production/20261102-1", move=False) is None
     assert r.tagged(name) == first
     assert git(tmp_path, "cat-file", "-t", f"refs/tags/{name}") == "tag"
     git(tmp_path, "commit", "-q", "--allow-empty", "-m", "two")
-    with pytest.raises(SystemExit):
-        r.tag(name, "again", move=False)
+    assert (r.tag(name, "again", move=False) or "").startswith(f"git tag {name} failed:")
     assert r.tagged(name) == first
-    r.tag(name, "moved", move=True)
+    assert r.tag(name, "moved", move=True) is None
     assert r.tagged(name) == r.head() != first
 
 
@@ -2975,3 +2974,24 @@ def test_release_stops_on_a_release_made_meanwhile(
     made = tmp_path / "repo/production/20261118-1/b-1-bom.csv"
     assert made.read_text() == "the other run's\n"
     assert git(tmp_path / "repo", "tag") == ""
+
+
+def test_release_tag_failure_keeps_the_old_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git tag failing after the new release is in place: the old release
+    and its tag restored, nothing aside left."""
+    root, _ = release(tmp_path, monkeypatch)
+    dest = root / "production/20261118-1"
+    before = {f.name: f.read_bytes() for f in dest.iterdir()}
+    tagged = git(root, "rev-parse", "b-20261118-1^{commit}")
+    git(root, "commit", "-q", "--allow-empty", "-m", "later")
+    monkeypatch.setattr(Release, "tag", lambda *args: "git tag b-20261118-1 failed:\nsigning")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    with pytest.raises(
+        SystemExit, match=r"^git tag b-20261118-1 failed:\nsigning\nthe old release"
+    ):
+        main()
+    assert {f.name: f.read_bytes() for f in dest.iterdir()} == before
+    assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
+    assert git(root, "rev-parse", "b-20261118-1^{commit}") == tagged

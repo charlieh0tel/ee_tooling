@@ -123,6 +123,9 @@ GITLINK = "160000 "
 # A release is built in its production directory, in .DATE-REV plus this,
 # then put in place of the old one.
 BUILDING = ".building"
+# The old release's name beside it, .DATE-REV plus this, while the new one
+# is put in place and tagged.
+OLD = ".old"
 # The work directory's subdirectory DRC's scratch copy of the project is
 # in, and the suffix of a project's custom rules.
 DRC_PROJECT = "project"
@@ -1201,11 +1204,13 @@ class Release:
             sys.exit(f"git {' '.join(args)} failed ({r.returncode}):\n{r.stderr}")
         return r.stdout
 
-    def tag(self, name: str, message: str, move: bool, commit: str = "HEAD") -> None:
-        """An annotated tag on commit; move replaces one of that name."""
+    def tag(self, name: str, message: str, move: bool, commit: str = "HEAD") -> str | None:
+        """An annotated tag on commit; move replaces one of that name.  What
+        went wrong, or None."""
         r = self.run("git", "tag", "-a", *(["-f"] if move else []), name, "-m", message, commit)
         if r.returncode != 0:
-            sys.exit(f"git tag {name} failed:\n{r.stdout}{r.stderr}")
+            return f"git tag {name} failed:\n{r.stdout}{r.stderr}"
+        return None
 
     def export_gerbers(
         self, directory: Path, options: GerberOptions, variant: str | None = None
@@ -1783,14 +1788,34 @@ def main() -> None:
         except BaseException:
             shutil.rmtree(building)
             raise
+        # The old release kept aside until the tag is made: a failure at
+        # any step leaves the old release with its old tag, or the new with
+        # its new tag.
+        aside = dest.parent / f".{dest.name}{OLD}"
+        if aside.exists():
+            shutil.rmtree(aside)
         if dest.exists():
+            dest.rename(aside)
+        try:
+            building.rename(dest)
+        except OSError as e:
+            if aside.exists():
+                aside.rename(dest)
+            shutil.rmtree(building)
+            sys.exit(f"{building} not put in place: {e.strerror}; the old release is left")
+        message = f"{b.name} {rev}: fab release {b.production / dest.name}"
+        if b.variants:
+            message += f"; variants {', '.join(b.variants)}"
+        if plan in (TagPlan.CREATE, TagPlan.MOVE) and (
+            failed := r.tag(tag, message, plan is TagPlan.MOVE, head)
+        ):
             shutil.rmtree(dest)
-        building.rename(dest)
+            if aside.exists():
+                aside.rename(dest)
+            sys.exit(f"{failed}\nthe old release and its tag are left as they were")
+        if aside.exists():
+            shutil.rmtree(aside)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
-            message = f"{b.name} {rev}: fab release {b.production / dest.name}"
-            if b.variants:
-                message += f"; variants {', '.join(b.variants)}"
-            r.tag(tag, message, plan is TagPlan.MOVE, head)
             force = " --force" if plan is TagPlan.MOVE else ""
             print(f"tagged {tag}; push it with: git push{force} origin refs/tags/{tag}")
         else:

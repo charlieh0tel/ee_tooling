@@ -95,6 +95,11 @@ electrical_test = "100% netlist test per IPC-9252"
   before the swap, the release directory is checked again: one another
   run made meanwhile is replaced only with `--force`, and only if all
   its files are the board's.
+- The swap: the old release moved aside (`.DATE-REV.old`), the new one
+  put in its place, the tag made or moved, then the old one removed.  A
+  failure at any step (`git tag` refused: signing, a lock) puts the old
+  release back: the old release with its old tag, or the new with its
+  new tag, never a mix.
 - A release is built in `PRODUCTION/.DATE-REV.building/` (hidden: the
   uncommitted-sources check and `adopt`'s project search skip it) and
   replaces the old one (`--force`) only after the last export; a failure
