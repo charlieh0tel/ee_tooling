@@ -200,7 +200,8 @@ and tag left as they were.  It tags that commit (the tgz's COMMIT),
 annotated, `NAME-YYYYMMDD-REV`, with the message `NAME REV: fab
 release PRODUCTION/YYYYMMDD-REV` (with `; variants A, B` for a board
 with `variants`).  It does not push the tag: it prints
-the command, `git push origin refs/tags/NAME-YYYYMMDD-REV`.  Run that
+the command, `git push origin refs/tags/NAME-YYYYMMDD-REV` (the
+reference shell-quoted where it needs it).  Run that
 only when the owner says to.
 
 - A build from uncommitted sources (`--allow-dirty`) is not tagged, and
@@ -229,7 +230,9 @@ only when the owner says to.
 2. Set the board's stackup in Board Setup, Physical Stackup, if it has
    none: the release takes the copper layers from it, and refuses a
    board without one.
-3. Run `stackup-table` on the board (close it in KiCad first) if its
+3. Run `uv run stackup-table PATH/TO/NAME.kicad_pcb` (from `hardware/`,
+   as the release; close the board in KiCad first; the release's
+   refusal prints the command with the path from where it was run) if its
    stackup table is missing or out of date: the release refuses it.
 4. Commit the board and its sources.
 

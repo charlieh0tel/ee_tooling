@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -1572,8 +1573,8 @@ def test_release_variants_silkscreen(
             assert z.read("README.txt").decode() == text
             assert {"stackup.txt", "fab-notes.txt"} <= set(z.namelist())
     assert profile_quiet(capsys.readouterr().err) == (
-        "variants lite, full: the Gerbers differ in F.Silkscreen: a Gerber zip per variant,"
-        " each a bare-board order of its own\n"
+        "warning: variants lite, full: the Gerbers differ in F.Silkscreen: a Gerber zip per"
+        " variant, each a bare-board order of its own\n"
     )
 
 
@@ -1744,7 +1745,7 @@ def test_release_refuses_a_board_without_a_matching_stackup_table(
     message = str(e.value)
     for error in errors:
         assert f"b.kicad_pcb: {error}" in message
-    assert message.endswith("\nwrite or refresh it with: stackup-table hw/b.kicad_pcb")
+    assert message.endswith("\nwrite or refresh it with: uv run stackup-table hw/b.kicad_pcb")
     assert kicad_calls(tmp_path) == []
     assert not (tmp_path / "repo/production").exists()
 
@@ -2007,7 +2008,7 @@ def test_release_refuses_a_library_outside_the_repository(
         "b: libraries outside the repository, or under a variable not KiCad's own (its library"
         " tables and 3D model paths, as written):\n  ${KIPRJMOD}/../../a.pretty\nput each"
         " library in the repository (a git submodule) and name it by a ${KIPRJMOD}-relative"
-        " path (docs/kicad-style.md, Files)"
+        " path (ee_tooling's docs/kicad-style.md, Files)"
     )
     assert kicad_calls(tmp_path) == []
 
@@ -3021,3 +3022,67 @@ def test_release_refuses_rules_kicad_cli_does_not_read(
         release(tmp_path, monkeypatch)
     assert [c[:2] for c in kicad_calls(tmp_path)] == [["sch", "erc"], ["pcb", "drc"]]
     assert not (tmp_path / "repo/production").exists()
+
+
+def test_variant_text_warning_names_what_it_is_on() -> None:
+    """A text on a Fab layer alone is on the board PDFs, not the Gerbers."""
+    pcb = variant_board(
+        '(footprint "R" (layer "F.Cu") (property "Value" "${VARIANT}" (at 0 0)'
+        ' (layer "F.Fab") (uuid "p")))'
+    )
+    found = variant_text_warning(("lite", "full"), pcb, ["F.Silkscreen"], ["F.Fab"])
+    assert found is not None
+    assert "the same on every variant's board PDFs:" in found
+
+
+def test_release_stackup_hint_from_the_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run from the board's directory: the path from there, with uv run."""
+    pcb = FIXTURE["hw/b.kicad_pcb"]
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb[: pcb.index("\n  (table ")] + ")\n")
+    real = os.chdir
+
+    def into_hw(path: object) -> None:
+        real(Path(str(path)) / "hw")
+
+    monkeypatch.setattr(os, "chdir", into_hw)
+    with pytest.raises(
+        SystemExit, match=r"write or refresh it with: uv run stackup-table b.kicad_pcb$"
+    ):
+        release(tmp_path, monkeypatch)
+
+
+def test_help_without_a_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--help needs no fab.toml, nor a repository."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--help"])
+    with pytest.raises(SystemExit) as e:
+        main()
+    assert e.value.code == 0
+    assert "--allow-dirty" in capsys.readouterr().out
+
+
+def test_unknown_board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["fab-release", "nope"])
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "fab.toml").write_text(FIXTURE["fab.toml"])
+    git(root, "init", "-q")
+    monkeypatch.chdir(root)
+    with pytest.raises(SystemExit, match=r"^fab.toml has no board 'nope': one of b$"):
+        main()
+
+
+def test_push_line_is_quoted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tag git takes but a shell would expand: the printed push quoted."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace('(rev "1")', '(rev "A$B")')
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    release(tmp_path, monkeypatch)
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("tagged"))
+    assert line.endswith("push it with: git push origin 'refs/tags/b-20261118-A$B'")
+    assert shlex.split(line.split(": ", 1)[1])[-1] == "refs/tags/b-20261118-A$B"

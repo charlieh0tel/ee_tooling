@@ -666,24 +666,34 @@ def variant_texts(pcb: Expression) -> list[tuple[str, str]]:
 
 
 def variant_text_warning(
-    listed: Sequence[str], pcb: Expression, exported: Iterable[str]
+    listed: Sequence[str],
+    pcb: Expression,
+    gerbers: Iterable[str],
+    pdfs: Iterable[str] = (),
 ) -> str | None:
     """A warning when listed variants are built, the board shows a variant's
-    variable on an exported layer, and its own (variants ...) list lacks a
-    listed one: kicad-cli 10.0.8 then gives the text one value for every
-    variant."""
+    variable on a layer of the Gerbers or of the board PDF, and its own
+    (variants ...) list lacks a listed one: kicad-cli 10.0.8 then gives the
+    text one value for every variant.  It names what the text is on."""
     if not listed:
         return None
     missing = [v for v in listed if v not in board_list_variants(pcb)]
     names = {**DEFAULT_LAYER_NAMES, **layer_names(pcb)}
+    in_gerbers, in_pdfs = set(gerbers), set(pdfs)
     shown = [(names.get(layer, layer), text) for layer, text in variant_texts(pcb)]
-    shown = [(layer, text) for layer, text in shown if layer in set(exported)]
+    shown = [(layer, text) for layer, text in shown if layer in in_gerbers | in_pdfs]
     if not missing or not shown:
         return None
     layers = ", ".join(dict.fromkeys(layer for layer, _ in shown))
     texts = ", ".join(dict.fromkeys(repr(text) for _, text in shown))
+    outputs = [
+        what
+        for what, on in (("Gerbers", in_gerbers), ("board PDFs", in_pdfs))
+        if any(layer in on for layer, _ in shown)
+    ]
     return (
-        f"text {texts} on {layers} will be the same on every variant's Gerbers: the board's own"
+        f"text {texts} on {layers} will be the same on every variant's"
+        f" {' and '.join(outputs)}: the board's own"
         f" variants list lacks {', '.join(missing)} (kicad-cli then gives the variables one"
         " value): add the variants to the board's list (pcbnew's AddVariant, then save)"
     )
@@ -1555,6 +1565,13 @@ def board_rules(root: Path, b: Board, profile: Profile[Any], options: object) ->
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
+    ap.add_argument("board", nargs="?", help=f"a [[board]]'s name in {CONFIG}; the first if none")
+    ap.add_argument("--date", default=datetime.date.today().strftime("%Y%m%d"))
+    ap.add_argument("--force", action="store_true", help="replace an existing release")
+    ap.add_argument("--allow-dirty", action="store_true", help="allow uncommitted sources")
+    ap.add_argument("--retag", action="store_true", help="move the release's tag to this commit")
+    a = ap.parse_args()
     root = repository_root()
     try:
         boards = load_config((root / CONFIG).read_text())
@@ -1572,15 +1589,10 @@ def main() -> None:
     except ValueError as e:
         sys.exit(f"{root / CONFIG}: {e}")
 
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    ap.add_argument("board", nargs="?", choices=boards, default=next(iter(boards)))
-    ap.add_argument("--date", default=datetime.date.today().strftime("%Y%m%d"))
-    ap.add_argument("--force", action="store_true", help="replace an existing release")
-    ap.add_argument("--allow-dirty", action="store_true", help="allow uncommitted sources")
-    ap.add_argument("--retag", action="store_true", help="move the release's tag to this commit")
-    a = ap.parse_args()
-
-    b = boards[a.board]
+    name = a.board if a.board is not None else next(iter(boards))
+    if name not in boards:
+        sys.exit(f"{CONFIG} has no board {name!r}: one of {', '.join(boards)}")
+    b = boards[name]
     missing = [str(s) for s in (b.pcb, b.sch, *b.sources) if not (root / s).exists()]
     if missing:
         sys.exit(f"{CONFIG} names files that are not there: {', '.join(missing)}")
@@ -1608,7 +1620,7 @@ def main() -> None:
             " (its library tables and 3D model paths, as written):\n"
             + "".join(f"  {p}\n" for p in found_libraries.outside)
             + "put each library in the repository (a git submodule) and name it by a"
-            " ${KIPRJMOD}-relative path (docs/kicad-style.md, Files)"
+            " ${KIPRJMOD}-relative path (ee_tooling's docs/kicad-style.md, Files)"
         )
     for model in found_libraries.unresolved:
         print(
@@ -1670,16 +1682,19 @@ def main() -> None:
         sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
     if table := check_stackup(pcb).findings:
         sys.exit(
-            "".join(f"{b.pcb.name}: {f.message}\n" for f in table)
-            + f"write or refresh it with: stackup-table {b.pcb}"
+            "".join(f"{b.pcb.name}: {f.message}\n" for f in table) + "write or refresh it with:"
+            f" uv run stackup-table {shlex.quote(os.path.relpath(root / b.pcb))}"
         )
     errors, warnings = check_variants(b.variants, project_variants(settings, pcb, schematic))
     if errors:
         sys.exit("\n".join(f"{b.name}: {e}" for e in errors))
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
-    shown = [*copper, *OTHER_LAYERS, *BOARD_PDF_LAYERS]
-    if (text := variant_text_warning(b.variants, pcb, shown)) is not None:
+    if (
+        text := variant_text_warning(
+            b.variants, pcb, [*copper, *OTHER_LAYERS], [*copper, *BOARD_PDF_LAYERS]
+        )
+    ) is not None:
         print(f"warning: {b.pcb.name}: {text}", file=sys.stderr)
     # Each build: a listed variant, or the default (None).
     builds: list[str | None] = [*b.variants] or [None]
@@ -1741,7 +1756,7 @@ def main() -> None:
         if split:
             layers = sorted({x.layer or x.path for d in differ.values() for x in d})
             print(
-                f"variants {', '.join(map(str, builds))}: the Gerbers differ in"
+                f"warning: variants {', '.join(map(str, builds))}: the Gerbers differ in"
                 f" {', '.join(layers)}: a Gerber zip per variant, each a bare-board order of"
                 " its own",
                 file=sys.stderr,
@@ -1840,7 +1855,8 @@ def main() -> None:
             shutil.rmtree(aside)
         if plan in (TagPlan.CREATE, TagPlan.MOVE):
             force = " --force" if plan is TagPlan.MOVE else ""
-            print(f"tagged {tag}; push it with: git push{force} origin refs/tags/{tag}")
+            refspec = shlex.quote(f"refs/tags/{tag}")
+            print(f"tagged {tag}; push it with: git push{force} origin {refspec}")
         else:
             print(f"tag {tag}: {plan.value}")
     print(f"{dest.relative_to(root)} from {short}{'-dirty' if status else ''}:")
