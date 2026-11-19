@@ -3255,7 +3255,7 @@ def test_push_line_is_quoted(
     assert shlex.split(line.split(": ", 1)[1])[-1] == "refs/tags/b-20261118-A$B"
 
 
-@pytest.mark.parametrize("where", ["libs/ünïcode lib", 'libs/a "quoted" lib'])
+@pytest.mark.parametrize("where", ["libs/\u00fcn\u00efcode lib", 'libs/a "quoted" lib'])
 def test_release_with_a_submodule_git_quotes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
 ) -> None:
@@ -3271,8 +3271,8 @@ def test_release_with_a_submodule_git_quotes(
 
 def test_status_entries() -> None:
     """-z's entries, a rename's old path dropped, a leading space kept."""
-    text = " M a b.txt\0R  new\0old\0?? ü\0"
-    assert status_entries(text) == [" M a b.txt", "R  new", "?? ü"]
+    text = " M a b.txt\0R  new\0old\0?? \u00fc\0"
+    assert status_entries(text) == [" M a b.txt", "R  new", "?? \u00fc"]
 
 
 def test_uncommitted_whatever_the_users_config(
@@ -3359,7 +3359,7 @@ def test_release_reads_byte_order_marks(tmp_path: Path, monkeypatch: pytest.Monk
         "hw/b.kicad_pcb",
         "hw/b.kicad_sch",
     ):
-        monkeypatch.setitem(FIXTURE, name, "﻿" + FIXTURE[name])
+        monkeypatch.setitem(FIXTURE, name, "\ufeff" + FIXTURE[name])
     root, _ = release(tmp_path, monkeypatch)
     assert (root / "production/20261118-1/b-1-bom.csv").exists()
 
