@@ -208,8 +208,10 @@ release's.
 
 ## The tag
 
-It reads HEAD's hash once, at the uncommitted-sources check, and the
-tgz's COMMIT, the tag and the printed line all name that commit.  After
+It reads HEAD's hash as it begins, before it reads any input, and runs
+the uncommitted-sources check before it copies any (HEAD must not have
+moved by then); the tgz's COMMIT, the tag and the printed line all name
+that commit.  After
 the last export it reads HEAD and the check again: a commit, or a change
 to what the release reads, made while it ran stops it, the old release
 and tag left as they were.  It tags that commit (the tgz's COMMIT),

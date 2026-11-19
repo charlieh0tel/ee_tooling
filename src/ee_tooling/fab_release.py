@@ -1207,12 +1207,23 @@ class Release:
         rules: Installed,
         productions: Iterable[Path] = (),
         libraries: Iterable[Path] = (),
+        start: str | None = None,
     ) -> tuple[str, str]:
-        """ERC, DRC with schematic parity and the rules (drc_project), and
-        committed sources and libraries (inside the repository), less the
-        production directories; return the commit (HEAD's full hash, read
-        once) and what is uncommitted (uncommitted(), "" for nothing)."""
+        """Committed sources and libraries (inside the repository), less the
+        production directories, first, before any input is copied; then
+        ERC, DRC with schematic parity and the rules (drc_project).  Return
+        the commit (HEAD's full hash, which must still be start, read as
+        the release began) and what is uncommitted (uncommitted(), "" for
+        nothing): the baseline the build is compared with at its end."""
         b = self.board
+        head = self.head()
+        if start is not None and head != start:
+            sys.exit(
+                f"HEAD moved while the release read its inputs, from {start[:12]}: build again"
+            )
+        status = self.uncommitted(productions, libraries)
+        if status and not allow_dirty:
+            sys.exit(f"uncommitted changes in the release's sources:\n{status}")
         own = [self.root / b.directory / f"{b.name}{s}" for s in (DRU, ".kicad_pro")]
         dru, project = (f.read_text(encoding=PROJECT_TEXT) if f.exists() else None for f in own)
         self.inputs = self.scratch_project(EXPORT_PROJECT, dru, project)
@@ -1234,10 +1245,6 @@ class Release:
             str(self.drc_project(rules)),
         ).returncode:
             sys.exit(f"DRC is not clean, with {self.board.profile}'s rules:\n{report(drc)}")
-        head = self.head()
-        status = self.uncommitted(productions, libraries)
-        if status and not allow_dirty:
-            sys.exit(f"uncommitted changes in the release's sources:\n{status}")
         return head, status
 
     def checkout(self, modules: Sequence[Path]) -> Path | None:
@@ -1681,6 +1688,17 @@ def main() -> None:
     ap.add_argument("--retag", action="store_true", help="move the release's tag to this commit")
     a = ap.parse_args()
     root = repository_root()
+    # HEAD as the release begins, before any input is read: a commit made
+    # while it reads them is not taken for the commit it is built from.
+    begun = subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", "HEAD"],
+        cwd=root,
+        env=environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    start = begun.stdout.strip() if begun.returncode == 0 else None
     try:
         boards = load_config((root / CONFIG).read_text(encoding=PROJECT_TEXT))
     except (OSError, tomllib.TOMLDecodeError, ValueError) as e:
@@ -1820,7 +1838,7 @@ def main() -> None:
         r = Release(root, b, Path(tmp), copper)
         productions = [x.production for x in boards.values()]
         read = [*found_libraries.inside, *sheet_paths]
-        head, status = r.check(a.allow_dirty, rules, productions, read)
+        head, status = r.check(a.allow_dirty, rules, productions, read, start)
         # The commit the release is built from, read once: its COMMIT file,
         # its tag and what is printed all name it.
         short = r.git("rev-parse", "--short", head).strip()

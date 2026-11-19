@@ -3266,3 +3266,21 @@ def test_release_refuses_an_empty_rev(
     with pytest.raises(SystemExit, match=r"^no revision in b.kicad_pcb's title block: its rev"):
         release(tmp_path, monkeypatch)
     assert kicad_calls(tmp_path) == []
+
+
+def test_release_stops_on_a_commit_during_erc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A commit made after the release began, while it reads its inputs:
+    not taken for its commit; stopped, nothing written."""
+    real = fab_release.libraries  # type: ignore[attr-defined]
+
+    def committing(*args: object) -> object:
+        git(tmp_path / "repo", "commit", "-q", "--allow-empty", "-m", "meanwhile")
+        return real(*args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(fab_release, "libraries", committing)
+    with pytest.raises(SystemExit, match=r"^HEAD moved while the release read its inputs"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+    assert not (tmp_path / "repo/production").exists()

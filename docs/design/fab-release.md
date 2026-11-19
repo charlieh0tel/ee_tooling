@@ -163,7 +163,9 @@ require_lcsc = true              # default false
   ignored file the release reads by name (`fab.toml`, the project's own
   files, a sheet, a library table, a library) counts.  Every git call
   of the check stops the release on a failure.
-- HEAD's full hash is read once, at the check; COMMIT, the tag (`git
+- HEAD's full hash is read as the release begins, before any input is
+  read, and the uncommitted-sources check is run before any input is
+  copied or ERC runs, HEAD unmoved by then: that is the baseline; COMMIT, the tag (`git
   tag -a NAME -m MSG <hash>`) and the printed line name it.  After the
   last export, before the old release is replaced, HEAD and the check
   are read again: a commit or a change since stops the release, nothing
