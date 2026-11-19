@@ -2396,3 +2396,30 @@ def test_board_directory_through_a_link_inside(tmp_path: Path) -> None:
     assert "ee_tooling: jlcpcb rules" in (tmp_path / "boards/main/main.kicad_dru").read_text()
     assert board.is_symlink()
     assert [s for s in plan(layout) if isinstance(s, Edit)] == []
+
+
+def test_small_binary_blob_at_head(tmp_path: Path) -> None:
+    """A committed .tgz under 1024 bytes, not UTF-8: read as bytes, named
+    as a plain blob, no error."""
+    repository(tmp_path, "main")
+    (tmp_path / "a.tgz").write_bytes(b"\x1f\x8b\x08\x00\xff\xfe\x00binary")
+    commit(tmp_path, "board", ".")
+    assert adopt.plain_at_head(tmp_path) == ["a.tgz"]
+
+
+@needs_lfs
+def test_library_submodule_with_a_space_in_its_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """hardware/my lib: found, named, its command quoted."""
+    lfs_clone(tmp_path / "library")
+    origin = (tmp_path / "library/origin.git").as_uri()
+    layout = repository(tmp_path / "board", "main")
+    git("-C", str(layout.root), "submodule", "add", "-q", "-b", "main", origin, "hardware/my lib")
+    capsys.readouterr()
+    plan(layout)
+    assert (
+        "hardware/my lib: 1 files Git LFS tracks are pointers, not fetched (adopt sets up this"
+        " clone only): git -C 'hardware/my lib' lfs install --local --skip-repo && git -C"
+        " 'hardware/my lib' lfs pull\n"
+    ) in capsys.readouterr().err

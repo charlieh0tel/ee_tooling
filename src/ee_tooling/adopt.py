@@ -1090,8 +1090,14 @@ def plain_at_head(root: Path) -> list[str]:
         if mode in NOT_A_FILE_MODES or not any(fnmatch.fnmatchcase(name, p) for p in patterns):
             continue
         if int(size) < LFS_POINTER_SIZE:
-            first = git(root, "cat-file", "blob", oid).split("\n", 1)[0]
-            if first.encode() in LFS_VERSIONS or int(size) == 0:
+            blob = subprocess.run(
+                ["git", "cat-file", "blob", oid],
+                cwd=root,
+                env=environment(),
+                capture_output=True,
+                check=False,
+            ).stdout
+            if blob.split(b"\n", 1)[0] in LFS_VERSIONS or int(size) == 0:
                 continue
         found.append(path)
     if not found:
@@ -1128,9 +1134,14 @@ def warn_unfetched_submodules(layout: Layout) -> None:
     the board repository's clone alone, and changes no other repository's
     config."""
     root = layout.root
-    found = git(root, "config", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$")
-    for line in found.splitlines():
-        path = Path(line.split(" ", 1)[1])
+    found = git(
+        root, "config", "-z", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$"
+    )
+    # -z: each entry its key, a newline, its value, a NUL (a key may hold a space).
+    for entry in found.split("\0"):
+        if "\n" not in entry:
+            continue
+        path = Path(entry.split("\n", 1)[1])
         if path == layout.submodule or not os.path.lexists(root / path / ".git"):
             continue
         listed = git_lfs(root / path, "ls-files").stdout.splitlines()

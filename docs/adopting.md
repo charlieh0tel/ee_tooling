@@ -320,7 +320,9 @@ plain blobs, and `--check` fails until they are stored through Git
 LFS.  It passes right after `--yes` (HEAD's `.gitattributes` has no
 section yet) and fails once `.gitattributes` is committed, so the
 renormalize goes in the same commit as `adopt`'s files.  The dry run and
-`--yes` name such files at HEAD, with the fix, before that commit.  The
+`--yes` name such files at HEAD (any file of a tracked type whose blob
+is not a pointer, a small binary one too), with the fix, before that
+commit.  The
 first two steps on each machine, the third once:
 
 1. Install git-lfs (the distribution's `git-lfs` package).
