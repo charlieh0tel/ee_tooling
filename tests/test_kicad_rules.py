@@ -330,3 +330,10 @@ def test_dropped() -> None:
     assert dropped(old, new) == (1, ["x"])
     assert dropped(None, new) == (0, [])
     assert dropped(new, new) == (0, [])
+
+
+def test_silk_clearance_not_floored() -> None:
+    """Board Setup's silkscreen clearance holds silkscreen to silkscreen:
+    a silkscreen-to-pad rule is not raised to it."""
+    section = '(rule "own" (constraint silk_clearance (min 0mm)))\n'
+    assert floored(section, setup_of(min_silk_clearance=0.15)) == section
