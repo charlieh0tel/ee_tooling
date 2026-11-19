@@ -1032,10 +1032,11 @@ class Release:
         rules: Installed,
         productions: Iterable[Path] = (),
         libraries: Iterable[Path] = (),
-    ) -> str:
+    ) -> tuple[str, str]:
         """ERC, DRC with schematic parity and the rules (drc_project), and
         committed sources and libraries (inside the repository), less the
-        production directories; return the commit."""
+        production directories; return the commit (HEAD's full hash, read
+        once) and what is uncommitted (uncommitted(), "" for nothing)."""
         b = self.board
         own = [self.root / b.directory / f"{b.name}{s}" for s in (DRU, ".kicad_pro")]
         dru, project = (f.read_text() if f.exists() else None for f in own)
@@ -1057,10 +1058,11 @@ class Release:
             str(self.drc_project(rules)),
         ).returncode:
             sys.exit(f"DRC is not clean, with {self.board.profile}'s rules:\n{report(drc)}")
+        head = self.head()
         status = self.uncommitted(productions, libraries)
         if status and not allow_dirty:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
-        return self.git("rev-parse", "--short", "HEAD").strip() + ("-dirty" if status else "")
+        return head, status
 
     def inputs_read(self, extra: Iterable[Path]) -> list[Path]:
         """Every path the release reads, from the root: fab.toml, the
@@ -1140,9 +1142,9 @@ class Release:
             sys.exit(f"git {' '.join(args)} failed ({r.returncode}):\n{r.stderr}")
         return r.stdout
 
-    def tag(self, name: str, message: str, move: bool) -> None:
-        """An annotated tag on HEAD; move replaces one of that name."""
-        r = self.run("git", "tag", "-a", *(["-f"] if move else []), name, "-m", message, "HEAD")
+    def tag(self, name: str, message: str, move: bool, commit: str = "HEAD") -> None:
+        """An annotated tag on commit; move replaces one of that name."""
+        r = self.run("git", "tag", "-a", *(["-f"] if move else []), name, "-m", message, commit)
         if r.returncode != 0:
             sys.exit(f"git tag {name} failed:\n{r.stdout}{r.stderr}")
 
@@ -1598,17 +1600,18 @@ def main() -> None:
     rules = board_rules(root, b, profile, options[b.name])
     with tempfile.TemporaryDirectory() as tmp:
         r = Release(root, b, Path(tmp), copper)
-        commit = r.check(
-            a.allow_dirty,
-            rules,
-            [x.production for x in boards.values()],
-            [*found_libraries.inside, *sheet_paths],
-        )
+        productions = [x.production for x in boards.values()]
+        read = [*found_libraries.inside, *sheet_paths]
+        head, status = r.check(a.allow_dirty, rules, productions, read)
+        # The commit the release is built from, read once: its COMMIT file,
+        # its tag and what is printed all name it.
+        short = r.git("rev-parse", "--short", head).strip()
+        commit = head + ("-dirty" if status else "")
         tag = f"{b.name}-{dest.name}"
         tagged = r.tagged(tag)
-        plan = tag_plan(commit.endswith("-dirty"), tagged, r.head(), a.retag)
+        plan = tag_plan(bool(status), tagged, head, a.retag)
         if plan is TagPlan.REFUSE:
-            sys.exit(tag_refused(tag, (tagged or "")[:7], commit))
+            sys.exit(tag_refused(tag, (tagged or "")[:7], short))
         # Each build's parts and placements, checked.
         rows: dict[str | None, tuple[list[Part], list[Placement]]] = {}
         refusals = []
@@ -1705,6 +1708,17 @@ def main() -> None:
                 [x.production for x in boards.values()],
                 sheet_paths,
             )
+            # The package describes the commit and the sources as they were
+            # at the check: a commit or a change since, and it would not.
+            if r.head() != head:
+                sys.exit(
+                    f"HEAD moved during the build, from {short}: nothing replaced; build again"
+                )
+            if (now := r.uncommitted(productions, read)) != status:
+                sys.exit(
+                    f"the release's sources changed during the build: nothing replaced; build"
+                    f" again\n{now}"
+                )
         except BaseException:
             shutil.rmtree(building)
             raise
@@ -1715,12 +1729,12 @@ def main() -> None:
             message = f"{b.name} {rev}: fab release {b.production / dest.name}"
             if b.variants:
                 message += f"; variants {', '.join(b.variants)}"
-            r.tag(tag, message, plan is TagPlan.MOVE)
+            r.tag(tag, message, plan is TagPlan.MOVE, head)
             force = " --force" if plan is TagPlan.MOVE else ""
             print(f"tagged {tag}; push it with: git push{force} origin refs/tags/{tag}")
         else:
             print(f"tag {tag}: {plan.value}")
-    print(f"{dest.relative_to(root)} from {commit}:")
+    print(f"{dest.relative_to(root)} from {short}{'-dirty' if status else ''}:")
     for f in sorted(dest.iterdir()):
         print(f"  {f.name}")
 

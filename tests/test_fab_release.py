@@ -1074,7 +1074,7 @@ def test_release_files(
         ]
         contents = {k: f.read().decode() for k, f in tgz.items() if f is not None}
     assert re.fullmatch(
-        rf"commit {commit}\nbuilt \d{{4}}-\d\d-\d\dT\d\d:\d\d:\d\d\n",
+        rf"commit {git(root, 'rev-parse', 'HEAD')}\nbuilt \d{{4}}-\d\d-\d\dT\d\d:\d\d:\d\d\n",
         contents.pop("b-1-source/COMMIT"),
     )
     assert contents == {
@@ -2861,3 +2861,39 @@ def test_production_is_a_literal_path(tmp_path: Path, monkeypatch: pytest.Monkey
     assert (root / "*/20261118-1/b-1-bom.csv").exists()
     (root / "docs/notes.txt").write_text("changed\n")
     rebuild_refused(monkeypatch, "docs/notes.txt")
+
+
+@pytest.mark.parametrize(
+    ("change", "error"),
+    [
+        (lambda root: git(root, "commit", "-q", "--allow-empty", "-m", "mid-run"), "HEAD moved"),
+        (
+            lambda root: (root / "docs/notes.txt").write_text("changed\n"),
+            "the release's sources changed during the build",
+        ),
+    ],
+)
+def test_release_stops_on_a_change_during_the_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: Callable[[Path], object],
+    error: str,
+) -> None:
+    """A commit, or a change to a source, while the release is built: the
+    package would not describe its commit; stopped, the old release and
+    no tag left."""
+    old = tmp_path / "repo/production/20261118-1/b-1-bom.csv"
+    old.parent.mkdir(parents=True)
+    old.write_text("kept\n")
+    source = Release.source
+
+    def changed(self: Release, *args: object, **kwargs: object) -> None:
+        source(self, *args, **kwargs)  # type: ignore[arg-type]
+        change(self.root)
+
+    monkeypatch.setattr(Release, "source", changed)
+    with pytest.raises(SystemExit, match=f"^{error}"):
+        release(tmp_path, monkeypatch, args=("--force",))
+    assert old.read_text() == "kept\n"
+    assert sorted(p.name for p in old.parent.parent.iterdir()) == ["20261118-1"]
+    assert git(tmp_path / "repo", "tag") == ""

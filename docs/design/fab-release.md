@@ -78,6 +78,11 @@ electrical_test = "100% netlist test per IPC-9252"
   project's `text_variables`, as KiCad 10.0.8 draws the title block
   (`kicad-cli pcb export svg` of a board whose rev is `${MYREV}` showed
   the variable's value); one the project does not define is refused.
+- HEAD's full hash is read once, at the uncommitted-sources check;
+  COMMIT, the tag (`git tag -a NAME -m MSG <hash>`) and the printed line
+  name it.  After the last export, before the old release is replaced,
+  HEAD and the check are read again: a commit or a change since stops
+  the release, nothing replaced.
 - `DATE-REV` (`--date` and the title block's rev) is one path
   component, and the tag `NAME-DATE-REV` a name `git check-ref-format`
   takes, or the release stops before anything runs, naming the value

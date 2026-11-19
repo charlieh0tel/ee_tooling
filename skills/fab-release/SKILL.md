@@ -190,7 +190,11 @@ board repository, a library's submodule): install git-lfs, then
 
 ## The tag
 
-It tags the commit the package was built from (the tgz's COMMIT),
+It reads HEAD's hash once, at the uncommitted-sources check, and the
+tgz's COMMIT, the tag and the printed line all name that commit.  After
+the last export it reads HEAD and the check again: a commit, or a change
+to what the release reads, made while it ran stops it, the old release
+and tag left as they were.  It tags that commit (the tgz's COMMIT),
 annotated, `NAME-YYYYMMDD-REV`, with the message `NAME REV: fab
 release PRODUCTION/YYYYMMDD-REV` (with `; variants A, B` for a board
 with `variants`).  It does not push the tag: it prints
