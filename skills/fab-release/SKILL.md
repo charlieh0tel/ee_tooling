@@ -236,7 +236,10 @@ only when the owner says to.
 `PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  `kicad-cli` reads scratch copies of the
 project, never the board's own files (it writes `NAME.kicad_prl` beside
 what it reads).  It is built
-in `PRODUCTION/.YYYYMMDD-REV.building/` and put in place, replacing an
+in `PRODUCTION/.YYYYMMDD-REV.building/`, made by this run alone (a
+lock in it names the host and process; another run's stops this one; a
+killed run's, its process gone from this host, is removed, said on
+stderr; one from another host is left for you to remove), and put in place, replacing an
 old release (`--force`), only after the last export: a failure leaves
 the old release and the tag as they were, and no partial directory.  With
 `variants`, the BOMs, CPL, ODB++ and IPC-2581 are per variant,

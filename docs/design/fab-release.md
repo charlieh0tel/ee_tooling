@@ -87,6 +87,14 @@ electrical_test = "100% netlist test per IPC-9252"
   component, and the tag `NAME-DATE-REV` a name `git check-ref-format`
   takes, or the release stops before anything runs, naming the value
   and where it comes from.
+- The building directory is made exclusively, a `.lock` in it naming
+  the host and process: another run's stops the run; one whose process
+  is gone from this host (a killed run's) is removed, said on stderr;
+  one from another host is not judged (a process id means nothing
+  there), and stops the run, naming the command that removes it.  Just
+  before the swap, the release directory is checked again: one another
+  run made meanwhile is replaced only with `--force`, and only if all
+  its files are the board's.
 - A release is built in `PRODUCTION/.DATE-REV.building/` (hidden: the
   uncommitted-sources check and `adopt`'s project search skip it) and
   replaces the old one (`--force`) only after the last export; a failure

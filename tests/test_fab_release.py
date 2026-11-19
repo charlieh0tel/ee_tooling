@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tarfile
@@ -2922,3 +2923,55 @@ def test_release_refuses_a_dirty_rebuild_of_a_tagged_release(
     monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261119", "--allow-dirty"])
     main()
     assert (root / "production/20261119-1/b-1-bom.csv").exists()
+
+
+def test_release_stops_on_another_runs_building(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another run's building directory (its process alive): this run
+    stops, leaving it."""
+    building = tmp_path / "repo/production/.20261118-1.building"
+    building.mkdir(parents=True)
+    (building / ".lock").write_text(f"{socket.gethostname()} {os.getpid()}\n")
+    (building / "b-1-bom.csv").write_text("the other run's\n")
+    with pytest.raises(SystemExit, match=r"is being built by another run"):
+        release(tmp_path, monkeypatch)
+    assert (building / "b-1-bom.csv").read_text() == "the other run's\n"
+    assert not (tmp_path / "repo/production/20261118-1").exists()
+
+
+def test_release_removes_a_killed_runs_building(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A building directory whose run is gone from this host: removed,
+    said; the release made."""
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    building = tmp_path / "repo/production/.20261118-1.building"
+    building.mkdir(parents=True)
+    (building / ".lock").write_text(f"{socket.gethostname()} {gone.pid}\n")
+    root, _ = release(tmp_path, monkeypatch)
+    assert f"left by a run that is gone ({gone.pid}): removed" in capsys.readouterr().err
+    assert sorted(p.name for p in (root / "production/20261118-1").iterdir())[0] == "b-1-bom.csv"
+    assert not building.exists()
+
+
+def test_release_stops_on_a_release_made_meanwhile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without --force: a release another run made while this one built
+    is not replaced."""
+    source = Release.source
+
+    def meanwhile(self: Release, *args: object, **kwargs: object) -> None:
+        source(self, *args, **kwargs)  # type: ignore[arg-type]
+        made = self.root / "production/20261118-1"
+        made.mkdir()
+        (made / "b-1-bom.csv").write_text("the other run's\n")
+
+    monkeypatch.setattr(Release, "source", meanwhile)
+    with pytest.raises(SystemExit, match=r"20261118-1 exists; use --force to replace it$"):
+        release(tmp_path, monkeypatch)
+    made = tmp_path / "repo/production/20261118-1/b-1-bom.csv"
+    assert made.read_text() == "the other run's\n"
+    assert git(tmp_path / "repo", "tag") == ""

@@ -43,6 +43,7 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
@@ -914,6 +915,60 @@ def release_name_problem(root: Path, name: str, date: str, rev: str) -> str | No
     return None
 
 
+# The file in a building directory naming the run that holds it: its host
+# and process id.
+LOCK = ".lock"
+
+
+def replaceable(dest: Path, name: str, rev: str, force: bool) -> None:
+    """Stop unless dest, a release directory, is not there, or --force and
+    every file in it is the board's (NAME-REV-*)."""
+    if not dest.exists():
+        return
+    if not force:
+        sys.exit(f"{dest} exists; use --force to replace it")
+    if foreign := sorted(f.name for f in dest.iterdir() if not f.name.startswith(f"{name}-{rev}-")):
+        sys.exit(f"{dest} holds {foreign[0]}, not this board's ({name}-{rev}-*): not removed")
+
+
+def running(pid: int) -> bool:
+    """Whether a process of that id runs on this host."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def claim(building: Path) -> None:
+    """Make the building directory, this run's alone, its LOCK naming this
+    host and process.  One there already: another run's, which stops this
+    one; or one a killed run left, its process gone from this host, which
+    is removed, said on stderr.  One from another host is not judged."""
+    building.parent.mkdir(parents=True, exist_ok=True)
+    host = socket.gethostname()
+    try:
+        building.mkdir()
+    except FileExistsError:
+        try:
+            held = (building / LOCK).read_text().split()
+        except OSError:
+            held = []
+        if len(held) == 2 and held[0] == host and held[1].isdigit() and not running(int(held[1])):
+            print(f"{building}: left by a run that is gone ({held[1]}): removed", file=sys.stderr)
+            shutil.rmtree(building)
+            building.mkdir()
+        else:
+            holder = " ".join(held) or "a run that left no lock"
+            sys.exit(
+                f"{building} is being built by another run ({holder}), or was left by one: wait"
+                f" for it, or, if none runs, remove it (rm -r {shlex.quote(str(building))})"
+            )
+    (building / LOCK).write_text(f"{host} {os.getpid()}\n")
+
+
 def tag_refused(tag: str, tagged: str, commit: str) -> str:
     """Why a rebuild stops on a tag on another commit, and the choices."""
     return (
@@ -1665,18 +1720,10 @@ def main() -> None:
             )
         if clash := output_clash(b.name, rev, builds, split, profile):
             sys.exit(clash)
-        if dest.exists():
-            if foreign := sorted(
-                f.name for f in dest.iterdir() if not f.name.startswith(f"{b.name}-{rev}-")
-            ):
-                sys.exit(
-                    f"{dest} holds {foreign[0]}, not this board's ({b.name}-{rev}-*): not removed"
-                )
+        replaceable(dest, b.name, rev, a.force)
         # Built beside the old release, which a failure leaves as it was.
         building = dest.parent / f".{dest.name}{BUILDING}"
-        if building.exists():
-            shutil.rmtree(building)
-        building.mkdir(parents=True)
+        claim(building)
         try:
             out = building
             base = f"{b.name}-{rev}"
@@ -1730,6 +1777,9 @@ def main() -> None:
                     f"the release's sources changed during the build: nothing replaced; build"
                     f" again\n{now}"
                 )
+            # Another run may have made the release meanwhile.
+            replaceable(dest, b.name, rev, a.force)
+            (building / LOCK).unlink()
         except BaseException:
             shutil.rmtree(building)
             raise
