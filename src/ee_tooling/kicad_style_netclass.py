@@ -351,7 +351,7 @@ def sheet_files(
         if path in seen:
             continue
         seen.add(path)
-        sheet = parse(path.read_text())
+        sheet = parse(path.read_text(encoding="utf-8-sig"))
         yield path, sheet
         for sub in children(sheet, "sheet"):
             name = property_value(sub, "Sheetfile")

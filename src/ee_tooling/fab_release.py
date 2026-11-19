@@ -90,6 +90,9 @@ from ee_tooling.sexpr import Atom, Expression, Item, ParseError, child, children
 from ee_tooling.stackup_table import layer_names
 
 CONFIG = "fab.toml"
+# The encoding of a project's text files: UTF-8, a byte order mark first
+# taken off (an editor may write one, and adopt keeps it).
+PROJECT_TEXT = "utf-8-sig"
 # This ee_tooling's checkout: src/ee_tooling/fab_release.py's grandparent.
 CHECKOUT = Path(__file__).resolve().parents[2]
 # fab.toml's top-level keys.
@@ -1211,7 +1214,7 @@ class Release:
         once) and what is uncommitted (uncommitted(), "" for nothing)."""
         b = self.board
         own = [self.root / b.directory / f"{b.name}{s}" for s in (DRU, ".kicad_pro")]
-        dru, project = (f.read_text() if f.exists() else None for f in own)
+        dru, project = (f.read_text(encoding=PROJECT_TEXT) if f.exists() else None for f in own)
         self.inputs = self.scratch_project(EXPORT_PROJECT, dru, project)
         erc = self.work / "erc.rpt"
         if self.run(
@@ -1424,7 +1427,7 @@ class Release:
         the notes name the stackup and the Gerber map as given."""
         project = self.root / self.board.project
         try:
-            settings = json.loads(project.read_text())
+            settings = json.loads(project.read_text(encoding=PROJECT_TEXT))
         except (OSError, ValueError) as e:
             sys.exit(f"{project}: {e}")
         found = stackup(pcb)
@@ -1642,8 +1645,8 @@ def board_rules(root: Path, b: Board, profile: Profile[Any], options: object) ->
     installs them there)."""
     dru_path, project_path = root / b.directory / f"{b.name}{DRU}", root / b.project
     try:
-        project = json.loads(project_path.read_text())
-        dru = dru_path.read_text() if dru_path.exists() else None
+        project = json.loads(project_path.read_text(encoding=PROJECT_TEXT))
+        dru = dru_path.read_text(encoding=PROJECT_TEXT) if dru_path.exists() else None
         section = installed(profile.name, profile.rules, options)
         found = install(dru, project, section, board_setup(profile.rules))
     except (OSError, ValueError) as e:
@@ -1679,7 +1682,7 @@ def main() -> None:
     a = ap.parse_args()
     root = repository_root()
     try:
-        boards = load_config((root / CONFIG).read_text())
+        boards = load_config((root / CONFIG).read_text(encoding=PROJECT_TEXT))
     except (OSError, tomllib.TOMLDecodeError, ValueError) as e:
         sys.exit(f"{root / CONFIG}: {e}")
     if errors := located_production_errors(root, boards.values()):
@@ -1714,7 +1717,7 @@ def main() -> None:
             sys.exit(pointer_message(pointers, modules))
     except OSError as e:
         sys.exit(f"{e.filename}: {e.strerror}")
-    pcb_text = (root / b.pcb).read_text()
+    pcb_text = (root / b.pcb).read_text(encoding=PROJECT_TEXT)
     try:
         pcb = parse(pcb_text)
     except ParseError as e:
@@ -1775,7 +1778,7 @@ def main() -> None:
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")
     try:
-        settings = json.loads((root / b.project).read_text())
+        settings = json.loads((root / b.project).read_text(encoding=PROJECT_TEXT))
         rev = resolved_revision(rev, settings)
     except (OSError, ValueError) as e:
         sys.exit(f"{b.project}: {e}")

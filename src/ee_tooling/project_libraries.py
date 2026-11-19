@@ -108,7 +108,7 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
         file = root / directory / name
         if file.exists():
             try:
-                tables[name] = table_libraries(file.read_text())
+                tables[name] = table_libraries(file.read_text(encoding="utf-8-sig"))
             except ParseError as e:
                 raise ValueError(f"{directory / name}: {e}") from e
     top = root.resolve()

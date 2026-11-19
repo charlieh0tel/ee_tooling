@@ -3236,3 +3236,18 @@ def test_production_through_a_link(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert (root / "hw/production/20261118-1/b-1-bom.csv").exists()
     monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
     main()
+
+
+def test_release_reads_byte_order_marks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fab.toml, the .kicad_pro, a library table, the board and schematic
+    each starting with a UTF-8 byte order mark: read as without one."""
+    for name in (
+        "fab.toml",
+        "hw/b.kicad_pro",
+        "hw/fp-lib-table",
+        "hw/b.kicad_pcb",
+        "hw/b.kicad_sch",
+    ):
+        monkeypatch.setitem(FIXTURE, name, "﻿" + FIXTURE[name])
+    root, _ = release(tmp_path, monkeypatch)
+    assert (root / "production/20261118-1/b-1-bom.csv").exists()
