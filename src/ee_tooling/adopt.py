@@ -121,7 +121,9 @@ def read(path: Path) -> str:
     line ending \n (write restores both; a lone \r is kept as it is);
     ValueError naming it if it is not UTF-8."""
     try:
-        return path.read_text(encoding="utf-8-sig", newline="").replace("\r\n", "\n")
+        # open, not read_text: Path.read_text takes newline only from Python 3.13.
+        with path.open(encoding="utf-8-sig", newline="") as f:
+            return f.read().replace("\r\n", "\n")
     except UnicodeDecodeError as e:
         raise ValueError(f"{path}: not UTF-8 (byte {e.start}: {e.reason})") from e
 

@@ -27,5 +27,9 @@ def git_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Mon
     path.touch()
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    # With no configuration git has no identity to commit or tag with.
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.com")
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path_factory.getbasetemp()))
     return path
