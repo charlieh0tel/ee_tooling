@@ -210,6 +210,20 @@ minimums, and names each rule below the end marker that copies the
 profile's: KiCad's own DRC in the editor then differs from the
 release's.
 
+## What it reads: the work tree
+
+The release reads the work tree, not the commit: it builds from the
+files as they are, and holds its package to its commit by the
+uncommitted-sources check, run before it reads or copies an input and
+again before it replaces anything, and by HEAD read as it begins and
+again at the end.  What that check covers is above; a change it does
+not see (a file outside what the release reads, a library outside the
+repository, which is refused, a stock library's 3D model) can reach
+the package unseen.  A build with `--allow-dirty` is a trial: its
+COMMIT says `-dirty`, it is never tagged, and it never replaces a
+release that has its tag.  Building from a snapshot of the commit is
+later (`docs/design/fab-release.md`, Later).
+
 ## The tag
 
 It reads HEAD's hash as it begins, before it reads any input, and runs
