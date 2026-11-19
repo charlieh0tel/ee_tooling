@@ -81,9 +81,9 @@ variants.
   KiCad's GUI keeps them), the board's top-level `(variants ...)`, and
   each name a footprint's or a schematic symbol's variant override
   uses: `kicad-cli` takes an unknown `--variant` as the
-  default.  A variant of the project (the board's, or one in the
-  schematic's symbol instances) not listed is a warning naming it, as is
-  a project with variants and none listed.
+  default.  A variant of the project (its `.kicad_pro`'s, the board's,
+  or one an override names) not listed is a warning naming it, as is a
+  project with variants and none listed.
 - Per variant, with `kicad-cli ... --variant`: the BOM and placement
   exports, so the house BOM, the profile's BOM and CPL, `require_lcsc`
   and every other profile check; IPC-2581, ODB++ and the schematic and
@@ -137,7 +137,8 @@ under a source (`sources = ["."]`).
 A library the board reads (footprints, symbols, 3D models) lives inside
 the repository, normally a git submodule (`docs/kicad-style.md`,
 Files); a clone beside the repository is not supported.  The archive
-holds a library only when it is one of `sources`.  The board file embeds
+holds a library only when it is one of `sources`, apart from the
+project's own `NAME.pretty` and `NAME.3dshapes`, which it holds always.  The board file embeds
 each footprint and the schematic each symbol, so the archive rebuilds
 the board and its outputs; the 3D models of a library not in `sources`,
 and of KiCad's stock libraries, are not in it.  The release refuses, before
@@ -238,9 +239,9 @@ only when the owner says to.
 
 ## What it writes
 
-`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  `kicad-cli` reads scratch copies of the
-project, never the board's own files (it writes `NAME.kicad_prl` beside
-what it reads).  It is built
+`PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  `kicad-cli`
+reads scratch copies of the project, never the board's own files (it
+writes `NAME.kicad_prl` beside what it reads).  It is built
 in `PRODUCTION/.YYYYMMDD-REV.building/`, made by this run alone (a
 lock in it names the host and process; another run's stops this one; a
 killed run's, its process gone from this host, is removed, said on
@@ -261,8 +262,8 @@ differ (Design variants):
 | `NAME-REV-fab-notes.txt` | numbered fabrication notes: generic (IPC-6012 and IPC-A-600, plating, LPI mask per IPC-SM-840, finished hole sizes, Gerbers not to be modified, no added tooling holes or marking), filled from `[board.fab]`: the IPC class, base material, minimum Tg and electrical test; from the board: layer count, finished thickness, copper weights, finish and mask and silk colors from the stackup; impedance control from the net classes; minimum track and space from KiCad's Gerber job file, minimum drill from the drill files.  `[TBD: ...]` marks what neither can say (anything the stackup lacks): fill it in before sending the notes |
 | `NAME-REV-odb.tgz` | ODB++ job (one `odb/` directory: `matrix/`, `steps/`, ...), mm, 6 decimals: for the record and for ODB++ tools such as `tools/odb_current`; not the order's upload |
 | `NAME-REV-ipc2581.zip` | IPC-2581 revision C, mm, 6 decimals: a zip of one XML file, `NAME-REV-ipc2581.xml`; its BOM from MPN, Manufacturer and the profile's distributor field: for the record and for IPC-2581 tools; not the order's upload |
-| `NAME-REV-bom.csv` | the house BOM, fab-neutral, for the record and for buying parts: Reference, Value, Footprint (LIBRARY:NAME), Qty, DNP, LCSC, MPN, Manufacturer, Datasheet.  Fitted parts grouped on every column but Reference and Qty; each DNP part a row of its own, Qty 0, DNP `yes`; a part excluded from the BOM has no row.  Not an assembly order's upload |
-| `NAME-REV-jlcpcb-bom.csv`, `NAME-REV-jlcpcb-cpl.csv` | the profile's assembly BOM and placement (`jlcpcb.md`) |
+| `NAME-REV-bom.csv` | the house BOM, fab-neutral, for the record and for buying parts: Reference, Value, Footprint (LIBRARY:NAME), Qty, DNP, LCSC, MPN, Manufacturer, Datasheet.  Fitted parts grouped on every column but Reference and Qty, their DNP cell empty; each DNP part a row of its own, Qty 0, DNP `yes`; a part excluded from the BOM has no row.  Not an assembly order's upload |
+| `NAME-REV-jlcpcb-bom.csv`, `NAME-REV-jlcpcb-cpl.csv` | the profile's assembly BOM and placement (`jlcpcb.md`): the BOM and CPL to upload for JLCPCB's assembly, not the house BOM |
 | `NAME-REV-source.tgz` | the design files, `sources`, schematic and board PDFs (the board's a page per copper layer, silkscreen, Fab layer and User.Drawings), and COMMIT |
 
 Commit the production directory after the order is placed, and do not

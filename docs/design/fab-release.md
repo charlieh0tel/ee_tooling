@@ -670,7 +670,13 @@ Before the merge: the host's LFS allowances against a board
 repository's archives per release (`docs/design/git-lfs.md`, Cost).
 
 Later, not breaking: `fab-setup`; the fab notes; the no-extra-cost via
-rules.
+rules; building from an immutable snapshot of the checked commit (a
+`git worktree` or `git archive` of it, its submodules too) rather than
+the work tree.  The work tree is built from now, its holes patched: the
+commit read once, the check run again before the swap, every input in
+the check.  A snapshot would make a release match its commit by
+construction, at the cost of a checkout per release and the
+submodules' and Git LFS's objects fetched into it.
 
 ## Adversarial review
 
