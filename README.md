@@ -1,6 +1,8 @@
 # ee_tooling
 
-Tools, agent skills and house style for KiCad boards made at JLCPCB.
+Tools, agent skills and house style for KiCad boards: a fab-neutral
+release (`fab-release`), with a profile per fab (JLCPCB's), and the
+checks and rules behind it.
 
 Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 
@@ -24,7 +26,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `docs/kicad-style.md` | schematic, layout and silkscreen rules |
 | `docs/releasing.md` | versions, tags and cutting a release |
 | `docs/adopting.md` | taking ee_tooling into a board repository |
-| `docs/design/` | proposals under review, before code |
+| `docs/design/` | the designs of `fab-release` and of Git LFS in board repositories: decisions, facts checked, what is not verified, what is deferred |
 | `adopt`, `src/ee_tooling/adopt.py` | `ee-tooling-adopt`: puts ee_tooling in place in a board repository, run from its submodule |
 | `src/ee_tooling/templates/` | the files `ee-tooling-adopt` writes |
 
@@ -38,6 +40,10 @@ git submodule add -b main https://github.com/charlieh0tel/ee_tooling.git hardwar
 hardware/ee_tooling/adopt --yes
 cd hardware && uv run fab-release
 ```
+
+With the KiCad project at the repository root, the submodule is
+`ee_tooling/`: `ee_tooling/adopt --yes`, then `uv run fab-release` from
+the root.
 
 `fab-release` reads `fab.toml` at the repository root; the
 `fab-release` skill says what goes in it.  It needs `kicad-cli`

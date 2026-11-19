@@ -60,7 +60,10 @@ directory is allowed.
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  There is no `copper` key: the copper layers, top to
 bottom, are the stackup's.  Each `sources` path is inside the repository: one that
-is absolute or leads out of it (`..`) is an error naming it.
+is absolute or leads out of it (`..`) is an error naming it.  A
+`fab.toml` that does not parse, a board name not in it, a file it names
+that is not there, or a `[board.<profile>]` the profile refuses stops
+the release, naming it.
 
 ## Design variants
 
@@ -191,6 +194,12 @@ board repository, a library's submodule): install git-lfs, then
 `git [-C SUBMODULE] lfs install --local --skip-repo` and
 `git [-C SUBMODULE] lfs pull`.
 
+It warns, naming `adopt --yes`, when the board's `.kicad_dru` lacks the
+profile's current section or its Board Setup is below the profile's
+minimums, and names each rule below the end marker that copies the
+profile's: KiCad's own DRC in the editor then differs from the
+release's.
+
 ## The tag
 
 It reads HEAD's hash once, at the uncommitted-sources check, and the
@@ -224,15 +233,18 @@ only when the owner says to.
    board and schematic first if this is a new revision.  A text variable
    in it (`${REVISION_NUMBER}`) takes its value from the project's text
    variables (Project Setup, Text Variables), as KiCad's title block
-   shows it; one the project does not define stops the release.  `YYYYMMDD-REV`
+   shows it; one the project does not define stops the release, as does
+   a title block with no rev ("no revision in NAME.kicad_pcb's title
+   block").  `YYYYMMDD-REV`
    must be one path component and `NAME-YYYYMMDD-REV` a git tag name
    (`git check-ref-format`: no spaces, `..`, `~`, `^`, `:`, ...): the
    release refuses one that is not, before anything runs.
 2. Set the board's stackup in Board Setup, Physical Stackup, if it has
    none: the release takes the copper layers from it, and refuses a
    board without one.
-3. Run `uv run stackup-table PATH/TO/NAME.kicad_pcb` (from `hardware/`,
-   as the release; close the board in KiCad first; the release's
+3. Run `uv run stackup-table PATH/TO/NAME.kicad_pcb` (from the hardware
+   tools' uv project, `hardware/` or the repository root; close the
+   board in KiCad first; the release's
    refusal prints the command with the path from where it was run) if its
    stackup table is missing or out of date: the release refuses it.
 4. Commit the board and its sources.

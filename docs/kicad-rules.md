@@ -62,11 +62,13 @@ overwrites the change.
 
    A rerun replaces the section between the markers and keeps the rest.
    Lines between the markers that the new section lacks (a rule put
-   there by hand, or one ee_tooling no longer has) are counted on
+   there by hand, or one not in the profile's rules) are counted on
    stderr, with each such rule's name, as they go.
    A rule of the board's own with the name of one of the section's (a
    copy made by hand) is named on stderr, and left: it wins over the
-   section's.
+   section's.  Markers other than one begin line, then one end line (an
+   end before the begin, two of either) stop `adopt` ("install the rules
+   by hand") and `fab-release`, naming the file: fix them by hand.
 2. `NAME.kicad_pro`: each of `board.design_settings.rules` raised to at
    least its value in `jlcpcb_board_setup.json` (Board Setup, Design
    Rules, Constraints), never lowered; then the section's minimums are

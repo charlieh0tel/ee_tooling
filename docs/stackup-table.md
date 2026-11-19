@@ -10,10 +10,13 @@ the result (`docs/kicad-style-check.md`, Stackup table).
 uv run stackup-table NAME/NAME.kicad_pcb
 ```
 
+from `hardware/` in a board repository (the repository root with the
+KiCad project there: `uv run stackup-table NAME.kicad_pcb`).
+
 It reads and writes the board file itself, without pcbnew.  Close the
 board in KiCad first: KiCad does not reload a board changed under it,
 and saving from KiCad overwrites the change.  The board is written in
-place unless `-o`.
+place unless `-o`; `-o OUT` writes OUT even when nothing changes.
 
 ## What it writes
 
@@ -52,7 +55,10 @@ On it, KiCad's default drawing sheet has its frame (inside the border's
 
 A project file (`.kicad_pro`) beside the board that names its own
 drawing sheet (`.kicad_wks`) is said on stderr, and the frame is still
-taken as the default sheet's: the custom sheet is not read.
+taken as the default sheet's: the custom sheet is not read.  One that
+cannot be read (not JSON, say) is said on stderr ("PROJECT: not read, so
+its drawing sheet is not known"), and the frame is the default
+sheet's.
 
 ## Placement
 
@@ -98,4 +104,4 @@ thickness shown in other units in the GUI's table is rewritten in mm.
 |---|---|
 | 0 | written, or up to date |
 | 1 | `--check`, and the table is missing or would change (nothing is written) |
-| 2 | the board unreadable, its paper not one KiCad 10 has, no physical stackup, no room for a new table in the frame (and no `--at`), a rotated stackup table (replace it in KiCad), or `--at` with more than one stackup table |
+| 2 | the board unreadable or not written, its paper not one KiCad 10 has, no physical stackup, no room for a new table in the frame (and no `--at`), a rotated stackup table (replace it in KiCad), or `--at` with more than one stackup table |

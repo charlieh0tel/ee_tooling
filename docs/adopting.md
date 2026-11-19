@@ -28,7 +28,9 @@ PATH"), if a board's rules or settings are still to be installed ("to
 be updated: PATH"), if an interrupted write left a scratch file ("left
 over: PATH"), or if a file of a type Git LFS tracks is a plain blob at
 HEAD (git-lfs's report, then "not stored through Git LFS": below).  A fresh
-clone needs `git submodule update --init` first.
+clone needs `git submodule update --init` first.  Run from a checkout
+that is not a submodule, it stops: "PATH is not a submodule of a board
+repository".
 
 Every mode needs git-lfs (the distribution's `git-lfs` package): with
 `git lfs version` failing, `adopt` stops before anything else, saying
@@ -115,8 +117,14 @@ board or schematic (`~NAME.kicad_pro.lck`, `~NAME.kicad_pcb.lck`,
 `~NAME.kicad_sch.lck` beside it) is there and an edit is due, `adopt`
 stops, naming it.  `--check` fails while a board's rules section
 is missing or out of date, its Board Setup is below the profile's
-minimums, or its ERC severities or connection grid differ as above.  A board whose profile is not known, or whose `.kicad_pro`
-is not there, is left, said on stderr.  The boards are `fab.toml`'s,
+minimums, or its ERC severities or connection grid differ as above.  A
+board whose profile is not known, or whose `.kicad_pro` is not there,
+is left, said on stderr.  A board whose `[board.<profile>]` its
+profile refuses (an unknown key, a value not `true` or `false`) stops
+`adopt`, naming it.  A `.kicad_pro` that is not JSON, or a `.kicad_dru`
+whose markers are out of order (below), stops it with "install the
+rules by hand"; so does an edit that does not read back as written
+("the rules are not where they belong").  The boards are `fab.toml`'s,
 or, before it is written or migrated, those it will be written with:
 the dry run, `--yes` and `--check` name the same files.
 
@@ -169,8 +177,10 @@ time `adopt` changes files the project owns:
   lacks is added, with its profile's house value, under the board's
   `[board.fab]` (added after the board's other lines if it has none);
   the rest of the file, comments too, is kept.  `--check` fails until
-  then.  A `fab` given otherwise (an inline table, dotted keys) stops
-  `adopt`, naming it: add the keys by hand.
+  then.  A `fab` given otherwise (an inline table, dotted keys), or a
+  `fab.toml` whose `[[board]]` header lines are not one per board ("N
+  boards, M [[board]] headers"), stops `adopt`, naming it: add the keys
+  by hand.
 
 The `AGENTS.md` section imports `docs/kicad-style.md`, says how the
 submodule and venv are kept, and says: before writing new tooling in
@@ -187,7 +197,9 @@ between them are replaced, and everything before the begin line and
 after the end line is kept byte for byte (a blank line after the
 section too).  Any other arrangement (an end before the
 begin, a begin with no end, two of either) stops `adopt`, naming the
-file, before anything is written: fix the markers by hand.
+file, before anything is written: fix the markers by hand.  A board's
+`.kicad_dru` markers (`docs/kicad-rules.md`) are held to the same, and
+stop `fab-release` too.
 
 What it runs, each only when needed, in this order (git's set-up
 first: `.gitattributes` routes files to Git LFS already, and a uv step
@@ -323,9 +335,10 @@ the distribution's `git-lfs` package only when that fails: GitHub's
 `images/ubuntu/Ubuntu2404-Readme.md`), and `ubuntu-latest` moves to newer
 images.
 
-A library repository (footprints, symbols, 3D models) does not run
-`adopt`: it copies the lines of `src/ee_tooling/templates/gitattributes`
-into its own `.gitattributes` by hand, and nothing checks them there.
+`adopt` does not serve a library repository (footprints, symbols, 3D
+models; deferred: `docs/design/fab-release.md`, Later): it copies the
+lines of `src/ee_tooling/templates/gitattributes` into its own
+`.gitattributes` by hand, and nothing checks them there.
 
 ## Hooks
 
@@ -383,7 +396,9 @@ directory or `sources` (the repository-root layout, `directory = "."`).
 ## Upgrading a board repository
 
 After a bump across breaking changes (the release's notes list them,
-`docs/releasing.md`), in this order, on one machine:
+`docs/releasing.md`), in this order, on one machine.  With the KiCad
+project at the repository root, `ee_tooling/` stands for
+`hardware/ee_tooling/` and the root for `hardware/`.
 
 1. Close KiCad: `adopt` edits the boards' `.kicad_pro` and `.kicad_dru`,
    which KiCad would overwrite, and stops while KiCad's lock files are
@@ -404,7 +419,7 @@ After a bump across breaking changes (the release's notes list them,
    each board's `.kicad_dru` (`adopt` names them); they win over the
    section's.
 8. Open each board in KiCad: refill the zones and run DRC and ERC.
-   Board Setup was raised to the profile's minimums and its rules apply,
+   Board Setup is raised to the profile's minimums and its rules apply,
    and the release fails on a warning as on an error
    (`--exit-code-violations`).  Fix what they find; draw or refresh the
    stackup table (`stackup-table`).
