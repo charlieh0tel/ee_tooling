@@ -2312,3 +2312,49 @@ def test_documented_upgrade_of_a_v0_2_2_repository(
     git("-C", str(tmp_path), "commit", "-q", "--no-verify", "-m", "ee_tooling 0.4.0")
     code, err = adopt_main(layout, monkeypatch, capsys, "--check")
     assert code == 0, err
+
+
+# A hook as git-lfs 3.7.1 installs it, by its name.
+LFS_HOOK = (
+    "#!/bin/sh\n"
+    'command -v git-lfs >/dev/null 2>&1 || { printf >&2 "\\n%s\\n\\n" "This repository is'
+    " configured for Git LFS but 'git-lfs' was not found on your path. If you no longer wish to"
+    " use Git LFS, remove this hook by deleting the '{name}' file in the hooks directory (set"
+    " by 'core.hookspath'; usually '.git/hooks').\"; exit 2; }}\n"
+    'git lfs {name} "$@"\n'
+)
+
+
+def test_git_lfs_stock_hooks_not_warned_of(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A fresh clone's .git/hooks, git-lfs's own: no warning; a hook of
+    the project's beside them still named."""
+    layout = repository(tmp_path, "main")
+    hooks = tmp_path / ".git/hooks"
+    for name in ("pre-push", "post-checkout", "post-commit", "post-merge"):
+        (hooks / name).write_text(LFS_HOOK.replace("{name}", name).replace("}}", "}"))
+        (hooks / name).chmod(0o755)
+    capsys.readouterr()
+    plan(layout)
+    assert "stop running" not in capsys.readouterr().err
+    (hooks / "post-merge").write_text(
+        LFS_HOOK.replace("{name}", "post-checkout").replace("}}", "}")
+    )
+    hook(hooks, "pre-commit")
+    plan(layout)
+    assert "stop running: post-merge, pre-commit\n" in capsys.readouterr().err
+
+
+def test_git_lfs_stock_pre_push_replaced_quietly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """.githooks/pre-push as git-lfs installs it: not the project's own."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / ".githooks").mkdir()
+    (tmp_path / ".githooks/pre-push").write_text(
+        LFS_HOOK.replace("{name}", "pre-push").replace("}}", "}")
+    )
+    capsys.readouterr()
+    plan(layout)
+    assert "WARNING" not in capsys.readouterr().err

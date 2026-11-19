@@ -382,7 +382,12 @@ fails on it, and `--yes` sets the work tree's bit and stages the index's
 from elsewhere (`.git/hooks`, or another `core.hooksPath` such as
 `.husky`) stop running.  Every mode names each of them (an executable
 file, not a `.sample`) on stderr, in a `WARNING:` line, while
-`core.hooksPath` is not `.githooks` yet.
+`core.hooksPath` is not `.githooks` yet.  git-lfs's own hooks, as
+git-lfs installs them at a clone (`pre-push`, `post-checkout`,
+`post-commit`, `post-merge`, by their text), are not named: the
+`post-*` serve file locking only, and the managed `pre-push` takes
+`pre-push`'s place; nor is a `.githooks/pre-push` that is git-lfs's own
+named as the project's.
 
 ## Updating
 

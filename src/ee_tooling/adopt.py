@@ -829,7 +829,7 @@ def warn_replaced_hook(root: Path) -> None:
     if not hook.exists():
         return
     text = hook.read_text(errors="replace")
-    if WRITTEN_BY_ADOPT in text:
+    if WRITTEN_BY_ADOPT in text or git_lfs_stock_hook(hook):
         return
     print(
         f"WARNING: {PRE_PUSH} is the project's own, not ee_tooling's: --yes replaces it with"
@@ -841,6 +841,26 @@ def warn_replaced_hook(root: Path) -> None:
 
 # A file git keeps in a hooks directory that is not a hook.
 SAMPLE_SUFFIX = ".sample"
+
+
+# git-lfs's own hook, as git-lfs installs it (3.x): its hook's name is the
+# git lfs subcommand it runs.
+LFS_STOCK_HOOK = re.compile(
+    r"^#!/bin/sh\ncommand -v git-lfs >/dev/null 2>&1 \|\| \{ printf >&2 .*; exit 2; \}\n"
+    r'git lfs (?P<name>[a-z-]+) "\$@"\n?$'
+)
+
+
+def git_lfs_stock_hook(hook: Path) -> bool:
+    """Whether hook is git-lfs's own, as installed at a clone: one that
+    need not run from .githooks (the post-* serve file locking only, the
+    managed pre-push replaces pre-push)."""
+    try:
+        text = hook.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    found = LFS_STOCK_HOOK.match(text)
+    return found is not None and found.group("name") == hook.name
 
 
 def warn_disabled_hooks(root: Path) -> None:
@@ -856,7 +876,10 @@ def warn_disabled_hooks(root: Path) -> None:
     hooks = sorted(
         f.name
         for f in directory.iterdir()
-        if f.is_file() and not f.name.endswith(SAMPLE_SUFFIX) and os.access(f, os.X_OK)
+        if f.is_file()
+        and not f.name.endswith(SAMPLE_SUFFIX)
+        and os.access(f, os.X_OK)
+        and not git_lfs_stock_hook(f)
     )
     if not hooks:
         return
