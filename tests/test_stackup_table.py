@@ -424,3 +424,16 @@ def test_failed_write_leaves_the_board(
     stackup_table_main()
     assert pcb.read_text() != board()
     assert pcb.stat().st_mode & 0o777 == 0o640
+
+
+def test_linked_board_written_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The board a link names is written, the link kept."""
+    real = tmp_path / "real.kicad_pcb"
+    real.write_text(board())
+    link = tmp_path / "b.kicad_pcb"
+    link.symlink_to(real.name)
+    monkeypatch.setattr(sys, "argv", ["stackup-table", str(link)])
+    stackup_table_main()
+    assert link.is_symlink()
+    assert real.read_text() != board()
+    assert "(table" in real.read_text()

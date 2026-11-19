@@ -100,7 +100,11 @@ say); a new file is written with `\n` and no mark.
 `.kicad_pro`, say) before it does anything, and stops naming the first
 it cannot.  It writes each file beside it and renames it over the old,
 the old file's mode kept, so an interrupted run leaves each file whole,
-old or new.  The scratch file such a run may leave beside one
+old or new.  A file with other hard links (`AGENTS.md` a hard link of
+`CLAUDE.md`, say) is written in place instead, after a scratch copy,
+so every name keeps sharing it; a link adopt writes through is written
+at its target, and the target's directory must be writable too, which
+`--yes` checks first.  The scratch file such a run may leave beside one
 (`.NAME.PID.ee_tooling-tmp`) is named by `--check` ("left over") and
 removed by `--yes`.
 

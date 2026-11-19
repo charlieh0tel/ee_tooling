@@ -1194,7 +1194,9 @@ def refuse_unwritable(root: Path, steps: Sequence[Step]) -> None:
     for step in steps:
         match step:
             case File() | Edit():
-                paths = [step.path, step.path.parent]
+                # Where the write lands: a link's target, and its directory.
+                landing = (root / step.path).resolve()
+                paths = [landing, landing.parent]
             case Remove():
                 paths = [step.path.parent] if step.kept is None else []
             case Rename():
@@ -1203,7 +1205,8 @@ def refuse_unwritable(root: Path, steps: Sequence[Step]) -> None:
                 paths = []
         for p in paths:
             if not writable(root / p):
-                raise ValueError(f"{p.as_posix()} cannot be written: nothing done")
+                shown = p.relative_to(root.resolve()) if p.is_relative_to(root.resolve()) else p
+                raise ValueError(f"{shown.as_posix()} cannot be written: nothing done")
 
 
 def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path], None]) -> None:

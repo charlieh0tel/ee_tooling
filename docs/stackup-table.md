@@ -38,7 +38,9 @@ ending (its first line's: `\r\n` in a checkout that converts them);
 the rest of the file is kept byte for byte.  A second run changes
 nothing.  The file is written beside the board and renamed over it, its
 mode kept, so a write that fails (a full disk) leaves the board as it
-was.
+was.  A board that is a symbolic link is written at its target, the
+link kept; one with other hard links is written in place, so every name
+keeps sharing it.
 
 ## The drawing frame
 

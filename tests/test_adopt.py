@@ -2193,3 +2193,31 @@ def test_section_value_change_not_said_to_drop_lines(
     capsys.readouterr()
     assert Path("hardware/main/main.kicad_dru") in stale(layout)
     assert "between ee_tooling's markers" not in capsys.readouterr().err
+
+
+def test_agents_hard_linked_to_claude(tmp_path: Path) -> None:
+    """AGENTS.md a hard link of CLAUDE.md: both names get the section."""
+    layout = repository(tmp_path, "main")
+    (tmp_path / "CLAUDE.md").write_text("# Mine\n")
+    os.link(tmp_path / "CLAUDE.md", tmp_path / "AGENTS.md")
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, File)], lambda *_: None)
+    assert (tmp_path / "CLAUDE.md").read_text() == (tmp_path / "AGENTS.md").read_text()
+    assert "ee_tooling: begin" in (tmp_path / "CLAUDE.md").read_text()
+
+
+def test_linked_file_in_a_read_only_directory_refused_first(tmp_path: Path) -> None:
+    """AGENTS.md a link to docs/CLAUDE.md, docs read-only: named before
+    anything is done."""
+    layout = repository(tmp_path, "main")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "CLAUDE.md").write_text("# Mine\n")
+    link(tmp_path / "AGENTS.md", Path("docs/CLAUDE.md"))
+    docs.chmod(0o555)
+    try:
+        steps = plan(layout)
+        with pytest.raises(ValueError, match=r"^docs cannot be written: nothing done$"):
+            apply(tmp_path, steps, lambda *_: pytest.fail("ran"))
+        assert not (tmp_path / ".githooks").exists()
+    finally:
+        docs.chmod(0o755)
