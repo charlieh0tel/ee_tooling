@@ -2381,3 +2381,18 @@ def test_library_outside_the_repository_warned_of(
     assert warning in capsys.readouterr().err
     assert Path("hardware/main/fp-lib-table") not in stale(layout)
     assert warning in capsys.readouterr().err
+
+
+def test_board_directory_through_a_link_inside(tmp_path: Path) -> None:
+    """hardware/main a link to boards/main, no .kicad_dru yet: the rules
+    written there, the same on the first run as on the next."""
+    layout = rules_repository(tmp_path)
+    board = tmp_path / "hardware/main"
+    (tmp_path / "boards").mkdir()
+    board.rename(tmp_path / "boards/main")
+    board.symlink_to(Path("../boards/main"))
+    (tmp_path / "boards/main/main.kicad_dru").unlink()
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert "ee_tooling: jlcpcb rules" in (tmp_path / "boards/main/main.kicad_dru").read_text()
+    assert board.is_symlink()
+    assert [s for s in plan(layout) if isinstance(s, Edit)] == []

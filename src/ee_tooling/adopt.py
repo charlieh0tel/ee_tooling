@@ -1005,11 +1005,14 @@ def link_on_the_way(root: Path, path: Path) -> Path | None:
 
 def linked_within(root: Path, path: Path) -> Path | None:
     """The file path, from root, links to, if a write may go through to it:
-    a regular file inside the repository, not in another repository (a
-    directory with a .git on the way); else None."""
+    a regular file inside the repository, or one not there yet in a
+    directory inside it (a board's directory reached through a link, its
+    .kicad_dru to be made), not in another repository (a directory with a
+    .git on the way); else None."""
     target = (root / path).resolve()
     top = root.resolve()
-    if not target.is_file() or not target.is_relative_to(top):
+    there = target.is_file() or (not target.exists() and target.parent.is_dir())
+    if not there or not target.is_relative_to(top):
         return None
     for directory in target.relative_to(top).parents:
         if directory != Path() and os.path.lexists(top / directory / ".git"):

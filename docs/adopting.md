@@ -75,8 +75,10 @@ the dry run and `--yes` name such an edit "update PATH (project;
 `adopt` changes a file through a symbolic link only where it keeps the
 project's text in it: `AGENTS.md` and `.gitattributes` (its sections)
 and the files it edits (`fab.toml`, a board's `.kicad_dru` and
-`.kicad_pro`), each linked to a regular file inside the repository and
-not in another repository (a submodule, a clone): it writes that file,
+`.kicad_pro`), each linked to a regular file inside the repository, or
+to be made in a directory inside it (a board's directory reached through
+a link, its `.kicad_dru` not there yet), and not in another repository
+(a submodule, a clone): it writes that file,
 keeps the link, and says so on stderr (`AGENTS.md` as a link to
 `CLAUDE.md`, say).  Any other link (a managed hook or the workflow,
 which `adopt` writes whole, a file it creates, removes or renames, a
