@@ -77,7 +77,7 @@ WRITTEN_BY_ADOPT = "(ee_tooling's docs/adopting.md)"
 LFS_INSTALL = ("git", "lfs", "install", "--local", "--skip-repo")
 LFS_PULL = ("git", "lfs", "pull")
 # --check's label for the files of a type Git LFS tracks stored as plain
-# blobs at HEAD, and how to store them through Git LFS from now on.
+# blobs at HEAD, and how to store them through Git LFS.
 NOT_IN_LFS = "not stored through Git LFS"
 RENORMALIZE = (
     "with git-lfs's filters set ({submodule}/adopt --yes sets them), run git add"
@@ -160,7 +160,7 @@ class Command:
 
 @dataclass(frozen=True)
 class Remove:
-    """A project file ee_tooling no longer reads, from the repository root,
+    """A project file ee_tooling does not read, from the repository root,
     removed unless git does not hold it as it is."""
 
     path: Path

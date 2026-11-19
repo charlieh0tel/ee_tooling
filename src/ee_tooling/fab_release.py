@@ -105,7 +105,7 @@ STRING_KEYS: dict[str, str | None] = {
 LIST_KEYS: dict[str, list[str] | None] = {"sources": [], "variants": []}
 # A [[board]]'s table of what its fab is to build to, every key required.
 FAB = "fab"
-# Keys fab.toml no longer has, with why: present, each is an error.
+# Keys fab.toml does not have, with why: present, each is an error.
 GONE_KEYS = {"copper": "the copper layers come from the board's stackup"}
 # A design variant's name, as KiCad 10 allows it: letters, digits, ".", "_"
 # and "-", not starting with "-".
