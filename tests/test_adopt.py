@@ -2423,3 +2423,16 @@ def test_library_submodule_with_a_space_in_its_path(
         " clone only): git -C 'hardware/my lib' lfs install --local --skip-repo && git -C"
         " 'hardware/my lib' lfs pull\n"
     ) in capsys.readouterr().err
+
+
+def test_leftover_in_the_old_skill_removed_before_the_move(tmp_path: Path) -> None:
+    """A kill during the skill's move left a scratch file in the old
+    directory: one --yes removes it, then moves the directory."""
+    layout = adopted(tmp_path, "main")
+    left = tmp_path / ".claude/skills/jlcpcb-release/.SKILL.md.4242.ee_tooling-tmp"
+    left.write_text("partial")
+    apply(tmp_path, plan(layout), lambda *_: None)
+    new = tmp_path / ".claude/skills/fab-release"
+    assert new.is_dir() and not (tmp_path / ".claude/skills/jlcpcb-release").exists()
+    assert not (new / left.name).exists()
+    assert stale(layout) == []

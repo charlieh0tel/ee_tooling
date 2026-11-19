@@ -1199,10 +1199,12 @@ def plan(layout: Layout) -> list[Step]:
     warn_plain_at_head(root, submodule)
     warn_unfetched_submodules(layout)
     warn_outside_libraries(layout, planned_config(root, planned))
-    steps: list[Step] = [f for f in planned if f.action(root)]
+    # An interrupted write's scratch files first: one in the old skill's
+    # directory would move with it, and its removal then fail.
+    steps: list[Step] = [Remove(p, LEFTOVER_WHY) for p in leftovers(root)]
+    steps += [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
-    steps += [Remove(p, LEFTOVER_WHY) for p in leftovers(root)]
     # git's and git-lfs's set-up first: .gitattributes routes files to Git
     # LFS already, and a uv step that fails must not leave them unset.
     if git(root, "config", "core.hooksPath") != HOOKS_PATH:

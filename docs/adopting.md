@@ -108,7 +108,8 @@ so every name keeps sharing it; a link adopt writes through is written
 at its target, and the target's directory must be writable too, which
 `--yes` checks first.  The scratch file such a run may leave beside one
 (`.NAME.PID.ee_tooling-tmp`) is named by `--check` ("left over") and
-removed by `--yes`.
+removed by `--yes` first, before anything else (one in the old skill's
+directory would move with it).
 
 A board whose `directory` in `fab.toml` resolves outside the
 repository, or into another repository (a directory with a `.git` on the
