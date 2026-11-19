@@ -2358,3 +2358,26 @@ def test_git_lfs_stock_pre_push_replaced_quietly(
     capsys.readouterr()
     plan(layout)
     assert "WARNING" not in capsys.readouterr().err
+
+
+def test_library_outside_the_repository_warned_of(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A board's fp-lib-table naming a library beside the repository: the
+    dry run and --check warn, pointing at the recipe; --check still passes
+    on it."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    (tmp_path / "hardware/main/fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "a")(type "KiCad")(uri "${KIPRJMOD}/../../../a.pretty")))\n'
+    )
+    warning = (
+        "warning: [[board]] 'main': libraries outside the repository, which fab-release"
+        " refuses: ${KIPRJMOD}/../../../a.pretty; move each in"
+        " (hardware/ee_tooling/docs/adopting.md, Moving a library into the repository)\n"
+    )
+    capsys.readouterr()
+    plan(layout)
+    assert warning in capsys.readouterr().err
+    assert Path("hardware/main/fp-lib-table") not in stale(layout)
+    assert warning in capsys.readouterr().err

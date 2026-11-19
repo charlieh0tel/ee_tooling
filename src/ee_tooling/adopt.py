@@ -56,6 +56,8 @@ from ee_tooling.kicad_rules import (
 )
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.jlcpcb import Jlcpcb
+from ee_tooling.project_libraries import libraries
+from ee_tooling.sexpr import ParseError, parse
 
 # This ee_tooling's checkout: src/ee_tooling/adopt.py's grandparent.
 CHECKOUT = Path(__file__).resolve().parents[2]
@@ -1140,12 +1142,49 @@ def warn_unfetched_submodules(layout: Layout) -> None:
             )
 
 
+def warn_outside_libraries(layout: Layout, config: str | None) -> None:
+    """Warn, for each board in fab.toml's text (config), of each library its
+    tables and 3D model paths name outside the repository, which
+    fab-release refuses (project_libraries.libraries), pointing at the
+    docs' recipe; a board or table that cannot be read is said so."""
+    if config is None:
+        return
+    try:
+        boards = tomllib.loads(config).get("board", [])
+    except tomllib.TOMLDecodeError:
+        return
+    root = layout.root
+    for b in boards if isinstance(boards, list) else []:
+        if not isinstance(b, dict):
+            continue
+        name, directory = b.get("name"), b.get("directory")
+        if not isinstance(name, str) or not isinstance(directory, str):
+            continue
+        pcb = root / directory / f"{name}.kicad_pcb"
+        if not pcb.is_file():
+            continue
+        try:
+            found = libraries(root, Path(directory), parse(read(pcb)))
+        except (ValueError, ParseError, OSError) as e:
+            print(f"warning: {name}: its libraries not checked: {e}", file=sys.stderr)
+            continue
+        if found.outside:
+            print(
+                f"warning: [[board]] {name!r}: libraries outside the repository, which"
+                f" fab-release refuses: {', '.join(found.outside)}; move each in"
+                f" ({layout.submodule.as_posix()}/docs/adopting.md, Moving a library into the"
+                " repository)",
+                file=sys.stderr,
+            )
+
+
 def plan(layout: Layout) -> list[Step]:
     """What is to be done, in order."""
     root, submodule, hardware = layout.root, layout.submodule, layout.hardware
     planned = files(layout)
     warn_plain_at_head(root, submodule)
     warn_unfetched_submodules(layout)
+    warn_outside_libraries(layout, planned_config(root, planned))
     steps: list[Step] = [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
@@ -1330,6 +1369,7 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
     managed = [(f, f.action(root)) for f in planned if f.owner is Owner.MANAGED]
     migrating = migrations(layout)
     edits = rules_edits(root, planned_config(root, planned))
+    warn_outside_libraries(layout, planned_config(root, planned))
     refuse_links(root, [*(f for f, a in managed if a), *migrating, *edits])
     renamed = [s.source if isinstance(s, Rename) else s.path for s in migrating]
     rules = [s.path for s in edits]

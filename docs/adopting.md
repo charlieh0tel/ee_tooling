@@ -429,8 +429,8 @@ project at the repository root, `ee_tooling/` stands for
    (or `git submodule update --remote hardware/ee_tooling` for `main`).
 4. `hardware/ee_tooling/adopt` (the dry run): read what it would do and
    its warnings (hooks that stop running, a `pre-push` replaced, plain
-   blobs at HEAD, library submodules' pointers, rules dropped from or
-   retired below the rules section).
+   blobs at HEAD, library submodules' pointers, libraries outside the
+   repository, rules dropped from or retired below the rules section).
 5. `hardware/ee_tooling/adopt --yes`.
 6. Run the commands it gave for each library submodule's pointers.
 7. In `hardware/`: `uv lock` (or any `uv run`), so `hardware/uv.lock`
@@ -464,8 +464,10 @@ the libraries and the committed sources besides.
 
 ### Moving a library into the repository
 
-`fab-release` refuses a library outside the repository.  To move one
-in, as a submodule:
+`fab-release` refuses a library outside the repository, and `adopt`'s
+dry run and `--check` warn of each one a board's library tables or 3D
+model paths name (a warning: `--check` does not fail on it).  To move
+one in, as a submodule:
 
 1. Give the library a repository of its own (`git init`, or use the one
    it has), on a host with Git LFS.
@@ -483,5 +485,7 @@ in, as a submodule:
    whole; only a path relative to the project needs rewriting.
 5. List it in the board's `sources` in `fab.toml` for the source tgz to
    hold it.
-6. Commit, with the upgrade's other changes above; push the library's
+6. Rerun `hardware/ee_tooling/adopt` (the dry run): it no longer warns
+   of the library.
+7. Commit, with the upgrade's other changes above; push the library's
    repository before the board's.
