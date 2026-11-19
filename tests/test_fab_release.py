@@ -661,6 +661,7 @@ electrical_test = "100% netlist test per IPC-9252"
                         "min_copper_edge_clearance": 0.2,
                         "min_hole_clearance": 0.25,
                         "min_hole_to_hole": 0.2,
+                        "min_microvia_drill": 0.15,
                         "min_through_hole_diameter": 0.3,
                         "min_track_width": 0.15,
                         "min_via_annular_width": 0.1,

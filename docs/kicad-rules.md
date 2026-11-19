@@ -44,6 +44,8 @@ a board with DRC or ERC violations.
   |---|---|---|
   | `min_track_width` | tracks | none left (Board Setup's own) |
   | `min_via_diameter` | through vias | none left |
+  | `min_microvia_drill` | microvia holes | none |
+  | a net class's `microvia_diameter` | its microvias' diameter (Board Setup's `min_microvia_diameter` is not checked in 10.0.8) | none: raised to 0.25 in each net class that sets it |
   | `min_through_hole_diameter` | via, PTH and NPTH holes | non-plated hole, plated and non-plated slot |
   | `min_via_annular_width` | vias and PTH pads | the PTH pad's annular ring (`JLCPCB annular ring`) |
   | `min_hole_to_hole` | hole pairs | pad hole to pad hole, mounting hole vias |
@@ -83,8 +85,11 @@ overwrites the change.
    by hand") and `fab-release`, naming the file: fix them by hand.
 2. `NAME.kicad_pro`: each of `board.design_settings.rules` raised to at
    least its value in `jlcpcb_board_setup.json` (Board Setup, Design
-   Rules, Constraints), never lowered; then the section's minimums are
-   raised to these values where they are higher (above).
+   Rules, Constraints), never lowered, and each net class's
+   `microvia_diameter` raised to the profile's where the class sets a
+   lower one (one that does not set it has KiCad's 0.3); then the
+   section's minimums are raised to these values where they are higher
+   (above).
 3. `NAME.kicad_pro`: each of `erc.rule_severities` set to its value in
    `erc_severities.json` (Schematic Setup, Electrical Rules, Violation
    Severity), kept where the board's is stricter (`ignore`, then
@@ -128,7 +133,7 @@ and 6 layers.  mm.
 | Traces: minimum SMD pad | 0.25 x 0.25 | 0.25 x 0.25 | `JLCPCB SMD pad size` (pads with copper) |
 | Traces: BGA pad (ENIG) | 0.2 | 0.2 | `JLCPCB BGA pad size` (fabrication property BGA pad) |
 | Traces: PTH annular ring (1 oz), absolute minimum | 0.18 | 0.15 | `JLCPCB annular ring` 0.18 (pads) |
-| Drilling: min. via hole size / diameter | 0.15 / 0.25 | 0.15 / 0.25 | Board Setup `min_through_hole_diameter` 0.15, `min_via_diameter` 0.25 |
+| Drilling: min. via hole size / diameter | 0.15 / 0.25 | 0.15 / 0.25 | Board Setup `min_through_hole_diameter` 0.15, `min_via_diameter` 0.25 (through vias); `min_microvia_drill` 0.15 and each net class's `microvia_diameter` raised to 0.25 (microvias) |
 | Drilling: via diameter over via hole | 0.1 | 0.1 | Board Setup `min_via_annular_width` 0.05 |
 | Drilling: drill diameter | 0.15 - 6.3 | 0.15 - 6.3 | Board Setup `min_through_hole_diameter` 0.15 (6.3 and up is routed) |
 | Drilling: min. non-plated holes | 0.50 | 0.50 | `JLCPCB non-plated hole size` |

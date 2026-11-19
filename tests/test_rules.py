@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,7 @@ BOARD_SETUP_KEYS = {
     "min_copper_edge_clearance",
     "min_hole_clearance",
     "min_hole_to_hole",
+    "min_microvia_drill",
     "min_through_hole_diameter",
     "min_track_width",
     "min_via_annular_width",
@@ -158,7 +160,14 @@ def board(*items: str) -> str:
 
 def project(classes: dict[str, str]) -> dict[str, object]:
     """A .kicad_pro with a net class for each net pattern in classes."""
-    widths = {"clearance": 0.2, "track_width": 0.25, "via_diameter": 0.6, "via_drill": 0.3}
+    widths = {
+        "clearance": 0.2,
+        "track_width": 0.25,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "microvia_diameter": 0.2,
+        "microvia_drill": 0.1,
+    }
     return {
         "net_settings": {
             "meta": {"version": 4},
@@ -287,6 +296,27 @@ def test_kicad_drc_pad_ring_board_setup_wins(tmp_path: Path) -> None:
     assert not [v for v in drc(tmp_path, pad) if v.startswith("annular_width")]
     found = drc(tmp_path, pad, setup={"min_via_annular_width": 0.3})
     assert any(v.startswith("annular_width: ") and "actual 0.2000 mm" in v for v in found)
+
+
+# A four-layer board's layers, for a microvia.
+FOUR_LAYERS = LAYERS.replace(
+    '(2 "B.Cu" signal)', '(4 "In1.Cu" signal) (6 "In2.Cu" signal) (2 "B.Cu" signal)'
+)
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_microvia(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """JLCPCB's via diameter and hole hold microvias too: the hole by Board
+    Setup's microvia drill, the diameter by each net class's microvia
+    diameter (what kicad-cli 10.0.8 checks a microvia's against), raised to
+    0.25 from a net class's 0.2."""
+    monkeypatch.setattr(sys.modules[__name__], "LAYERS", FOUR_LAYERS)
+    micro = '(via micro (at 10 10) (size 0.24) (drill 0.14) (layers "F.Cu" "In1.Cu") (net "A"))'
+    found = drc(tmp_path, micro, classes={"A": "Default"}, setup={"allow_microvias": True})
+    assert any(v.startswith("via_diameter: ") and "min diameter 0.2500 mm" in v for v in found)
+    assert any(
+        v.startswith("microvia_drill_out_of_range: ") and "min hole 0.1500 mm" in v for v in found
+    )
 
 
 def silk_line(start: str, end: str) -> str:

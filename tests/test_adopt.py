@@ -947,6 +947,7 @@ def test_rules_installed(tmp_path: Path) -> None:
             " board.design_settings.rules.min_clearance: 0.05 -> 0.1;"
             " board.design_settings.rules.min_copper_edge_clearance: none -> 0.2;"
             " board.design_settings.rules.min_hole_to_hole: none -> 0.2;"
+            " board.design_settings.rules.min_microvia_drill: none -> 0.15;"
             " board.design_settings.rules.min_through_hole_diameter: none -> 0.15;"
             " board.design_settings.rules.min_track_width: none -> 0.1;"
             " board.design_settings.rules.min_via_annular_width: none -> 0.05;"
@@ -963,6 +964,7 @@ def test_rules_installed(tmp_path: Path) -> None:
         "min_copper_edge_clearance": 0.2,
         "min_hole_clearance": 0.25,
         "min_hole_to_hole": 0.2,
+        "min_microvia_drill": 0.15,
         "min_through_hole_diameter": 0.15,
         "min_track_width": 0.1,
         "min_via_annular_width": 0.05,

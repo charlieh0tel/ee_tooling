@@ -337,3 +337,23 @@ def test_silk_clearance_not_floored() -> None:
     a silkscreen-to-pad rule is not raised to it."""
     section = '(rule "own" (constraint silk_clearance (min 0mm)))\n'
     assert floored(section, setup_of(min_silk_clearance=0.15)) == section
+
+
+def test_raised_each_net_class() -> None:
+    """A list of one object in the minimums stands for each net class:
+    each value there raised, none lowered; one a class lacks is KiCad's
+    default (0.3 for a microvia), not set; no class added."""
+    project = {
+        "net_settings": {
+            "classes": [
+                {"name": "Default", "microvia_diameter": 0.2},
+                {"name": "Power", "microvia_diameter": 0.4},
+                {"name": "Bare"},
+            ]
+        }
+    }
+    least = {"net_settings": {"classes": [{"microvia_diameter": 0.25}]}}
+    out, changes = raised(project, least)
+    assert [c.get("microvia_diameter") for c in out["net_settings"]["classes"]] == [0.25, 0.4, None]
+    assert changes == ["net_settings.classes[Default].microvia_diameter: 0.2 -> 0.25"]
+    assert raised({}, least) == ({"net_settings": {}}, [])

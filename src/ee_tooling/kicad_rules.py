@@ -116,13 +116,32 @@ def put(table: dict[str, Any], key: str, value: object) -> None:
 def raised(project: dict[str, Any], least: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """The project with each number in least raised to at least least's
     value, never lowered (a missing one set), and what was raised, as
-    "a.b.c: old -> new"."""
+    "a.b.c: old -> new".  A list in least of one object stands for every
+    object of the project's list there (each net class): a number one of
+    them has is raised alike; one it lacks is left to KiCad's default, and
+    no object is added."""
     out = copy.deepcopy(project)
     changes: list[str] = []
 
     def walk(have: dict[str, Any], want: dict[str, Any], where: str) -> None:
         for key, value in want.items():
             path = f"{where}{key}"
+            if isinstance(value, list):
+                found = have.get(key)
+                for item in found if isinstance(found, list) else []:
+                    if not isinstance(item, dict):
+                        continue
+                    for least_item in value:
+                        for k, v in least_item.items():
+                            old = item.get(k)
+                            if (
+                                isinstance(old, int | float)
+                                and not isinstance(old, bool)
+                                and old < v
+                            ):
+                                put(item, k, v)
+                                changes.append(f"{path}[{item.get('name', '?')}].{k}: {old} -> {v}")
+                continue
             if isinstance(value, dict):
                 if not isinstance(have.get(key), dict):
                     put(have, key, {})
