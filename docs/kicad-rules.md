@@ -35,9 +35,7 @@ a board with DRC or ERC violations.
   that is higher, when installed and in `fab-release`'s DRC, so no rule
   loosens the board's own limit.  A board that later raises a Board
   Setup value has a stale section: `adopt --check` fails, and
-  `fab-release` warns, until `adopt --yes`.  Board Setup's annular width
-  holds for vias only (10.0.8): a pad's ring, `JLCPCB annular ring`, is
-  not raised to it.
+  `fab-release` warns, until `adopt --yes`.
 - A minimum is raised only where the Board Setup value constrains what
   the rule does (checked with `kicad-cli pcb drc` on a synthetic board,
   one Board Setup value made strict at a time, no custom rules):
@@ -47,6 +45,7 @@ a board with DRC or ERC violations.
   | `min_track_width` | tracks | none left (Board Setup's own) |
   | `min_via_diameter` | through vias | none left |
   | `min_through_hole_diameter` | via, PTH and NPTH holes | non-plated hole, plated and non-plated slot |
+  | `min_via_annular_width` | vias and PTH pads | the PTH pad's annular ring (`JLCPCB annular ring`) |
   | `min_hole_to_hole` | hole pairs | pad hole to pad hole, mounting hole vias |
   | `min_hole_clearance` | via, PTH and NPTH holes to copper | plated hole clearance, outer and inner |
   | `min_text_height`, `min_text_thickness` | silkscreen text only (not Fab, not copper) | silkscreen text, silkscreen text height |

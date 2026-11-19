@@ -142,14 +142,16 @@ def raised(project: dict[str, Any], least: dict[str, Any]) -> tuple[dict[str, An
 # an item replaces for it in KiCad's DRC; only where the Board Setup value
 # constrains what the profile's rules of that kind do (kicad-cli 10.0.8):
 # min_through_hole_diameter, min_hole_clearance: via, PTH and NPTH holes;
-# min_hole_to_hole: hole pairs; min_text_height and min_text_thickness:
-# silkscreen text, as the profile's silkscreen rules.  Not silk_clearance:
-# Board Setup's min_silk_clearance holds silkscreen to silkscreen, the
-# profile's rules silkscreen to pads (a footprint's own exempt).
+# min_via_annular_width: vias and PTH pads; min_hole_to_hole: hole pairs;
+# min_text_height and min_text_thickness: silkscreen text, as the profile's
+# silkscreen rules.  Not silk_clearance: Board Setup's min_silk_clearance
+# holds silkscreen to silkscreen, the profile's rules silkscreen to pads (a
+# footprint's own exempt).
 BOARD_SETUP_KEYS = {
     "track_width": "min_track_width",
     "via_diameter": "min_via_diameter",
     "hole_size": "min_through_hole_diameter",
+    "annular_width": "min_via_annular_width",
     "hole_to_hole": "min_hole_to_hole",
     "hole_clearance": "min_hole_clearance",
     "text_height": "min_text_height",

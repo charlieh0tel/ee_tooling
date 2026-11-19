@@ -279,6 +279,16 @@ def test_kicad_drc_mounting_hole(tmp_path: Path) -> None:
     assert any(v.startswith("assertion_failure: ") and "'Mounting hole plated'" in v for v in found)
 
 
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
+def test_kicad_drc_pad_ring_board_setup_wins(tmp_path: Path) -> None:
+    """Board Setup's annular width holds PTH pads too (10.0.8): a ring of
+    0.2, which JLCPCB's 0.18 passes, breaks a board's 0.3."""
+    pad = footprint("Test:Peg", "TP1", 20, 20, plated(0, 1.0, size=1.4))
+    assert not [v for v in drc(tmp_path, pad) if v.startswith("annular_width")]
+    found = drc(tmp_path, pad, setup={"min_via_annular_width": 0.3})
+    assert any(v.startswith("annular_width: ") and "actual 0.2000 mm" in v for v in found)
+
+
 def silk_line(start: str, end: str) -> str:
     return f'(start {start}) (end {end}) (stroke (width 0.12) (type solid)) (layer "F.SilkS")'
 

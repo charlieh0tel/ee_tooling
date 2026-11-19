@@ -295,14 +295,14 @@ FLOOR_SECTION = (
                 "(min 0.15mm)", "(min 0.2mm)"
             ),
         ),
-        ({"min_via_annular_width": 0.3}, FLOOR_SECTION),
+        ({"min_via_annular_width": 0.3}, FLOOR_SECTION.replace("(min 0.18mm)", "(min 0.3mm)")),
         ({"min_text_height": True, "min_through_hole_diameter": "x"}, FLOOR_SECTION),
         ({"min_text_height": 1.0 / 3}, FLOOR_SECTION),
     ],
 )
 def test_floored(setup: dict[str, object], want: str) -> None:
     """A minimum raised to the board's Board Setup value of its kind where
-    that is higher; a pad's annular ring, booleans and text left."""
+    that is higher; booleans and text left."""
     assert floored(FLOOR_SECTION, setup_of(**setup)) == want
 
 
