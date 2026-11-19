@@ -48,6 +48,7 @@ from ee_tooling.fab_release import (
     status_entries,
     tag_plan,
     tag_refused,
+    tbd_warnings,
     variant_names,
     variant_text_warning,
 )
@@ -703,10 +704,12 @@ SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
 FIXTURE["hw/b.kicad_dru"] = f"(version 1)\n{SECTION}\n{OWN_RULE}"
 
 
-# The JLCPCB profile's warnings of the fixture's parts, on stderr.
+# The JLCPCB profile's warnings of the fixture's parts, and its fab notes' TBD, on stderr.
 PROFILE_WARNINGS = (
     "warning: no LCSC part number for TP1,TP2\n"
     "warning: check a new part (C4) in JLCPCB's placement preview: no correction known\n"
+    "warning: b-1-fab-notes.txt: [TBD: color]: set the solder mask's and silkscreen's colors"
+    " in Board Setup, Physical Stackup\n"
 )
 
 
@@ -716,7 +719,9 @@ def profile_quiet(err: str) -> str:
     return "".join(
         line
         for line in err.splitlines(keepends=True)
-        if "no LCSC part number for TP1,TP2" not in line and "placement preview" not in line
+        if "no LCSC part number for TP1,TP2" not in line
+        and "placement preview" not in line
+        and "[TBD: color]" not in line
     )
 
 
@@ -3389,3 +3394,24 @@ def test_release_stops_on_a_commit_during_erc(
         release(tmp_path, monkeypatch)
     assert kicad_calls(tmp_path) == []
     assert not (tmp_path / "repo/production").exists()
+
+
+def test_tbd_warnings() -> None:
+    text = "SILKSCREEN: top, [TBD: color]; MASK [TBD: color]; FINISH: [TBD: surface finish].\n"
+    assert tbd_warnings(text) == [
+        "[TBD: color]: set the solder mask's and silkscreen's colors in Board Setup,"
+        " Physical Stackup",
+        "[TBD: surface finish]: set the copper finish in Board Setup, Physical Stackup",
+    ]
+    assert tbd_warnings("[TBD: other]") == ["[TBD: other]: fill it in before sending the documents"]
+
+
+def test_release_warns_of_tbd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The fixture's silkscreen color is not in its stackup: said."""
+    release(tmp_path, monkeypatch)
+    assert (
+        "warning: b-1-fab-notes.txt: [TBD: color]: set the solder mask's and silkscreen's"
+        " colors in Board Setup, Physical Stackup\n"
+    ) in capsys.readouterr().err

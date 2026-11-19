@@ -941,6 +941,31 @@ def resolved_revision(rev: str, settings: object) -> str:
     raise ValueError(f"the title block's rev {rev!r}: its text variables do not resolve")
 
 
+# A fabrication document's [TBD: ...], and what sets each, by its text.
+TBD_ENTRY = re.compile(r"\[TBD: ([^\]]*)\]")
+TBD_FIXES = {
+    "color": "set the solder mask's and silkscreen's colors in Board Setup, Physical Stackup",
+    "surface finish": "set the copper finish in Board Setup, Physical Stackup",
+    "weight": "set each copper layer's thickness in Board Setup, Physical Stackup",
+    "ohms": "name the impedance net class <ohms>Z_DIFF or <ohms>Z_SE",
+    "track": "the Gerber job gave none: fill it in by hand",
+    "space": "the Gerber job gave none: fill it in by hand",
+    "drill": "the drill files gave none: fill it in by hand",
+}
+
+
+def tbd_warnings(text: str) -> list[str]:
+    """Each [TBD: ...] a fabrication document holds, once, with what sets
+    it: the fab is sent the documents as they are."""
+    out = []
+    for what in dict.fromkeys(TBD_ENTRY.findall(text)):
+        fix = TBD_FIXES.get(what, "fill it in before sending the documents")
+        if what.startswith("name not"):
+            fix = "rename the net class in the house form"
+        out.append(f"[TBD: {what}]: {fix}")
+    return out
+
+
 def report(path: Path) -> str:
     """A kicad-cli report's text, for the message that stops a release: its
     work directory goes with it."""
@@ -2048,6 +2073,9 @@ def main() -> None:
                 (out / map_name).write_text(map_text)
                 (out / stackup_name).write_text(stackup_text)
                 (out / f"{base}-{NOTES}").write_text(notes_text)
+                for name, text in ((f"{base}-{NOTES}", notes_text), (stackup_name, stackup_text)):
+                    for w in tbd_warnings(text):
+                        print(f"warning: {name}: {w}", file=sys.stderr)
                 for v in builds:
                     r.odb(out / f"{bases[v]}-odb.tgz", v)
                     r.ipc2581(out / f"{bases[v]}-ipc2581.zip", profile.distributor, v)
