@@ -201,7 +201,10 @@ with `variants`).  It does not push the tag: it prints
 the command, `git push origin refs/tags/NAME-YYYYMMDD-REV`.  Run that
 only when the owner says to.
 
-- A build from uncommitted sources (`--allow-dirty`) is not tagged.
+- A build from uncommitted sources (`--allow-dirty`) is not tagged, and
+  never replaces a release that has its tag, `--retag` or not: the tag
+  would name a package it does not describe.  Build such a trial under
+  another `--date`.
 - A rebuild (`--force`) of the commit the tag is on leaves the tag.
 - A tag already on another commit stops it before anything is replaced,
   saying why: HEAD has moved since the release was built, so the

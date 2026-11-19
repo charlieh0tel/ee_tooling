@@ -413,7 +413,9 @@ def test_odb_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ("dirty", "tagged", "retag", "plan"),
     [
         (True, None, False, TagPlan.DIRTY),
-        (True, "b" * 40, False, TagPlan.DIRTY),
+        (True, "b" * 40, False, TagPlan.DIRTY_TAGGED),
+        (True, "b" * 40, True, TagPlan.DIRTY_TAGGED),
+        (True, "a" * 40, False, TagPlan.DIRTY_TAGGED),
         (False, None, False, TagPlan.CREATE),
         (False, None, True, TagPlan.CREATE),
         (False, "a" * 40, False, TagPlan.PRESENT),
@@ -2047,9 +2049,7 @@ def test_release_refuses_a_changed_library_submodule(
         SystemExit, match=r"uncommitted changes in the release's sources:\n.*libs/shared"
     ):
         main()
-    monkeypatch.setattr(
-        sys, "argv", ["fab-release", "--date", "20261118", "--force", "--allow-dirty"]
-    )
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261119", "--allow-dirty"])
     main()
 
 
@@ -2897,3 +2897,28 @@ def test_release_stops_on_a_change_during_the_build(
     assert old.read_text() == "kept\n"
     assert sorted(p.name for p in old.parent.parent.iterdir()) == ["20261118-1"]
     assert git(tmp_path / "repo", "tag") == ""
+
+
+def test_release_refuses_a_dirty_rebuild_of_a_tagged_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--allow-dirty --force (--retag too) over a tagged release: refused,
+    the release and its tag left as they were."""
+    root, _ = release(tmp_path, monkeypatch)
+    dest = root / "production/20261118-1"
+    before = {f.name: f.read_bytes() for f in dest.iterdir()}
+    tagged = git(root, "rev-parse", "b-20261118-1^{commit}")
+    (root / "docs/notes.txt").write_text("trial\n")
+    for extra in ((), ("--retag",)):
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["fab-release", "--date", "20261118", "--force", "--allow-dirty", *extra],
+        )
+        with pytest.raises(SystemExit, match=r"^tag b-20261118-1 names this release"):
+            main()
+    assert {f.name: f.read_bytes() for f in dest.iterdir()} == before
+    assert git(root, "rev-parse", "b-20261118-1^{commit}") == tagged
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261119", "--allow-dirty"])
+    main()
+    assert (root / "production/20261119-1/b-1-bom.csv").exists()

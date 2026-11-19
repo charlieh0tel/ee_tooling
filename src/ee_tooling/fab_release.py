@@ -29,7 +29,8 @@ board must have a stackup and a stackup table matching it, ERC and DRC
 and the release's sources committed, unless --allow-dirty.
 The commit it was built from gets an annotated tag NAME-YYYYMMDD-REV, which
 it does not push: it prints the command.  A build from uncommitted sources
-is not tagged; a tag already on another commit stops it, unless --retag.
+is not tagged, and never replaces a tagged release; a tag already on
+another commit stops it, unless --retag.
 """
 
 import argparse
@@ -861,6 +862,7 @@ class TagPlan(Enum):
     """What a release does with its tag."""
 
     DIRTY = "not tagged: uncommitted sources"
+    DIRTY_TAGGED = "tagged, and the sources uncommitted"
     PRESENT = "already on this commit"
     CREATE = "create it"
     MOVE = "move it here (--retag)"
@@ -924,9 +926,11 @@ def tag_refused(tag: str, tagged: str, commit: str) -> str:
 
 
 def tag_plan(dirty: bool, tagged: str | None, head: str, retag: bool) -> TagPlan:
-    """The plan for a release's tag, given the commit it is on (tagged)."""
+    """The plan for a release's tag, given the commit it is on (tagged).  A
+    build from uncommitted sources is never tagged, and never replaces a
+    tagged release: the tag would name a package it does not describe."""
     if dirty:
-        return TagPlan.DIRTY
+        return TagPlan.DIRTY if tagged is None else TagPlan.DIRTY_TAGGED
     if tagged is None:
         return TagPlan.CREATE
     if tagged == head:
@@ -1612,6 +1616,13 @@ def main() -> None:
         plan = tag_plan(bool(status), tagged, head, a.retag)
         if plan is TagPlan.REFUSE:
             sys.exit(tag_refused(tag, (tagged or "")[:7], short))
+        if plan is TagPlan.DIRTY_TAGGED:
+            sys.exit(
+                f"tag {tag} names this release, and its sources are uncommitted"
+                " (--allow-dirty): a build from them would replace the tagged package and leave"
+                " the tag naming one it does not describe.  Commit them and rebuild, or build"
+                " the trial under another --date"
+            )
         # Each build's parts and placements, checked.
         rows: dict[str | None, tuple[list[Part], list[Placement]]] = {}
         refusals = []
