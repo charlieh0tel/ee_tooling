@@ -1779,9 +1779,12 @@ def main() -> None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")
     try:
         settings = json.loads((root / b.project).read_text(encoding=PROJECT_TEXT))
-        rev = resolved_revision(rev, settings)
+        resolved = resolved_revision(rev, settings)
     except (OSError, ValueError) as e:
         sys.exit(f"{b.project}: {e}")
+    if not resolved.strip():
+        sys.exit(f"no revision in {b.pcb.name}'s title block: its rev {rev!r} is empty")
+    rev = resolved
     if problem := release_name_problem(root, b.name, a.date, rev):
         sys.exit(problem)
     dest = root / b.production / f"{a.date}-{rev}"

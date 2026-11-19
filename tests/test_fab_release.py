@@ -3251,3 +3251,18 @@ def test_release_reads_byte_order_marks(tmp_path: Path, monkeypatch: pytest.Monk
         monkeypatch.setitem(FIXTURE, name, "﻿" + FIXTURE[name])
     root, _ = release(tmp_path, monkeypatch)
     assert (root / "production/20261118-1/b-1-bom.csv").exists()
+
+
+@pytest.mark.parametrize(("rev", "variables"), [("${E}", {"E": ""}), (" ", {})])
+def test_release_refuses_an_empty_rev(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rev: str, variables: dict[str, str]
+) -> None:
+    """A rev empty once its text variables are resolved: as no revision."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].replace('(rev "1")', f'(rev "{rev}")')
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    project = json.loads(FIXTURE["hw/b.kicad_pro"])
+    project["text_variables"] = variables
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", json.dumps(project))
+    with pytest.raises(SystemExit, match=r"^no revision in b.kicad_pcb's title block: its rev"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
