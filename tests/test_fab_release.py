@@ -1,8 +1,10 @@
 import importlib.util
+import io
 import json
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -2994,35 +2996,128 @@ def test_release_refuses_a_dirty_rebuild_of_a_tagged_release(
     assert (root / "production/20261119-1/b-1-bom.csv").exists()
 
 
-def test_release_stops_on_another_runs_building(
+def lock(tmp_path: Path, pid: int) -> Path:
+    """The fixture release's lock, held by pid on this host."""
+    found = tmp_path / "repo/production/.20261118-1.lock"
+    found.mkdir(parents=True)
+    (found / "owner").write_text(f"{socket.gethostname()} {pid}\n")
+    return found
+
+
+def test_release_stops_on_another_runs_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Another run's building directory (its process alive): this run
-    stops, leaving it."""
+    """Another run's lock (its process alive): this run stops, nothing
+    touched."""
+    held = lock(tmp_path, os.getpid())
     building = tmp_path / "repo/production/.20261118-1.building"
-    building.mkdir(parents=True)
-    (building / ".lock").write_text(f"{socket.gethostname()} {os.getpid()}\n")
+    building.mkdir()
     (building / "b-1-bom.csv").write_text("the other run's\n")
-    with pytest.raises(SystemExit, match=r"is being built by another run"):
-        release(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match=r"another run .* is making this release"):
+        release(tmp_path, monkeypatch, args=("--force",))
     assert (building / "b-1-bom.csv").read_text() == "the other run's\n"
-    assert not (tmp_path / "repo/production/20261118-1").exists()
+    assert (held / "owner").exists()
+    assert kicad_calls(tmp_path) == []
 
 
-def test_release_removes_a_killed_runs_building(
+def test_release_takes_over_a_killed_runs_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A building directory whose run is gone from this host: removed,
-    said; the release made."""
+    """A lock whose run is gone from this host, and the building directory
+    it left: taken over and removed, said; the release made; no lock
+    left."""
     gone = subprocess.Popen(["true"])
     gone.wait()
+    held = lock(tmp_path, gone.pid)
     building = tmp_path / "repo/production/.20261118-1.building"
-    building.mkdir(parents=True)
-    (building / ".lock").write_text(f"{socket.gethostname()} {gone.pid}\n")
+    building.mkdir()
     root, _ = release(tmp_path, monkeypatch)
-    assert f"left by a run that is gone ({gone.pid}): removed" in capsys.readouterr().err
-    assert sorted(p.name for p in (root / "production/20261118-1").iterdir())[0] == "b-1-bom.csv"
-    assert not building.exists()
+    err = capsys.readouterr().err
+    assert f"left by a run that is gone ({gone.pid}): taken over" in err
+    assert ".20261118-1.building: an interrupted build's: removed" in err
+    assert (root / "production/20261118-1/b-1-bom.csv").exists()
+    assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
+    assert not held.exists()
+
+
+def package(directory: Path, commit: str) -> None:
+    """A release directory whose source tgz says it was built from commit."""
+    directory.mkdir(parents=True)
+    info = f"commit {commit}\nbuilt 2026-11-18T00:00:00\n".encode()
+    with tarfile.open(directory / "b-1-source.tgz", "w:gz") as t:
+        member = tarfile.TarInfo("b-1-source/COMMIT")
+        member.size = len(info)
+        t.addfile(member, io.BytesIO(info))
+    (directory / "b-1-bom.csv").write_text(f"{commit}\n")
+
+
+@pytest.mark.parametrize(
+    ("dest", "old", "tag", "kept"),
+    [
+        # Killed between the old release's move aside and the new one's
+        # move in: the old one put back.
+        (None, "tagged", "tagged", "tagged"),
+        # Killed after the new one's move in, before its tag: the old one,
+        # its tag's, put back.
+        ("new", "tagged", "tagged", "tagged"),
+        # Killed after the tag, before the old one's removal: the new one,
+        # its tag's, kept.
+        ("tagged", "old", "tagged", "tagged"),
+        # Neither tagged (an untagged build replaced): the old one kept.
+        ("new", "old", None, "old"),
+    ],
+)
+def test_release_recovers_an_interrupted_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    dest: str | None,
+    old: str,
+    tag: str | None,
+    kept: str,
+) -> None:
+    """What a kill at each point of the swap leaves, recovered before
+    anything else, under the lock: the release its tag names never
+    removed; the run then stops, as the release is there and no --force."""
+    production = tmp_path / "repo/production"
+    root, _ = release(tmp_path, monkeypatch)
+    commit = git(root, "rev-parse", "HEAD")
+    if tag is None:
+        git(root, "tag", "-d", "b-20261118-1")
+    hashes = {"tagged": commit, "new": "1" * 40, "old": "2" * 40}
+    shutil.rmtree(production / "20261118-1")
+    if dest is not None:
+        package(production / "20261118-1", hashes[dest])
+    package(production / ".20261118-1.old", hashes[old])
+    (production / ".20261118-1.old/.gitignore").write_text("*\n")
+    capsys.readouterr()
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118"])
+    with pytest.raises(SystemExit, match="exists; use --force"):
+        main()
+    assert (production / "20261118-1/b-1-bom.csv").read_text() == f"{hashes[kept]}\n"
+    assert sorted(p.name for p in production.iterdir()) == ["20261118-1"]
+    assert not (production / "20261118-1/.gitignore").exists()
+    assert "20261118-1" in capsys.readouterr().err
+
+
+def test_release_hidden_directories_ignored_by_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While the release is built: its lock and building directory each
+    hold a .gitignore of everything, so git add -A takes neither; the
+    release put in place has none."""
+    seen: dict[str, str] = {}
+    source = Release.source
+
+    def look(self: Release, *args: object, **kwargs: object) -> None:
+        source(self, *args, **kwargs)  # type: ignore[arg-type]
+        seen["status"] = git(self.root, "status", "--porcelain", "--untracked-files=all")
+
+    monkeypatch.setattr(Release, "source", look)
+    root, _ = release(tmp_path, monkeypatch)
+    assert ".building" not in seen["status"]
+    assert ".lock" not in seen["status"]
+    assert not (root / "production/20261118-1/.gitignore").exists()
 
 
 def test_release_stops_on_a_release_made_meanwhile(

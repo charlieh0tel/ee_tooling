@@ -180,19 +180,32 @@ require_lcsc = true              # default false
   uncommitted-sources check and `adopt`'s project search skip it) and
   replaces the old one (`--force`) only after the last export; a failure
   removes the building directory and leaves the old release and its tag.
-- The building directory is made exclusively, a `.lock` in it naming
-  the host and process: another run's stops the run; one whose process
-  is gone from this host (a killed run's) is removed, said on stderr;
-  one from another host is not judged (a process id means nothing
-  there), and stops the run, naming the command that removes it.  Just
-  before the swap, the release directory is checked again: one another
-  run made meanwhile is replaced only with `--force`, and only if all
-  its files are the board's.
+- A lock directory, `PRODUCTION/.DATE-REV.lock/` (made exclusively, its
+  `owner` naming host and process), is held from before the release's
+  first write until its tag is made and the old release removed, so no
+  other run claims the building directory or replaces the package while
+  this one waits in `git tag` (signing).  Another run's lock stops the
+  run; one whose process is gone from this host (a killed run's) is
+  taken over, said on stderr; one from another host is not judged (a
+  process id means nothing there), and stops the run, naming the
+  command that removes it.  Just before the swap, the release directory
+  is checked again: one another run made meanwhile is replaced only with
+  `--force`, and only if all its files are the board's.
 - The swap: the old release moved aside (`.DATE-REV.old`), the new one
   put in its place, the tag made or moved, then the old one removed.  A
-  failure at any step (`git tag` refused: signing, a lock) puts the old
-  release back: the old release with its old tag, or the new with its
-  new tag, never a mix.
+  failure at any step (`git tag` refused) puts the old release back.
+  Each hidden directory (`.lock`, `.building`, `.old`) holds a
+  `.gitignore` of everything while it is there, so `git add -A` takes
+  none; the release put in place has none.
+- Invariant: the release directory holds the package the tag names, or,
+  between the moves, that package is in `.DATE-REV.old`; a package a tag
+  names is never removed.  A killed run's leftovers are recovered by
+  the next run, under the lock, before anything else, each step said on
+  stderr: `.building` removed (never tagged); `.old` with no release in
+  place put back; `.old` beside a release, the one whose COMMIT is the
+  tag's commit kept, the other removed, or, neither named, the old one
+  kept.  A fresh release killed before its tag stays in place,
+  untagged; its next build needs `--force`.
 - The tag's message is `NAME REV: fab release PRODUCTION/DATE-REV`,
   with `; variants A, B` for a board with `variants`.
 

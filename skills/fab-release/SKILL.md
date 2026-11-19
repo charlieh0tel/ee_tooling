@@ -261,15 +261,28 @@ only when the owner says to.
 
 `PRODUCTION/YYYYMMDD-REV/`, NAME being the KiCad project.  `kicad-cli`
 reads scratch copies of the project, never the board's own files (it
-writes `NAME.kicad_prl` beside what it reads).  It is built
-in `PRODUCTION/.YYYYMMDD-REV.building/`, made by this run alone (a
-lock in it names the host and process; another run's stops this one; a
-killed run's, its process gone from this host, is removed, said on
-stderr; one from another host is left for you to remove), and put in place, replacing an
-old release (`--force`), only after the last export, the old one kept
-aside until the tag is made: a failure, `git tag`'s too, leaves the old
-release and its tag as they were, and no partial directory (but one a
-killed run leaves, removed by the next run).  With
+writes `NAME.kicad_prl` beside what it reads).  
+A run holds the lock `PRODUCTION/.YYYYMMDD-REV.lock/` (naming its host
+and process) from before it writes anything until its tag is made and
+the old release removed: another run's lock stops it; a lock whose
+process is gone from this host (a killed run's) is taken over, said on
+stderr; one from another host is left for you to remove (the command is
+printed).  The release is built in `PRODUCTION/.YYYYMMDD-REV.building/`;
+after the last export the old release is moved aside to
+`.YYYYMMDD-REV.old/`, the new one put in its place, the tag made or
+moved, then the old one removed.  Each hidden directory holds a
+`.gitignore` of everything, so `git add -A` takes none of them.
+
+The invariant: the release directory holds the package the tag names,
+or, between the moves, that package is in `.YYYYMMDD-REV.old/`; the
+package a tag names is never removed.  A failure, `git tag`'s too, puts
+the old release back.  A killed run's leftovers are recovered by the
+next run, under the lock, before anything else, each step said on
+stderr: the building directory removed (never tagged); `.old` with no
+release in place put back; `.old` beside a release, the one whose
+COMMIT is the tag's commit kept and the other removed, or, neither
+named by the tag, the old one kept (a fresh release killed before its
+tag is left in place, untagged).  With
 `variants`, the BOMs, CPL, ODB++ and IPC-2581 are per variant,
 `NAME-REV-VARIANT-...`, and the Gerber zip too where the silkscreens
 differ (Design variants):

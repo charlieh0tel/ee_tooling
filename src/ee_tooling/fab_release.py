@@ -34,6 +34,7 @@ another commit stops it, unless --retag.
 """
 
 import argparse
+import contextlib
 import csv
 import datetime
 import io
@@ -50,7 +51,7 @@ import tarfile
 import tempfile
 import tomllib
 import zipfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 from pathlib import Path
@@ -1015,8 +1016,7 @@ def release_name_problem(root: Path, name: str, date: str, rev: str) -> str | No
     return None
 
 
-# The file in a building directory naming the run that holds it: its host
-# and process id.
+# The lock directory beside a release directory, .DATE-REV plus this.
 LOCK = ".lock"
 
 
@@ -1042,31 +1042,121 @@ def running(pid: int) -> bool:
     return True
 
 
-def claim(building: Path) -> None:
-    """Make the building directory, this run's alone, its LOCK naming this
-    host and process.  One there already: another run's, which stops this
-    one; or one a killed run left, its process gone from this host, which
-    is removed, said on stderr.  One from another host is not judged."""
-    building.parent.mkdir(parents=True, exist_ok=True)
+# What each hidden directory beside a release holds, so that git add -A
+# takes none of it: a .gitignore of everything.
+IGNORE_ALL = ".gitignore"
+# The lock directory's file naming the run that holds it: host, process.
+OWNER = "owner"
+
+
+def ignored_by_git(directory: Path) -> None:
+    """A .gitignore of everything in directory, itself included."""
+    (directory / IGNORE_ALL).write_text("*\n")
+
+
+@contextlib.contextmanager
+def release_lock(lock: Path) -> Iterator[None]:
+    """Hold the lock directory, lock, from before the release's first
+    write until after its tag and cleanup: made exclusively, its OWNER
+    naming this host and process.  One there already: another run's,
+    which stops this one; one a killed run left, its process gone from
+    this host, which is taken over, said on stderr; one from another host,
+    not judged (a process id means nothing there), which stops this run,
+    naming the command that removes it."""
+    # The directories made for the lock, removed with it if left empty.
+    made = [d for d in [lock.parent, *lock.parent.parents] if not d.exists()]
+    lock.parent.mkdir(parents=True, exist_ok=True)
     host = socket.gethostname()
     try:
-        building.mkdir()
+        lock.mkdir()
     except FileExistsError:
         try:
-            held = (building / LOCK).read_text().split()
+            held = (lock / OWNER).read_text().split()
         except OSError:
             held = []
         if len(held) == 2 and held[0] == host and held[1].isdigit() and not running(int(held[1])):
-            print(f"{building}: left by a run that is gone ({held[1]}): removed", file=sys.stderr)
-            shutil.rmtree(building)
-            building.mkdir()
+            print(f"{lock}: left by a run that is gone ({held[1]}): taken over", file=sys.stderr)
+            shutil.rmtree(lock)
+            lock.mkdir()
         else:
-            holder = " ".join(held) or "a run that left no lock"
+            holder = " ".join(held) or "a run that left no owner"
             sys.exit(
-                f"{building} is being built by another run ({holder}), or was left by one: wait"
-                f" for it, or, if none runs, remove it (rm -r {shlex.quote(str(building))})"
+                f"{lock}: another run ({holder}) is making this release, or was: wait for it,"
+                f" or, if none runs, remove the lock (rm -r {shlex.quote(str(lock))})"
             )
-    (building / LOCK).write_text(f"{host} {os.getpid()}\n")
+    ignored_by_git(lock)
+    (lock / OWNER).write_text(f"{host} {os.getpid()}\n")
+    try:
+        yield
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
+        for d in made:
+            with contextlib.suppress(OSError):
+                d.rmdir()
+
+
+def package_commit(release: Path) -> str | None:
+    """The commit a release directory's source tgz says it was built from
+    (its COMMIT's first line; "-dirty" kept), or None if it says none."""
+    for tgz in sorted(release.glob("*-source.tgz")):
+        try:
+            with tarfile.open(tgz) as t:
+                member = next((m for m in t.getmembers() if m.name.endswith("/COMMIT")), None)
+                found = t.extractfile(member) if member is not None else None
+                if found is not None:
+                    first = found.read().decode().split("\n", 1)[0]
+                    return first.removeprefix("commit ").strip() or None
+        except (OSError, tarfile.TarError, UnicodeDecodeError):
+            continue
+    return None
+
+
+def recover(dest: Path, tagged: str | None) -> None:
+    """Undo what a killed run left beside the release directory dest,
+    under the lock, before anything else is written; each step said on
+    stderr.  The tagged package is the one whose COMMIT is the tag's
+    commit (tagged); one is never removed.  The building directory, never
+    tagged, is removed.  An old release aside (.DATE-REV.old): with no
+    release in place, put back; with one in place, the one the tag names
+    kept and the other removed; neither named, the old one kept (the new
+    one, untagged, is built again)."""
+    building = dest.parent / f".{dest.name}{BUILDING}"
+    aside = dest.parent / f".{dest.name}{OLD}"
+    if building.exists():
+        shutil.rmtree(building)
+        print(f"{building}: an interrupted build's: removed", file=sys.stderr)
+    if not aside.exists():
+        return
+
+    def put_back() -> None:
+        (aside / IGNORE_ALL).unlink(missing_ok=True)
+        aside.rename(dest)
+
+    if not dest.exists():
+        put_back()
+        print(
+            f"{dest}: put back from {aside.name}, where an interrupted run left it", file=sys.stderr
+        )
+        return
+    if tagged is not None and package_commit(dest) == tagged:
+        shutil.rmtree(aside)
+        print(
+            f"{dest}: the release its tag names kept; {aside.name}, the one it replaced, removed",
+            file=sys.stderr,
+        )
+        return
+    shutil.rmtree(dest)
+    put_back()
+    named = (
+        "the release its tag names"
+        if tagged is not None and package_commit(dest) == tagged
+        else "the old release"
+    )
+    print(
+        f"{dest}: {named} put back from {aside.name}; the untagged one an interrupted run put"
+        " in its place removed",
+        file=sys.stderr,
+    )
 
 
 def tag_refused(tag: str, tagged: str, commit: str) -> str:
@@ -1806,196 +1896,214 @@ def main() -> None:
     if problem := release_name_problem(root, b.name, a.date, rev):
         sys.exit(problem)
     dest = root / b.production / f"{a.date}-{rev}"
-    if dest.exists() and not a.force:
-        sys.exit(f"{dest} exists; use --force to replace it")
-    found = stackup(pcb)
-    if found is None:
-        sys.exit(f"{b.pcb.name} has no stackup: set one in Board Setup, Physical Stackup")
-    copper = copper_layers(found)
-    if not copper:
-        sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
-    if table := check_stackup(pcb).findings:
-        sys.exit(
-            "".join(f"{b.pcb.name}: {f.message}\n" for f in table) + "write or refresh it with:"
-            f" uv run stackup-table {shlex.quote(os.path.relpath(root / b.pcb))}"
-        )
-    errors, warnings = check_variants(b.variants, project_variants(settings, pcb, schematic))
-    if errors:
-        sys.exit("\n".join(f"{b.name}: {e}" for e in errors))
-    for w in warnings:
-        print(f"warning: {w}", file=sys.stderr)
-    if (
-        text := variant_text_warning(
-            b.variants, pcb, [*copper, *OTHER_LAYERS], [*copper, *BOARD_PDF_LAYERS]
-        )
-    ) is not None:
-        print(f"warning: {b.pcb.name}: {text}", file=sys.stderr)
-    # Each build: a listed variant, or the default (None).
-    builds: list[str | None] = [*b.variants] or [None]
-    profile = profiles[b.profile]
-    rules = board_rules(root, b, profile, options[b.name])
-    with tempfile.TemporaryDirectory() as tmp:
-        r = Release(root, b, Path(tmp), copper)
-        productions = [x.production for x in boards.values()]
-        read = [*found_libraries.inside, *sheet_paths]
-        head, status = r.check(a.allow_dirty, rules, productions, read, start)
-        # The commit the release is built from, read once: its COMMIT file,
-        # its tag and what is printed all name it.
-        short = r.git("rev-parse", "--short", head).strip()
-        commit = head + ("-dirty" if status else "")
-        tag = f"{b.name}-{dest.name}"
-        tagged = r.tagged(tag)
-        plan = tag_plan(bool(status), tagged, head, a.retag)
-        if plan is TagPlan.REFUSE:
-            sys.exit(tag_refused(tag, (tagged or "")[:7], short))
-        if plan is TagPlan.DIRTY_TAGGED:
+    # The release directory's lock, held until its tag is made and the
+    # old release removed; what a killed run left recovered under it.
+    tag_name = f"{b.name}-{dest.name}"
+    on_tag = subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag_name}^{{commit}}"],
+        cwd=root,
+        env=environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    with release_lock(dest.parent / f".{dest.name}{LOCK}"):
+        recover(dest, on_tag.stdout.strip() if on_tag.returncode == 0 else None)
+        if dest.exists() and not a.force:
+            sys.exit(f"{dest} exists; use --force to replace it")
+        found = stackup(pcb)
+        if found is None:
+            sys.exit(f"{b.pcb.name} has no stackup: set one in Board Setup, Physical Stackup")
+        copper = copper_layers(found)
+        if not copper:
+            sys.exit(f"{b.pcb.name}'s stackup has no copper layer")
+        if table := check_stackup(pcb).findings:
             sys.exit(
-                f"tag {tag} names this release, and its sources are uncommitted"
-                " (--allow-dirty): a build from them would replace the tagged package and leave"
-                " the tag naming one it does not describe.  Commit them and rebuild, or build"
-                " the trial under another --date"
+                "".join(f"{b.pcb.name}: {f.message}\n" for f in table) + "write or refresh it with:"
+                f" uv run stackup-table {shlex.quote(os.path.relpath(root / b.pcb))}"
             )
-        # Each build's parts and placements, checked.
-        rows: dict[str | None, tuple[list[Part], list[Placement]]] = {}
-        refusals = []
-        for v in builds:
-            parts, placements = r.parts(v), r.placements(v)
-            found_problems = cross_checks(
-                parts, placements, r.placements(v, True), board_footprints(pcb)
+        errors, warnings = check_variants(b.variants, project_variants(settings, pcb, schematic))
+        if errors:
+            sys.exit("\n".join(f"{b.name}: {e}" for e in errors))
+        for w in warnings:
+            print(f"warning: {w}", file=sys.stderr)
+        if (
+            text := variant_text_warning(
+                b.variants, pcb, [*copper, *OTHER_LAYERS], [*copper, *BOARD_PDF_LAYERS]
             )
-            found_problems += profile.check(parts, placements, options[b.name])
-            for w in profile.warnings(parts, placements, options[b.name]):
-                print(f"warning: {w if v is None else f'variant {v}: {w}'}", file=sys.stderr)
-            refusals += [p if v is None else f"variant {v}: {p}" for p in found_problems]
-            rows[v] = (parts, placements)
-        if refusals:
-            sys.exit("\n".join(refusals))
-        # Each build's Gerbers, compared with the first's.
-        directories = {v: r.work / work_name(GERBERS, v, "") for v in builds}
-        exported = {v: r.export_gerbers(d, profile.gerbers, v) for v, d in directories.items()}
-        files = exported[builds[0]]
-        differ = {
-            v: gerber_differences(directories[builds[0]], d, files)
-            for v, d in list(directories.items())[1:]
-        }
-        if refused := [
-            f"variant {v}: its Gerbers differ from variant {builds[0]}'s in"
-            f" {', '.join(x.layer or x.path for x in d)}: a variant cannot change copper,"
-            " mask, paste, Edge.Cuts or the drill"
-            for v, d in differ.items()
-            if not silkscreen_only(d)
-        ]:
-            sys.exit("\n".join(refused))
-        split = any(differ.values())
-        if split:
-            layers = sorted({x.layer or x.path for d in differ.values() for x in d})
-            print(
-                f"warning: variants {', '.join(map(str, builds))}: the Gerbers differ in"
-                f" {', '.join(layers)}: a Gerber zip per variant, each a bare-board order of"
-                " its own",
-                file=sys.stderr,
-            )
-        if clash := output_clash(b.name, rev, builds, split, profile):
-            sys.exit(clash)
-        replaceable(dest, b.name, rev, a.force)
-        # Built beside the old release, which a failure leaves as it was.
-        building = dest.parent / f".{dest.name}{BUILDING}"
-        claim(building)
-        try:
-            out = building
-            base = f"{b.name}-{rev}"
-            label = f"{b.name} {rev}"
-            # Each build's file stem: NAME-REV, or NAME-REV-VARIANT.
-            bases = {v: base if v is None else f"{base}-{v}" for v in builds}
-            zips = {v: gerber_zip(bases[v] if split else base, profile) for v in builds}
-            named = list(dict.fromkeys(zips.values()))
-            title = (
-                f"{label}: the files in {named[0]}"
-                if len(named) == 1
-                else f"{label}: the files in each of {', '.join(named)}"
-            )
-            map_text = gerber_map(title, files)
-            stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
-            stackup_text, notes_text = r.fabrication(
-                label, pcb, files, directories[builds[0]], stackup_name, map_name
-            )
-            # In the zip, the notes name the documents by their names there.
-            _, zip_notes = r.fabrication(
-                label, pcb, files, directories[builds[0]], STACKUP, GERBER_README
-            )
-            documents = {GERBER_README: map_text, STACKUP: stackup_text, NOTES: zip_notes}
-            for v in builds if split else builds[:1]:
-                write_gerber_zip(out / zips[v], directories[v], documents)
-            (out / map_name).write_text(map_text)
-            (out / stackup_name).write_text(stackup_text)
-            (out / f"{base}-{NOTES}").write_text(notes_text)
-            for v in builds:
-                r.odb(out / f"{bases[v]}-odb.tgz", v)
-                r.ipc2581(out / f"{bases[v]}-ipc2581.zip", profile.distributor, v)
-            for v in builds:
-                parts, placements = rows[v]
-                write_csv(out / f"{bases[v]}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
-                profile.assembly(out, bases[v], parts, placements, options[b.name])
-            r.source(
-                out / f"{base}-source.tgz",
-                commit,
-                builds,
-                [x.production for x in boards.values()],
-                sheet_paths,
-            )
-            # The package describes the commit and the sources as they were
-            # at the check: a commit or a change since, and it would not.
-            if r.head() != head:
+        ) is not None:
+            print(f"warning: {b.pcb.name}: {text}", file=sys.stderr)
+        # Each build: a listed variant, or the default (None).
+        builds: list[str | None] = [*b.variants] or [None]
+        profile = profiles[b.profile]
+        rules = board_rules(root, b, profile, options[b.name])
+        with tempfile.TemporaryDirectory() as tmp:
+            r = Release(root, b, Path(tmp), copper)
+            productions = [x.production for x in boards.values()]
+            read = [*found_libraries.inside, *sheet_paths]
+            head, status = r.check(a.allow_dirty, rules, productions, read, start)
+            # The commit the release is built from, read once: its COMMIT file,
+            # its tag and what is printed all name it.
+            short = r.git("rev-parse", "--short", head).strip()
+            commit = head + ("-dirty" if status else "")
+            tag = f"{b.name}-{dest.name}"
+            tagged = r.tagged(tag)
+            plan = tag_plan(bool(status), tagged, head, a.retag)
+            if plan is TagPlan.REFUSE:
+                sys.exit(tag_refused(tag, (tagged or "")[:7], short))
+            if plan is TagPlan.DIRTY_TAGGED:
                 sys.exit(
-                    f"HEAD moved during the build, from {short}: nothing replaced; build again"
+                    f"tag {tag} names this release, and its sources are uncommitted"
+                    " (--allow-dirty): a build from them would replace the tagged package and leave"
+                    " the tag naming one it does not describe.  Commit them and rebuild, or build"
+                    " the trial under another --date"
                 )
-            if (now := r.uncommitted(productions, read)) != status:
-                sys.exit(
-                    f"the release's sources changed during the build: nothing replaced; build"
-                    f" again\n{now}"
+            # Each build's parts and placements, checked.
+            rows: dict[str | None, tuple[list[Part], list[Placement]]] = {}
+            refusals = []
+            for v in builds:
+                parts, placements = r.parts(v), r.placements(v)
+                found_problems = cross_checks(
+                    parts, placements, r.placements(v, True), board_footprints(pcb)
                 )
-            # Another run may have made the release meanwhile.
+                found_problems += profile.check(parts, placements, options[b.name])
+                for w in profile.warnings(parts, placements, options[b.name]):
+                    print(f"warning: {w if v is None else f'variant {v}: {w}'}", file=sys.stderr)
+                refusals += [p if v is None else f"variant {v}: {p}" for p in found_problems]
+                rows[v] = (parts, placements)
+            if refusals:
+                sys.exit("\n".join(refusals))
+            # Each build's Gerbers, compared with the first's.
+            directories = {v: r.work / work_name(GERBERS, v, "") for v in builds}
+            exported = {v: r.export_gerbers(d, profile.gerbers, v) for v, d in directories.items()}
+            files = exported[builds[0]]
+            differ = {
+                v: gerber_differences(directories[builds[0]], d, files)
+                for v, d in list(directories.items())[1:]
+            }
+            if refused := [
+                f"variant {v}: its Gerbers differ from variant {builds[0]}'s in"
+                f" {', '.join(x.layer or x.path for x in d)}: a variant cannot change copper,"
+                " mask, paste, Edge.Cuts or the drill"
+                for v, d in differ.items()
+                if not silkscreen_only(d)
+            ]:
+                sys.exit("\n".join(refused))
+            split = any(differ.values())
+            if split:
+                layers = sorted({x.layer or x.path for d in differ.values() for x in d})
+                print(
+                    f"warning: variants {', '.join(map(str, builds))}: the Gerbers differ in"
+                    f" {', '.join(layers)}: a Gerber zip per variant, each a bare-board order of"
+                    " its own",
+                    file=sys.stderr,
+                )
+            if clash := output_clash(b.name, rev, builds, split, profile):
+                sys.exit(clash)
             replaceable(dest, b.name, rev, a.force)
-            (building / LOCK).unlink()
-        except BaseException:
-            shutil.rmtree(building)
-            raise
-        # The old release kept aside until the tag is made: a failure at
-        # any step leaves the old release with its old tag, or the new with
-        # its new tag.
-        aside = dest.parent / f".{dest.name}{OLD}"
-        if aside.exists():
-            shutil.rmtree(aside)
-        if dest.exists():
-            dest.rename(aside)
-        try:
-            building.rename(dest)
-        except OSError as e:
+            # Built beside the old release, which a failure leaves as it was.
+            building = dest.parent / f".{dest.name}{BUILDING}"
+            # The lock is held and recover() removed any left: this run's.
+            building.mkdir()
+            ignored_by_git(building)
+            try:
+                out = building
+                base = f"{b.name}-{rev}"
+                label = f"{b.name} {rev}"
+                # Each build's file stem: NAME-REV, or NAME-REV-VARIANT.
+                bases = {v: base if v is None else f"{base}-{v}" for v in builds}
+                zips = {v: gerber_zip(bases[v] if split else base, profile) for v in builds}
+                named = list(dict.fromkeys(zips.values()))
+                title = (
+                    f"{label}: the files in {named[0]}"
+                    if len(named) == 1
+                    else f"{label}: the files in each of {', '.join(named)}"
+                )
+                map_text = gerber_map(title, files)
+                stackup_name, map_name = f"{base}-{STACKUP}", f"{base}-{GERBER_MAP}"
+                stackup_text, notes_text = r.fabrication(
+                    label, pcb, files, directories[builds[0]], stackup_name, map_name
+                )
+                # In the zip, the notes name the documents by their names there.
+                _, zip_notes = r.fabrication(
+                    label, pcb, files, directories[builds[0]], STACKUP, GERBER_README
+                )
+                documents = {GERBER_README: map_text, STACKUP: stackup_text, NOTES: zip_notes}
+                for v in builds if split else builds[:1]:
+                    write_gerber_zip(out / zips[v], directories[v], documents)
+                (out / map_name).write_text(map_text)
+                (out / stackup_name).write_text(stackup_text)
+                (out / f"{base}-{NOTES}").write_text(notes_text)
+                for v in builds:
+                    r.odb(out / f"{bases[v]}-odb.tgz", v)
+                    r.ipc2581(out / f"{bases[v]}-ipc2581.zip", profile.distributor, v)
+                for v in builds:
+                    parts, placements = rows[v]
+                    write_csv(out / f"{bases[v]}-{BOM}", HOUSE_BOM_HEADER, house_bom(parts))
+                    profile.assembly(out, bases[v], parts, placements, options[b.name])
+                r.source(
+                    out / f"{base}-source.tgz",
+                    commit,
+                    builds,
+                    [x.production for x in boards.values()],
+                    sheet_paths,
+                )
+                # The package describes the commit and the sources as they were
+                # at the check: a commit or a change since, and it would not.
+                if r.head() != head:
+                    sys.exit(
+                        f"HEAD moved during the build, from {short}: nothing replaced; build again"
+                    )
+                if (now := r.uncommitted(productions, read)) != status:
+                    sys.exit(
+                        f"the release's sources changed during the build: nothing replaced; build"
+                        f" again\n{now}"
+                    )
+                # Another run may have made the release meanwhile.
+                replaceable(dest, b.name, rev, a.force)
+                (building / IGNORE_ALL).unlink()
+            except BaseException:
+                shutil.rmtree(building)
+                raise
+            # The old release kept aside until the tag is made: a failure at
+            # any step leaves the old release with its old tag, or the new with
+            # its new tag.
+            aside = dest.parent / f".{dest.name}{OLD}"
+            if dest.exists():
+                dest.rename(aside)
+                ignored_by_git(aside)
+
+            def put_back() -> None:
+                if aside.exists():
+                    (aside / IGNORE_ALL).unlink(missing_ok=True)
+                    aside.rename(dest)
+
+            try:
+                building.rename(dest)
+            except OSError as e:
+                put_back()
+                shutil.rmtree(building)
+                sys.exit(f"{building} not put in place: {e.strerror}; the old release is left")
+            message = f"{b.name} {rev}: fab release {b.production / dest.name}"
+            if b.variants:
+                message += f"; variants {', '.join(b.variants)}"
+            if plan in (TagPlan.CREATE, TagPlan.MOVE) and (
+                failed := r.tag(tag, message, plan is TagPlan.MOVE, head)
+            ):
+                shutil.rmtree(dest)
+                put_back()
+                sys.exit(f"{failed}\nthe old release and its tag are left as they were")
             if aside.exists():
-                aside.rename(dest)
-            shutil.rmtree(building)
-            sys.exit(f"{building} not put in place: {e.strerror}; the old release is left")
-        message = f"{b.name} {rev}: fab release {b.production / dest.name}"
-        if b.variants:
-            message += f"; variants {', '.join(b.variants)}"
-        if plan in (TagPlan.CREATE, TagPlan.MOVE) and (
-            failed := r.tag(tag, message, plan is TagPlan.MOVE, head)
-        ):
-            shutil.rmtree(dest)
-            if aside.exists():
-                aside.rename(dest)
-            sys.exit(f"{failed}\nthe old release and its tag are left as they were")
-        if aside.exists():
-            shutil.rmtree(aside)
-        if plan in (TagPlan.CREATE, TagPlan.MOVE):
-            force = " --force" if plan is TagPlan.MOVE else ""
-            refspec = shlex.quote(f"refs/tags/{tag}")
-            print(f"tagged {tag}; push it with: git push{force} origin {refspec}")
-        else:
-            print(f"tag {tag}: {plan.value}")
-    print(f"{dest.relative_to(root)} from {short}{'-dirty' if status else ''}:")
-    for f in sorted(dest.iterdir()):
-        print(f"  {f.name}")
+                shutil.rmtree(aside)
+            if plan in (TagPlan.CREATE, TagPlan.MOVE):
+                force = " --force" if plan is TagPlan.MOVE else ""
+                refspec = shlex.quote(f"refs/tags/{tag}")
+                print(f"tagged {tag}; push it with: git push{force} origin {refspec}")
+            else:
+                print(f"tag {tag}: {plan.value}")
+        print(f"{dest.relative_to(root)} from {short}{'-dirty' if status else ''}:")
+        for f in sorted(dest.iterdir()):
+            print(f"  {f.name}")
 
 
 if __name__ == "__main__":
