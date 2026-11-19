@@ -351,7 +351,12 @@ of the commit, so the wrapper's path is from there.  Before
 `git submodule update --init` the hook is missing, and the wrapper
 refuses every commit, saying so.  `make hook-test` in ee_tooling tests
 the wrapper in a scratch repository.  The hooks and the CI workflow quote the
-submodule's path, so one with a space works.
+submodule's path, so one with a space works.  A submodule path with any
+other character than letters, digits, a space and `. _ / + -` (a `$`, a
+backquote, a quote, a `;`, a newline, a backslash), which a hook or the
+workflow would run as code, stops `adopt` in every mode before any file
+is written: move the submodule (`git mv`).  The commands `adopt`'s
+messages give are quoted for the shell.
 
 `.githooks/pre-push` runs `git lfs pre-push`, which uploads the pushed
 commits' Git LFS objects; without it a push sends pointers whose files

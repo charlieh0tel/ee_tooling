@@ -2221,3 +2221,36 @@ def test_linked_file_in_a_read_only_directory_refused_first(tmp_path: Path) -> N
         assert not (tmp_path / ".githooks").exists()
     finally:
         docs.chmod(0o755)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "hw $(touch PWNED)/ee_tooling",
+        "hw `touch PWNED`/ee_tooling",
+        'hw "x"/ee_tooling',
+        "hw 'x'/ee_tooling",
+        "hw;touch PWNED/ee_tooling",
+        "hw\ntouch PWNED/ee_tooling",
+        "hw\\x/ee_tooling",
+    ],
+)
+def test_submodule_path_with_shell_characters_refused(tmp_path: Path, path: str) -> None:
+    """A path the hooks or the workflow would run as code: refused before
+    any template is written, in every mode; nothing runs."""
+    root = tmp_path / "board"
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    layout = Layout(root, Path(path))
+    for run in (plan, stale):
+        with pytest.raises(ValueError, match=r"^the submodule's path .* cannot carry safely"):
+            run(layout)
+    assert not (root / ".githooks").exists()
+    assert not (root / ".github").exists()
+    assert not list(tmp_path.rglob("PWNED"))
+
+
+def test_commands_in_messages_quoted(tmp_path: Path) -> None:
+    """A submodule path with a space: the adopt command a message gives is
+    one shell word."""
+    assert adopt.adopt_command(Path("hard ware/ee tooling")) == "'hard ware/ee tooling/adopt'"
+    assert adopt.adopt_command(SUBMODULE) == "hardware/ee_tooling/adopt"

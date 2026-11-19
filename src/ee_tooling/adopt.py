@@ -81,7 +81,7 @@ LFS_PULL = ("git", "lfs", "pull")
 # blobs at HEAD, and how to store them through Git LFS.
 NOT_IN_LFS = "not stored through Git LFS"
 RENORMALIZE = (
-    "with git-lfs's filters set ({submodule}/adopt --yes sets them), run git add"
+    "with git-lfs's filters set ({adopt} --yes sets them), run git add"
     " --renormalize . in a clean work tree, and commit"
 )
 # What a hand-adopted AGENTS.md has: the house style's import line.
@@ -319,7 +319,7 @@ def fsck_message(report: str, submodule: Path) -> str:
     """--check's message for plain_blobs's report: the files and the fix
     when each line names a file, or that fsck itself failed."""
     if all(line.startswith(FSCK_FINDING) for line in report.splitlines()):
-        fix = RENORMALIZE.format(submodule=submodule.as_posix())
+        fix = RENORMALIZE.format(adopt=adopt_command(submodule))
         return f"{report}\n{NOT_IN_LFS}: the files above; {fix}"
     return (
         f"{report}\ngit lfs fsck --pointers HEAD failed (its error is above): fix that, then rerun"
@@ -883,8 +883,26 @@ def system_site_packages(venv: Path) -> bool:
     return config.exists() and "include-system-site-packages = true" in config.read_text()
 
 
+# The characters a submodule's path may have, which the hooks and the CI
+# workflow quote safely (a space in double quotes): not $, `, ", ', ;, a
+# newline, a backslash, which sh or YAML would take for code.
+SAFE_PATH = re.compile(r"^[A-Za-z0-9._/ +-]+$")
+
+
+def adopt_command(submodule: Path) -> str:
+    """The submodule's adopt, as a shell command."""
+    return shlex.quote(f"{submodule.as_posix()}/adopt")
+
+
 def files(layout: Layout) -> list[File]:
-    """The files ee_tooling puts in a board repository."""
+    """The files ee_tooling puts in a board repository.  ValueError if the
+    submodule's path has a character the templates cannot carry safely."""
+    if not SAFE_PATH.match(layout.submodule.as_posix()):
+        raise ValueError(
+            f"the submodule's path {layout.submodule.as_posix()!r} has a character the hooks and"
+            " the CI workflow cannot carry safely (they take letters, digits, a space and"
+            " . _ / + -): move the submodule (git mv), then rerun; nothing written"
+        )
     root = layout.root
     out = [
         File(Path(HOOKS_PATH, "commit-msg"), layout.fill("commit-msg"), Owner.MANAGED, True),
@@ -1057,7 +1075,7 @@ def warn_plain_at_head(root: Path, submodule: Path) -> None:
     shown = ", ".join(found[:PLAIN_SHOWN]) + (", ..." if len(found) > PLAIN_SHOWN else "")
     print(
         f"{len(found)} files at HEAD of types Git LFS tracks are plain blobs ({shown}):"
-        f" once .gitattributes is committed, {submodule.as_posix()}/adopt --check fails on"
+        f" once .gitattributes is committed, {adopt_command(submodule)} --check fails on"
         " them.  Commit them as pointers with adopt's files: after --yes, in a clean work"
         " tree, git add --renormalize . and commit",
         file=sys.stderr,
@@ -1328,7 +1346,10 @@ def main() -> None:
         sys.exit(f"{e.filename}: {e.strerror}; nothing done")
     if a.check:
         for what, p in out_of_date:
-            print(f"{what}: {p.as_posix()}; run {layout.submodule}/adopt --yes", file=sys.stderr)
+            print(
+                f"{what}: {p.as_posix()}; run {adopt_command(layout.submodule)} --yes",
+                file=sys.stderr,
+            )
         # git-lfs's own report, apart from pending()'s paths: it names the files.
         report = plain_blobs(layout.root)
         if report is not None:
@@ -1348,7 +1369,7 @@ def main() -> None:
             if tuple(e.cmd) == LFS_PULL:
                 why = (
                     "; the Git LFS files stay pointers until it runs: rerun"
-                    f" {layout.submodule.as_posix()}/adopt --yes with the remote in reach"
+                    f" {adopt_command(layout.submodule)} --yes with the remote in reach"
                 )
             sys.exit(f"{' '.join(e.cmd)} failed ({e.returncode}){why}")
     else:
