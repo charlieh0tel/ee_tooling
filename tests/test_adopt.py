@@ -1919,8 +1919,8 @@ def test_lines_in_the_section_not_ours_named(
     capsys.readouterr()
     plan(layout)
     assert (
-        "hardware/main/main.kicad_dru: 2 lines between ee_tooling's markers are not in its"
-        " section now and go; rules: Mine inside\n"
+        "hardware/main/main.kicad_dru: 2 lines between ee_tooling's markers are not"
+        " ee_tooling's and go; rules: Mine inside\n"
     ) in capsys.readouterr().err
 
 
@@ -2177,3 +2177,19 @@ def test_retired_rules_below_the_marker_named(
         "hardware/main/main.kicad_dru: 1 rule below ee_tooling's end marker is retired from"
         " ee_tooling's rules and still in force:\n  JLCPCB via diameter\n"
     ) in capsys.readouterr().err
+
+
+def test_section_value_change_not_said_to_drop_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A section ee_tooling changed (a value, a retired rule): replaced
+    without a word about lines that go."""
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    old = dru.read_text().replace("(min 0.18mm)", "(min 0.15mm)", 1)
+    retired = '(rule "JLCPCB track width"\n\t(constraint track_width (min 0.1mm)))\n'
+    dru.write_text(old.replace("# --- ee_tooling: end", f"{retired}# --- ee_tooling: end", 1))
+    capsys.readouterr()
+    assert Path("hardware/main/main.kicad_dru") in stale(layout)
+    assert "between ee_tooling's markers" not in capsys.readouterr().err

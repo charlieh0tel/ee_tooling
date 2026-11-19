@@ -725,8 +725,8 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         if found.stale and count:
             rules = f"; rules: {', '.join(names)}" if names else ""
             print(
-                f"{dru.as_posix()}: {count} lines between ee_tooling's markers are not in its"
-                f" section now and go{rules}",
+                f"{dru.as_posix()}: {count} lines between ee_tooling's markers are not"
+                f" ee_tooling's and go{rules}",
                 file=sys.stderr,
             )
         if found.stale:

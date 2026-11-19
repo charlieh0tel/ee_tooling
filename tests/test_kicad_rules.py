@@ -382,3 +382,22 @@ def test_retired_not_current() -> None:
     """No rule the profile has now is among the retired."""
     current = set(RULE_NAME.findall(resource(Jlcpcb.rules.dru)))
     assert current and not current & kicad_rules.RETIRED
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_floored_ignores_a_value_not_finite(value: float) -> None:
+    """A Board Setup value NaN or Infinity (JSON's extensions): no floor,
+    never "nanmm"."""
+    assert floored(FLOOR_SECTION, setup_of(min_through_hole_diameter=value)) == FLOOR_SECTION
+
+
+def test_dropped_only_foreign_rules() -> None:
+    """A value changed, a retired rule, a comment: none counted."""
+    new = '(rule "y" (constraint hole_size (min 0.5mm)))\n'
+    old = (
+        '# old comment\n(rule "y" (constraint hole_size (min 0.4mm)))\n'
+        '(rule "JLCPCB track width" (constraint track_width (min 0.1mm)))\n'
+    )
+    assert dropped(old, new) == (0, [])
+    mine = old + '(rule "mine"\n\t(constraint track_width (min 0.3mm)))\n'
+    assert dropped(mine, new) == (2, ["mine"])

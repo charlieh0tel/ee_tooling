@@ -10,6 +10,7 @@ ee-tooling-adopt installs them in the board's own files.
 import copy
 import importlib.resources
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -206,14 +207,28 @@ MM_PLACES = 6
 
 
 def dropped(old: str | None, new: str) -> tuple[int, list[str]]:
-    """What replacing section old with new removes: the count of old's
-    non-blank lines new lacks, and the names of old's rules new lacks."""
+    """What replacing section old with new removes that is not ee_tooling's:
+    the rules between the markers that neither new nor an older rules file
+    of ee_tooling's has (RETIRED), put there by hand; their count of
+    non-blank lines and their names.  A value ee_tooling changed, or a rule
+    it retired, is not counted."""
     if old is None:
         return 0, []
-    kept = set(new.splitlines())
-    lines = [line for line in old.splitlines() if line.strip() and line not in kept]
-    names = set(RULE_NAME.findall(new))
-    return len(lines), [n for n in RULE_NAME.findall(old) if n not in names]
+    ours = set(RULE_NAME.findall(new)) | RETIRED
+    starts = [(m.start(), m.group(1)) for m in RULE_NAME.finditer(old)]
+    ends = [s for s, _ in starts[1:]] + [len(old)]
+    foreign = [
+        (name, old[start:end])
+        for (start, name), end in zip(starts, ends, strict=True)
+        if name not in ours
+    ]
+    lines = sum(
+        1
+        for _, text in foreign
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    return lines, [name for name, _ in foreign]
 
 
 def floored(section: str, project: dict[str, Any]) -> str:
@@ -226,7 +241,11 @@ def floored(section: str, project: dict[str, Any]) -> str:
     def floor(m: re.Match[str]) -> str:
         key = BOARD_SETUP_KEYS.get(m.group(1))
         least = setup.get(key) if key is not None else None
-        if not isinstance(least, int | float) or isinstance(least, bool):
+        if (
+            not isinstance(least, int | float)
+            or isinstance(least, bool)
+            or not math.isfinite(least)
+        ):
             return m.group(0)
         if least <= float(m.group(2)):
             return m.group(0)

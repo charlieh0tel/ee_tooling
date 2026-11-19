@@ -75,9 +75,11 @@ overwrites the change.
    ```
 
    A rerun replaces the section between the markers and keeps the rest.
-   Lines between the markers that the new section lacks (a rule put
-   there by hand, or one not in the profile's rules) are counted on
-   stderr, with each such rule's name, as they go.
+   A rule between the markers that is not ee_tooling's (neither in the
+   section nor in an older rules file of ee_tooling's: put there by
+   hand) is named on stderr, with its lines' count, as it goes; a value
+   ee_tooling changed is not.  A Board Setup value that is not a finite
+   number (NaN or Infinity in the `.kicad_pro`) raises no minimum.
    A rule of the board's own with the name of one of the section's (a
    copy made by hand) is named on stderr, and left: it wins over the
    section's.  So is a rule of the board's own with the name of one
