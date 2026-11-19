@@ -119,8 +119,11 @@ GERBER_README = "README.txt"
 # git's own directory (or, in a submodule or worktree, file).
 GIT_DIRECTORY = ".git"
 # git's settings for the commands whose output the release reads, whatever
-# the user's: paths from the repository's root, no branch line, no color.
+# the user's: paths from the repository's root, no branch line, no color,
+# every untracked file shown (each status call also says so).
 GIT_OPTIONS = (
+    "-c",
+    "status.showUntrackedFiles=all",
     "-c",
     "status.relativePaths=false",
     "-c",
@@ -1231,6 +1234,7 @@ class Release:
                 "status",
                 "--porcelain",
                 "-z",
+                "--untracked-files=all",
                 "--ignore-submodules=none",
                 "--",
                 *literal,
@@ -1243,6 +1247,7 @@ class Release:
                 "status",
                 "--porcelain",
                 "-z",
+                "--untracked-files=all",
                 "--ignored",
                 "--ignore-submodules=none",
                 "--",
@@ -1256,7 +1261,12 @@ class Release:
         for m in modules:
             if any(m == p or m.is_relative_to(p) for p in paths):
                 found = git_out(
-                    self.root / m, "status", "--porcelain", "-z", "--ignore-submodules=none"
+                    self.root / m,
+                    "status",
+                    "--porcelain",
+                    "-z",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
                 )
                 lines += [f"{line[:3]}{m}/{line[3:]}" for line in status_entries(found)]
         return "\n".join(dict.fromkeys(lines))

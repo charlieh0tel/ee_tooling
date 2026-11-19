@@ -3112,3 +3112,20 @@ def test_status_entries() -> None:
     """-z's entries, a rename's old path dropped, a leading space kept."""
     text = " M a b.txt\0R  new\0old\0?? ü\0"
     assert status_entries(text) == [" M a b.txt", "R  new", "?? ü"]
+
+
+def test_uncommitted_whatever_the_users_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """status.showUntrackedFiles=no, relative paths, a branch line, color:
+    an untracked source is still uncommitted."""
+    root, _ = release(tmp_path, monkeypatch)
+    for key, value in (
+        ("status.showUntrackedFiles", "no"),
+        ("status.relativePaths", "true"),
+        ("status.branch", "true"),
+        ("color.ui", "always"),
+    ):
+        git(root, "config", key, value)
+    (root / "docs/new.txt").write_text("not committed\n")
+    rebuild_refused(monkeypatch, re.escape("?? docs/new.txt"))
