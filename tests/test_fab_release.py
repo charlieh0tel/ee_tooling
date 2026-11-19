@@ -1085,7 +1085,6 @@ def test_release_files(
             "b-1-source/hw/b.kicad_pro",
             "b-1-source/hw/b.kicad_dru",
             "b-1-source/hw/fp-lib-table",
-            "b-1-source/docs",
             "b-1-source/docs/notes.txt",
             "b-1-source/pdf/b-board.pdf",
             "b-1-source/pdf/b-schematic.pdf",
@@ -2825,16 +2824,45 @@ def test_uncommitted_through_a_link(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 
 def test_ignored_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A file the release reads that git ignores: as untracked."""
-    monkeypatch.setitem(FIXTURE, ".gitignore", "secret.txt\n")
+    """A file the release reads by name that git ignores: as untracked."""
+    monkeypatch.setitem(FIXTURE, ".gitignore", "sym-lib-table\n")
     root, _ = release(tmp_path, monkeypatch)
-    (root / "docs/secret.txt").write_text("not committed\n")
-    rebuild_refused(monkeypatch, "!! docs/secret.txt")
+    (root / "hw/sym-lib-table").write_text("(sym_lib_table)\n")
+    rebuild_refused(monkeypatch, "!! hw/sym-lib-table")
+
+
+def test_ignored_files_under_a_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ignored files under a source (KiCad's backups, a venv, with
+    sources = ["."]): not refused, and not in the source tgz, which holds
+    the files git tracks."""
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', 'sources = ["hw", "."]')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    monkeypatch.setitem(FIXTURE, ".gitignore", "b-backups/\n.venv/\n")
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "hw/b-backups").mkdir()
+    (root / "hw/b-backups/b.zip").write_text("backup\n")
+    (root / ".venv/lib").mkdir(parents=True)
+    (root / ".venv/lib/x.py").write_text("x\n")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    main()
+    with tarfile.open(root / "production/20261118-1/b-1-source.tgz") as t:
+        names = t.getnames()
+    assert "b-1-source/.gitignore" in names
+    assert not [n for n in names if "backups" in n or ".venv" in n]
+
+
+def test_untracked_file_under_a_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An untracked file under a source, not ignored: not the commit's,
+    uncommitted."""
+    root, _ = release(tmp_path, monkeypatch)
+    (root / "docs/draft.txt").write_text("draft\n")
+    rebuild_refused(monkeypatch, re.escape("?? docs/draft.txt"))
 
 
 def test_uncommitted_nested_submodule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A library submodule's own submodule, its .gitmodules ignore = all:
-    a change in it refused."""
+    """A library in a library submodule's own submodule, its .gitmodules
+    ignore = all: a change in it refused; the submodule moved to another
+    commit, too."""
     inner = tmp_path / "inner"
     inner.mkdir()
     (inner / "a.kicad_mod").write_text("(footprint A)\n")
@@ -2843,8 +2871,7 @@ def test_uncommitted_nested_submodule(tmp_path: Path, monkeypatch: pytest.Monkey
     git(inner, "commit", "-q", "-m", "inner")
     root, _ = release(tmp_path, monkeypatch)
     lib = tmp_path / "lib"
-    (lib / "x.pretty").mkdir(parents=True)
-    (lib / "x.pretty/R.kicad_mod").write_text("(footprint R)\n")
+    lib.mkdir()
     git(lib, "init", "-q")
     git(lib, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(inner), "inner")
     git(lib, "config", "-f", ".gitmodules", "submodule.inner.ignore", "all")
@@ -2862,7 +2889,7 @@ def test_uncommitted_nested_submodule(tmp_path: Path, monkeypatch: pytest.Monkey
         "--recursive",
     )
     (root / "hw/fp-lib-table").write_text(
-        '(fp_lib_table (lib (name "x")(uri "${KIPRJMOD}/../libs/shared/x.pretty")))\n'
+        '(fp_lib_table (lib (name "a")(uri "${KIPRJMOD}/../libs/shared/inner")))\n'
     )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "library")
@@ -3129,3 +3156,60 @@ def test_uncommitted_whatever_the_users_config(
         git(root, "config", key, value)
     (root / "docs/new.txt").write_text("not committed\n")
     rebuild_refused(monkeypatch, re.escape("?? docs/new.txt"))
+
+
+def test_uncommitted_nested_submodule_moved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The nested submodule holding a library checked out at another
+    commit: its gitlink in its parent shows it."""
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    (inner / "a.kicad_mod").write_text("(footprint A)\n")
+    git(inner, "init", "-q")
+    git(inner, "add", ".")
+    git(inner, "commit", "-q", "-m", "inner")
+    root, _ = release(tmp_path, monkeypatch)
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    git(lib, "init", "-q")
+    git(lib, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(inner), "inner")
+    git(lib, "commit", "-q", "-m", "lib")
+    allow = ("-c", "protocol.file.allow=always")
+    git(root, *allow, "submodule", "add", "-q", str(lib), "libs/shared")
+    git(root, *allow, "submodule", "update", "-q", "--init", "--recursive")
+    (root / "hw/fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "a")(uri "${KIPRJMOD}/../libs/shared/inner")))\n'
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "library")
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    git(root / "libs/shared/inner", "commit", "-q", "--allow-empty", "-m", "moved")
+    rebuild_refused(monkeypatch, "libs/shared")
+
+
+def test_ee_tooling_installed_in_a_venv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ee_tooling a plain package in a venv inside the repository, ignored:
+    not an input; the release made."""
+    monkeypatch.setitem(FIXTURE, ".gitignore", ".venv/\n")
+    monkeypatch.setitem(FIXTURE, ".venv/lib/python3/site-packages/ee_tooling/x.py", "x\n")
+    root = tmp_path / "repo"
+    monkeypatch.setattr(fab_release, "CHECKOUT", root / ".venv/lib/python3")
+    release(tmp_path, monkeypatch)
+    assert (root / "production/20261118-1/b-1-bom.csv").exists()
+
+
+def test_production_through_a_link(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """production through a link inside the repository: the release's own
+    building directory, under the link's target, is not a source."""
+    toml = FIXTURE["fab.toml"].replace('production = "production"', 'production = "out"')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    monkeypatch.setitem(FIXTURE, "hw/production/.keep", "")
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    (root / "out").symlink_to("hw/production")
+    release(tmp_path, monkeypatch)
+    assert (root / "hw/production/20261118-1/b-1-bom.csv").exists()
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force"])
+    main()

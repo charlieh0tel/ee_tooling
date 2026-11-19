@@ -555,6 +555,32 @@ def submodules(root: Path) -> list[Path]:
     return sorted(out, key=lambda p: len(p.parts), reverse=True)
 
 
+def tracked(root: Path, paths: Iterable[Path], productions: Iterable[Path]) -> list[Path]:
+    """The files git tracks under paths, from the root, in the
+    repositories that hold them, submodules' files too, but every
+    production directory and git's own; each once, in order."""
+    modules = submodules(root)
+    left_out = [q for p in productions for q in (normal(p), located(root, p)) if q is not None]
+    out: dict[Path, None] = {}
+    for p in paths:
+        repo = repository_of(normal(p), modules)
+        rel = normal(p).relative_to(repo)
+        listed = git_out(
+            root / repo,
+            "ls-files",
+            "-z",
+            "--recurse-submodules",
+            "--",
+            "." if rel == Path(".") else f":(literal){rel}",
+        )
+        for name in filter(None, listed.split("\0")):
+            f = normal(repo / name)
+            if GIT_DIRECTORY in f.parts or any(f.is_relative_to(x) for x in left_out):
+                continue
+            out[f] = None
+    return list(out)
+
+
 def repository_of(path: Path, modules: Sequence[Path]) -> Path:
     """The repository a path from the root is in: its deepest submodule,
     or the root (".")."""
@@ -1195,80 +1221,105 @@ class Release:
             sys.exit(f"uncommitted changes in the release's sources:\n{status}")
         return head, status
 
-    def inputs_read(self, extra: Iterable[Path]) -> list[Path]:
-        """Every path the release reads, from the root: fab.toml, the
-        project's files and sources (Board.source_paths), extra (its
-        libraries and sheets), and the ee_tooling checkout it runs from
-        when the repository holds it (its parts.toml, its rules)."""
-        paths = [Path(CONFIG), *self.board.source_paths(self.root), *extra]
-        checkout = located(self.root, CHECKOUT)
-        if checkout is not None and checkout != Path("."):
-            paths.append(checkout)
-        return list(dict.fromkeys(normal(p) for p in paths))
+    def checkout(self, modules: Sequence[Path]) -> Path | None:
+        """The ee_tooling checkout the release runs from, from the root, when
+        the repository holds it as a submodule or as tracked files (its
+        parts.toml, its rules are then inputs); None otherwise, as for a
+        package installed in a venv."""
+        found = located(self.root, CHECKOUT)
+        if found is None or found == Path("."):
+            return None
+        if found in modules or git_out(self.root, "ls-files", "-z", "--", f":(literal){found}"):
+            return found
+        return None
+
+    def named(self, extra: Iterable[Path]) -> list[Path]:
+        """The paths the release reads by name, from the root: fab.toml, the
+        project's own files, and extra (its sheets and libraries)."""
+        b = self.board
+        own = [*(b.directory / f"{b.name}{s}" for s in PROJECT_SUFFIXES)]
+        own += [b.directory / f for f in PROJECT_FILES]
+        present = [p for p in own if (self.root / p).exists()]
+        return list(dict.fromkeys(normal(p) for p in [Path(CONFIG), *present, *extra]))
 
     def uncommitted(self, productions: Iterable[Path], extra: Iterable[Path]) -> str:
-        """git status of what the release reads (inputs_read, and the
-        board's directory), every production directory left out: each
-        path as written and with its links followed, a link out of the
-        repository refused; a path in a submodule as the submodule (git
-        status names a submodule, never a path inside it); every submodule
-        among them, at any depth, by its own git status, whatever its or
-        its parent's ignore setting; and a file the release reads that git
-        ignores, as untracked.  Literal pathspecs: no name is a pattern."""
-        reads = self.inputs_read(extra)
+        """git status of what the release reads, every production directory
+        left out (as written and with its links followed): the board's
+        directory, its sources and the ee_tooling checkout when the
+        repository holds it (checkout()), their untracked files too; and
+        what it reads by name (named()), a file git ignores there too.
+        Each path as written and with its links followed, a link out of the
+        repository refused.  A path is asked of the repository that holds
+        it; each submodule holding one, or under one, at every level, by
+        its gitlink in its parent (a moved or changed submodule), and each
+        under one by its own status, whatever any ignore setting.  Literal
+        pathspecs: no name is a pattern."""
+        b = self.board
         modules = submodules(self.root)
-        paths: dict[Path, None] = {}
-        for p in [self.board.directory, *reads]:
+        named = self.named(extra)
+        trees = [b.directory, *b.sources]
+        if (checkout := self.checkout(modules)) is not None:
+            trees.append(checkout)
+        # Each path to ask, and whether git is asked of its ignored files.
+        asked: dict[Path, bool] = {}
+        for p, by_name in [*((p, False) for p in trees), *((p, True) for p in named)]:
             target = located(self.root, p)
             if target is None:
                 sys.exit(f"{p} leads out of the repository (a link): the release reads it")
             for q in (normal(p), target):
-                paths[
-                    repository_of(q, modules) if repository_of(q, modules) != Path(".") else q
-                ] = None
-        excluded = [f":(exclude,literal){p}" for p in productions]
-        literal = [f":(literal){p}" for p in paths]
-        lines = status_entries(
-            git_out(
-                self.root,
+                asked[q] = asked.get(q, False) or by_name
+        left_out = {
+            q for p in productions for q in (normal(p), located(self.root, p)) if q is not None
+        }
+        lines: list[str] = []
+
+        def status(repo: Path, specs: list[str], *options: str) -> list[str]:
+            found = git_out(
+                self.root / repo,
                 "status",
                 "--porcelain",
                 "-z",
                 "--untracked-files=all",
                 "--ignore-submodules=none",
+                *options,
                 "--",
-                *literal,
-                *excluded,
+                *specs,
             )
-        )
-        ignored = status_entries(
-            git_out(
-                self.root,
-                "status",
-                "--porcelain",
-                "-z",
-                "--untracked-files=all",
-                "--ignored",
-                "--ignore-submodules=none",
-                "--",
-                *(f":(literal){p}" for p in reads if p not in modules),
-                *excluded,
-            )
-        )
-        lines += [line for line in ignored if line.startswith("!! ")]
-        # A submodule's own status, its submodules' too, whatever their
-        # ignore settings: the superproject's may not show a nested one.
+            prefix = "" if repo == Path(".") else f"{repo}/"
+            return [f"{e[:3]}{prefix}{e[3:]}" for e in status_entries(found)]
+
+        def spec(path: Path, repo: Path) -> str:
+            rel = path.relative_to(repo)
+            return "." if rel == Path(".") else f":(literal){rel}"
+
+        repos = dict.fromkeys(repository_of(q, modules) for q in asked)
+        for repo in repos:
+            mine = [q for q in asked if repository_of(q, modules) == repo]
+            excluded = [
+                f":(exclude,literal){p.relative_to(repo)}"
+                for p in left_out
+                if p.is_relative_to(repo)
+            ]
+            specs = [spec(q, repo) for q in mine]
+            lines += status(repo, [*specs, *excluded])
+            by_names = [spec(q, repo) for q in mine if asked[q]]
+            if by_names:
+                lines += [
+                    e
+                    for e in status(repo, [*by_names, *excluded], "--ignored=matching")
+                    if e.startswith("!! ")
+                ]
+        # Every submodule holding a path asked, or under one, at every level:
+        # its gitlink in its parent repository, and, under one, its own status.
         for m in modules:
-            if any(m == p or m.is_relative_to(p) for p in paths):
-                found = git_out(
-                    self.root / m,
-                    "status",
-                    "--porcelain",
-                    "-z",
-                    "--untracked-files=all",
-                    "--ignore-submodules=none",
-                )
-                lines += [f"{line[:3]}{m}/{line[3:]}" for line in status_entries(found)]
+            holds = any(q.is_relative_to(m) for q in asked)
+            under = any(m.is_relative_to(q) for q in asked)
+            if not (holds or under):
+                continue
+            parent = repository_of(m, [x for x in modules if x != m])
+            lines += status(parent, [spec(m, parent)])
+            if under:
+                lines += status(m, ["."])
         return "\n".join(dict.fromkeys(lines))
 
     def tagged(self, name: str) -> str | None:
@@ -1526,25 +1577,12 @@ class Release:
                 self.path(b.pcb),
             )
         top = out.stem.removesuffix(".tar")
-        left_out = [normal(p) for p in productions]
-        added: set[Path] = set()
-
-        def kept(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
-            """A source, once (a source may hold the project's files), but
-            git's own directory and every production directory (releases,
-            this one's building directory too)."""
-            path = normal(Path(info.name).relative_to(top))
-            if GIT_DIRECTORY in path.parts or any(path.is_relative_to(p) for p in left_out):
-                return None
-            if path in added and not info.isdir():
-                return None
-            added.add(path)
-            info.name = f"{top}/{path}" if path != Path(".") else top
-            return info
-
+        # The files git tracks: an ignored or untracked file under a source
+        # (KiCad's backups, a venv) is not the commit's.
+        files = tracked(self.root, b.source_paths(self.root, sheets), productions)
         with tarfile.open(out, "w:gz") as t:
-            for s in b.source_paths(self.root, sheets):
-                t.add(self.root / s, arcname=f"{top}/{s}", filter=kept)
+            for f in files:
+                t.add(self.root / f, arcname=f"{top}/{f}", recursive=False)
             for f in sorted(pdf.iterdir()):
                 t.add(f, arcname=f"{top}/pdf/{f.name}")
             info = (
@@ -1701,11 +1739,12 @@ def main() -> None:
         sys.exit("\n".join(f"{b.name}: {s}" for s in sheet_problems))
     sheet_paths = [p.relative_to(top) for p, _ in sheets_found]
     try:
-        inputs = [
-            *b.source_paths(root, sheet_paths),
-            *(p for p in found_libraries.inside if (root / p).exists()),
-        ]
-        pointers = lfs_pointers(root, inputs, [x.production for x in boards.values()])
+        # The files the release reads: those git tracks under its sources and
+        # libraries, and those it reads by name, tracked or not.
+        read = [*b.source_paths(root, sheet_paths), *found_libraries.inside]
+        read_by_name = [p for p in (Path(CONFIG), *read) if (root / p).is_file()]
+        inputs = [*tracked(root, read, [x.production for x in boards.values()]), *read_by_name]
+        pointers = lfs_pointers(root, list(dict.fromkeys(inputs)))
     except OSError as e:
         sys.exit(f"{e.filename}: {e.strerror}")
     if pointers:

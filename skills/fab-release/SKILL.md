@@ -125,17 +125,15 @@ variants.
 
 ## The source tgz
 
-`NAME-REV-source.tgz` holds the project's `.kicad_pcb`, `.kicad_sch`,
-`.kicad_pro`, `.kicad_dru`, `.pretty`, `.3dshapes`, `fp-lib-table` and
-`sym-lib-table` that exist (directories whole), every sheet file of the
-schematic's hierarchy inside the repository (each also in the
-uncommitted-sources check), then
-`sources`, then
-the schematic and board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty`
-if built from uncommitted sources, and when it was built).  It holds
-each file once, a source that holds the project's files too, and leaves
-out `.git` and every board's production directory, wherever they fall
-under a source (`sources = ["."]`).
+`NAME-REV-source.tgz` holds the files git tracks (submodules' too) of
+the project's `.kicad_pcb`, `.kicad_sch`, `.kicad_pro`, `.kicad_dru`,
+`.pretty`, `.3dshapes`, `fp-lib-table` and `sym-lib-table`, every sheet
+file of the schematic's hierarchy, and `sources`; then the schematic and
+board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty` if built from
+uncommitted sources, and when it was built).  It holds each file once,
+and never an untracked or ignored file (KiCad's backups, a venv), `.git`
+or a board's production directory, wherever they fall under a source
+(`sources = ["."]`).
 
 A library the board reads (footprints, symbols, 3D models) lives inside
 the repository, normally a git submodule (`docs/kicad-style.md`,
@@ -168,15 +166,21 @@ parse makes it drop them all, silently: the release checks with a
 canary rule, and stops naming the board's `.kicad_dru`),
 what it reads has no uncommitted changes: `fab.toml`, the board's
 directory, its sheets, `sources`, each library its tables and 3D model
-paths name (in `sources` or not), and the ee_tooling submodule it runs
-from (its `parts.toml`, its rules).  Every board's production directory
-is left out, so a rebuild with `--force` over an uncommitted release
-goes on.  A path in a submodule counts as the submodule: changed with
-modified or untracked content or a new commit, and each submodule's own
-submodules by their own status, whatever any `ignore` setting.  A link
-is checked as itself and as its target; one leading out of the
-repository is refused.  A file it reads that git ignores counts as
-uncommitted.  None of them holds an unfetched Git LFS pointer,
+paths name (in `sources` or not), and the ee_tooling it runs from when
+the repository holds it as a submodule or tracked files (its
+`parts.toml`, its rules; not a package installed in a venv).  Every
+board's production directory is left out (as written and through a
+link), so a rebuild with `--force` over an uncommitted release goes on.
+An untracked file under the board's directory or a source counts as
+uncommitted; an ignored one there does not (it is not in the tgz), but
+an ignored file the release reads by name (`fab.toml`, the project's own
+files, a sheet, a library table, a library) does.  A path is asked of the
+repository that holds it, and each submodule holding it, at every
+level, by its gitlink in its parent: a submodule moved to another
+commit, or with modified or untracked content, counts, whatever any
+`ignore` setting or the user's git configuration.  A link is checked as
+itself and as its target; one leading out of the repository is
+refused.  None of them holds an unfetched Git LFS pointer,
 (`--allow-dirty` only for a trial; the tgz's COMMIT file then says
 `-dirty`), and the profile's own checks pass (`jlcpcb.md`), all before
 anything is written.
