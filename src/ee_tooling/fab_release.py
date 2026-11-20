@@ -74,7 +74,14 @@ from ee_tooling.fabrication import (
     stackup_document,
 )
 from ee_tooling.git_environment import environment
-from ee_tooling.kicad_rules import Installed, board_setup, copied_message, install, installed
+from ee_tooling.kicad_rules import (
+    Installed,
+    board_setup,
+    copied_message,
+    current,
+    install,
+    installed,
+)
 from ee_tooling.kicad_style_netclass import sheet_files
 from ee_tooling.kicad_style_stackup import check_stackup
 from ee_tooling.profiles import PROFILES
@@ -1784,8 +1791,9 @@ def board_rules(root: Path, b: Board, profile: Profile[Any], options: object) ->
     try:
         project = json.loads(project_path.read_text(encoding=PROJECT_TEXT))
         dru = dru_path.read_text(encoding=PROJECT_TEXT) if dru_path.exists() else None
-        section = installed(profile.name, profile.rules, options)
-        found = install(dru, project, section, board_setup(profile.rules))
+        version = current()
+        section = installed(profile.name, profile.rules, options, version)
+        found = install(dru, project, section, board_setup(profile.rules, version))
     except (OSError, ValueError) as e:
         sys.exit(f"{b.name}: its rules: {e}")
     adopt = "run ee_tooling's adopt --yes to make KiCad's DRC the release's"

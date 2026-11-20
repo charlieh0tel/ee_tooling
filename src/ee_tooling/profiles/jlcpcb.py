@@ -122,7 +122,7 @@ class Jlcpcb:
     gerbers = GerberOptions(
         x2=False, protel_extensions=True, subtract_soldermask=True, separate_drill=True
     )
-    rules = Rules("rules/jlcpcb.kicad_dru", {}, "rules/jlcpcb_board_setup.json")
+    rules = Rules("jlcpcb.kicad_dru", {}, "jlcpcb_board_setup.json")
     distributor: tuple[str, str] | None = ("LCSC", "LCSC")
 
     def __init__(self, corrections: Corrections) -> None:

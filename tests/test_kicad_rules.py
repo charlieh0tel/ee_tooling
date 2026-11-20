@@ -1,5 +1,5 @@
-import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -8,19 +8,21 @@ from ee_tooling import kicad_rules
 from ee_tooling.kicad_rules import (
     BEGIN,
     END,
-    ERC_SETTINGS,
     RULE_NAME,
     Dru,
     board_setup,
     copied_message,
+    current,
     dropped,
     erc_set,
+    erc_settings,
     floored,
     install,
     installed,
     raised,
-    resource,
     retired_message,
+    rule_file,
+    rule_sets,
     sections,
 )
 from ee_tooling.profiles.jlcpcb import Jlcpcb, Options
@@ -51,7 +53,7 @@ class PriceOptions:
 @pytest.fixture
 def resources(monkeypatch: pytest.MonkeyPatch) -> None:
     files = {"dru": DRU, "setup": '{"board": {"rules": {"min_clearance": 0.1}}}'}
-    monkeypatch.setattr(kicad_rules, "resource", files.__getitem__)
+    monkeypatch.setattr(kicad_rules, "rule_file", lambda _, name: files[name])
 
 
 def test_sections() -> None:
@@ -64,7 +66,7 @@ def test_sections() -> None:
 
 @pytest.mark.usefixtures("resources")
 def test_installed_between_markers_without_version() -> None:
-    text = installed("fab", RULES, PriceOptions(True))
+    text = installed("fab", RULES, PriceOptions(True), "1.0.0")
     assert text.startswith("# --- ee_tooling: fab rules; written by adopt ---\n# a profile's")
     assert text.endswith(
         "(min 0.3mm)))\n# --- ee_tooling: end; the board's own rules follow and win ---\n"
@@ -74,7 +76,7 @@ def test_installed_between_markers_without_version() -> None:
 
 @pytest.mark.usefixtures("resources")
 def test_installed_leaves_out_an_optional_section() -> None:
-    text = installed("fab", RULES, PriceOptions(False))
+    text = installed("fab", RULES, PriceOptions(False), "1.0.0")
     assert '(rule "Track"' in text
     assert "Price" not in text
     assert '(rule "Via"' not in text
@@ -83,16 +85,19 @@ def test_installed_leaves_out_an_optional_section() -> None:
 def test_jlcpcb_rules() -> None:
     """The JLCPCB profile's: its limits and the house rules; its Board
     Setup minimums."""
-    text = installed("jlcpcb", Jlcpcb.rules, Options())
+    text = installed("jlcpcb", Jlcpcb.rules, Options(), current())
     assert '(rule "JLCPCB annular ring"' in text
     assert "track_width" not in text
     assert '(rule "Mounting hole plated"' in text
     assert "price" not in text.lower()
-    assert [n for n, _ in sections(resource(Jlcpcb.rules.dru))][1:] == [
+    assert [n for n, _ in sections(rule_file(current(), Jlcpcb.rules.dru))][1:] == [
         "JLCPCB limits",
         "House rules (docs/kicad-style.md)",
     ]
-    assert board_setup(Jlcpcb.rules)["board"]["design_settings"]["rules"]["min_clearance"] == 0.1
+    assert (
+        board_setup(Jlcpcb.rules, current())["board"]["design_settings"]["rules"]["min_clearance"]
+        == 0.1
+    )
 
 
 SECTION = f'{BEGIN.format("fab")}\n(rule "Track")\n{END}\n'
@@ -227,7 +232,7 @@ def test_erc_set_keeps_the_stricter() -> None:
 
 def test_erc_set_house() -> None:
     """The house file: every value a severity, and the grid."""
-    house = json.loads(resource(ERC_SETTINGS))
+    house = erc_settings(current())
     assert set(house["erc"]["rule_severities"].values()) <= {"ignore", "warning", "error"}
     out, _ = erc_set({}, house)
     assert out == house
@@ -380,8 +385,8 @@ def test_retired_rules_named() -> None:
 
 def test_retired_not_current() -> None:
     """No rule the profile has now is among the retired."""
-    current = set(RULE_NAME.findall(resource(Jlcpcb.rules.dru)))
-    assert current and not current & kicad_rules.RETIRED
+    names = set(RULE_NAME.findall(rule_file(current(), Jlcpcb.rules.dru)))
+    assert names and not names & kicad_rules.RETIRED
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
@@ -401,3 +406,27 @@ def test_dropped_only_foreign_rules() -> None:
     assert dropped(old, new) == (0, [])
     mine = old + '(rule "mine"\n\t(constraint track_width (min 0.3mm)))\n'
     assert dropped(mine, new) == (2, ["mine"])
+
+
+def test_rule_sets_by_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Oldest first, by number; an entry not a directory named X.Y.Z is not
+    a set."""
+    for name in ("0.10.0", "0.9.0", "0.4.0", "notes", "1.0"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "0.5.0").write_text("")
+    (tmp_path / "0.10.0" / "f").write_text("text")
+    monkeypatch.setattr(kicad_rules, "rules_directory", lambda: tmp_path)
+    assert rule_sets() == ["0.4.0", "0.9.0", "0.10.0"]
+    assert current() == "0.10.0"
+    assert rule_file("0.10.0", "f") == "text"
+
+
+def test_package_rule_sets() -> None:
+    """The package's rules directory holds rule sets only, the oldest
+    0.4.0, each with every profile's files."""
+    entries = [d.name for d in kicad_rules.rules_directory().iterdir()]
+    assert entries and sorted(entries) == sorted(rule_sets())
+    assert rule_sets()[0] == "0.4.0"
+    for version in rule_sets():
+        for name in (Jlcpcb.rules.dru, Jlcpcb.rules.board_setup, kicad_rules.ERC_SETTINGS):
+            assert rule_file(version, name)

@@ -45,7 +45,7 @@ from ee_tooling.adopt import (
     stale,
 )
 from ee_tooling.fab_release import load_config
-from ee_tooling.kicad_rules import ERC_SETTINGS, erc_set, installed, resource
+from ee_tooling.kicad_rules import current, erc_set, erc_settings, installed
 from ee_tooling.profiles.jlcpcb import Jlcpcb, Options
 
 SUBMODULE = Path("hardware/ee_tooling")
@@ -912,8 +912,8 @@ LOW_SETUP = {
 }
 # What the house ERC settings change in LOW_SETUP: each severity it lacks or
 # has laxer, and the grid; not four_way_junction, stricter there.
-ERC_CHANGES = erc_set(LOW_SETUP, json.loads(resource(ERC_SETTINGS)))[1]
-SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
+ERC_CHANGES = erc_set(LOW_SETUP, erc_settings(current()))[1]
+SECTION = installed("jlcpcb", Jlcpcb.rules, Options(), current())
 
 
 def rules_repository(tmp_path: Path) -> Layout:

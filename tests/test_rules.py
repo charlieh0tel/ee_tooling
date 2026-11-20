@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 
-from ee_tooling.kicad_rules import install
+from ee_tooling.kicad_rules import current, install
 from ee_tooling.kicad_style_check import GRID
 from ee_tooling.kicad_style_netclass import INTERFACES
 from ee_tooling.sexpr import Expression, child, children, parse
 
-RULES = importlib.resources.files("ee_tooling").joinpath("rules")
+RULES = importlib.resources.files("ee_tooling").joinpath("rules", current())
 DRU = RULES.joinpath("jlcpcb.kicad_dru").read_text()
 BOARD_SETUP = json.loads(RULES.joinpath("jlcpcb_board_setup.json").read_text())
 ERC = json.loads(RULES.joinpath("erc_severities.json").read_text())

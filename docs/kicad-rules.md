@@ -1,6 +1,9 @@
 # KiCad rules
 
-ee_tooling's rules for KiCad 10's own checks, in `src/ee_tooling/rules/`.
+ee_tooling's rules for KiCad 10's own checks, in rule sets: each the
+files below as an ee_tooling release shipped them, in
+`src/ee_tooling/rules/VERSION/`, VERSION being the release that
+introduced it.  The newest set is the current one.
 DRC and ERC check them live in the editor, and `fab-release` refuses
 a board with DRC or ERC violations.
 

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from ee_tooling.fab_release import Release, main
-from ee_tooling.kicad_rules import board_setup, install, installed
+from ee_tooling.kicad_rules import board_setup, current, install, installed
 from ee_tooling.profiles.jlcpcb import Jlcpcb, Options
 from ee_tooling.sexpr import parse
 from ee_tooling.stackup_table import refresh
@@ -114,8 +114,8 @@ def board(root: Path) -> None:
     found = install(
         OWN_RULES,
         settings,
-        installed("jlcpcb", Jlcpcb.rules, Options()),
-        board_setup(Jlcpcb.rules),
+        installed("jlcpcb", Jlcpcb.rules, Options(), current()),
+        board_setup(Jlcpcb.rules, current()),
     )
     (directory / f"{NAME}.kicad_dru").write_text(found.dru)
     project.write_text(json.dumps(found.project, indent=2) + "\n")

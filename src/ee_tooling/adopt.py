@@ -43,18 +43,18 @@ from ee_tooling.fab_release import (
 from ee_tooling.git_environment import environment
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 from ee_tooling.kicad_rules import (
-    ERC_SETTINGS,
     Dru,
     board_setup,
     copied_message,
+    current,
     dropped,
     erc_set,
+    erc_settings,
     install,
     installed,
     lock_message,
     lock_of,
     raised,
-    resource,
     retired_message,
 )
 from ee_tooling.profiles import PROFILES
@@ -714,9 +714,10 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         if not (root / project).exists():
             print(f"{project.as_posix()} is not there: rules not installed", file=sys.stderr)
             continue
-        section = installed(profile.name, profile.rules, options)
-        least = board_setup(profile.rules)
-        house = json.loads(resource(ERC_SETTINGS))
+        version = current()
+        section = installed(profile.name, profile.rules, options, version)
+        least = board_setup(profile.rules, version)
+        house = erc_settings(version)
         by_hand = "install the rules by hand"
         try:
             settings = json.loads(read(root / project))

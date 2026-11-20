@@ -53,7 +53,7 @@ from ee_tooling.fab_release import (
     variant_text_warning,
 )
 from ee_tooling.fabrication import Fab, GerberFile, stackup
-from ee_tooling.kicad_rules import board_setup, install, installed
+from ee_tooling.kicad_rules import board_setup, current, install, installed
 from ee_tooling.kicad_style_stackup import HEADER, check_stackup
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
@@ -701,7 +701,7 @@ def with_stackup_table(pcb: str) -> str:
 FIXTURE["hw/b.kicad_pcb"] = with_stackup_table(FIXTURE["hw/b.kicad_pcb"])
 # The board's own rule, after the rules adopt installed.
 OWN_RULE = '(rule "Board edge"\n\t(constraint edge_clearance (min 0.5mm)))\n'
-SECTION = installed("jlcpcb", Jlcpcb.rules, Options())
+SECTION = installed("jlcpcb", Jlcpcb.rules, Options(), current())
 FIXTURE["hw/b.kicad_dru"] = f"(version 1)\n{SECTION}\n{OWN_RULE}"
 
 
@@ -1778,7 +1778,7 @@ def test_drc_project(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
-    rules = install(f"(version 1)\n{OWN_RULE}", {}, SECTION, board_setup(Jlcpcb.rules))
+    rules = install(f"(version 1)\n{OWN_RULE}", {}, SECTION, board_setup(Jlcpcb.rules, current()))
     (root / "lib").mkdir()
     pcb = r.drc_project(rules)
     scratch = work / "project/hw"
@@ -2265,7 +2265,7 @@ def test_drc_project_links_odd_entries(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
-    r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules)))
+    r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules, current())))
     scratch = work / "project/hw"
     assert sorted(p.name for p in scratch.iterdir()) == [
         "b.kicad_dru",
@@ -2291,7 +2291,7 @@ def test_drc_project_stops_on_an_unreadable_board(tmp_path: Path) -> None:
     work.mkdir()
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
     with pytest.raises(SystemExit, match=r"^DRC's scratch copy: .*b.kicad_pcb: No such file"):
-        r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules)))
+        r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules, current())))
 
 
 def test_source_tgz_leaves_out_git_and_releases(

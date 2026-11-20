@@ -16,7 +16,7 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 | `src/ee_tooling/stackup_table.py`, `drawing_sheet.py` | `stackup-table BOARD`: a board's stackup table on User.Drawings, written or refreshed from its physical stackup, inside the drawing sheet's frame (`docs/stackup-table.md`) |
 | `src/ee_tooling/sexpr.py` | KiCad's S-expressions: parse, write, edit in place, library symbol lookup (`KICAD10_SYMBOL_DIR`, else `/usr/share/kicad/symbols`) |
 | `src/ee_tooling/kicad_style_*.py` | `kicad-style-check FILE...`: a schematic, board or project against `docs/kicad-style.md`, less the waivers in its `kicad-style.toml` (`docs/kicad-style-check.md`) |
-| `src/ee_tooling/rules/` | KiCad's own DRC rules, Board Setup minimums and ERC severities: JLCPCB's limits and the house rules (`docs/kicad-rules.md`) |
+| `src/ee_tooling/rules/` | KiCad's own DRC rules, Board Setup minimums and ERC severities: JLCPCB's limits and the house rules, in rule sets, a directory each, named for the version that introduced it (`docs/kicad-rules.md`) |
 | `src/ee_tooling/kicad_rules.py` | a profile's rules in a board's project: its `.kicad_dru` section between markers and its Board Setup raised, for `adopt` and `fab-release`'s DRC; the ERC severities and connection grid, for `adopt` (`docs/kicad-rules.md`) |
 | `src/ee_tooling/step_model.py` | STEP stand-in models (boxes, faceted cylinders) for parts whose makers' models may not be redistributed |
 | `src/ee_tooling/parts.toml` | JLCPCB's rotation and offset corrections, by LCSC part |

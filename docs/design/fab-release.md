@@ -269,8 +269,9 @@ require_lcsc = true              # default false
   whose correction is not known yet (`parts.toml`'s `[unchecked]`) is a
   warning.
 - IPC-2581's distributor: the `LCSC` field, distributor "LCSC".
-- Rules: `rules/jlcpcb.kicad_dru` in sections (JLCPCB's limits, the
-  house rules), and `rules/jlcpcb_board_setup.json`, the Board Setup
+- Rules, in each rule set (`rules/VERSION/`): `jlcpcb.kicad_dru` in
+  sections (JLCPCB's limits, the house rules), and
+  `jlcpcb_board_setup.json`, the Board Setup
   minimums: copper clearance, copper to edge, hole clearance, hole to
   hole, through-hole diameter, track width, via annular width, via
   diameter (`docs/kicad-rules.md`).

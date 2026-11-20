@@ -1,7 +1,8 @@
 """A profile's KiCad rules in a board's project (docs/kicad-rules.md): its
 custom DRC rules installed in the board's .kicad_dru between markers, the
 board's own rules after them, and its Board Setup minimums in the
-.kicad_pro, raised to, never lowered.
+.kicad_pro, raised to, never lowered.  The rules come from a rule set, the
+rules files as an ee_tooling release shipped them.
 
 fab-release runs DRC with them on a scratch copy of the project, and
 ee-tooling-adopt installs them in the board's own files.
@@ -13,6 +14,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
@@ -70,9 +72,34 @@ def lock_message(lock: str, what: str) -> str:
     )
 
 
-def resource(path: str) -> str:
-    """A file in the ee_tooling package, by its path there."""
-    return importlib.resources.files("ee_tooling").joinpath(path).read_text()
+# The package's directory of rule sets, each a directory named for the
+# ee_tooling version that introduced it (X.Y.Z), holding every profile's
+# rules files and ERC_SETTINGS as that release shipped them.
+RULE_SETS = "rules"
+SET_NAME = re.compile(r"\d+\.\d+\.\d+")
+
+
+def rules_directory() -> Traversable:
+    """The package's directory of rule sets."""
+    return importlib.resources.files("ee_tooling").joinpath(RULE_SETS)
+
+
+def rule_sets() -> list[str]:
+    """The rule sets' versions, oldest first."""
+    names = [
+        d.name for d in rules_directory().iterdir() if d.is_dir() and SET_NAME.fullmatch(d.name)
+    ]
+    return sorted(names, key=lambda v: tuple(int(n) for n in v.split(".")))
+
+
+def current() -> str:
+    """The newest rule set's version."""
+    return rule_sets()[-1]
+
+
+def rule_file(version: str, name: str) -> str:
+    """The text of rule set version's file name."""
+    return rules_directory().joinpath(version, name).read_text()
 
 
 def sections(text: str) -> list[tuple[str, str]]:
@@ -84,12 +111,12 @@ def sections(text: str) -> list[tuple[str, str]]:
     return [(name, text[start:end]) for (start, name), end in zip(bounds, ends, strict=True)]
 
 
-def installed(name: str, rules: Rules, options: object) -> str:
-    """The section installed for profile name: its rules, without their
-    version line, less each optional section whose option is false in
-    options, between the markers."""
+def installed(name: str, rules: Rules, options: object, version: str) -> str:
+    """The section installed for profile name from rule set version: its
+    rules, without their version line, less each optional section whose
+    option is false in options, between the markers."""
     leave_out = {s for option, s in rules.optional.items() if not getattr(options, option)}
-    kept = "".join(t for n, t in sections(resource(rules.dru)) if n not in leave_out)
+    kept = "".join(t for n, t in sections(rule_file(version, rules.dru)) if n not in leave_out)
     body = VERSION_LINE.sub("", kept, count=1).strip("\n")
     return f"{BEGIN.format(name)}\n{body}\n{END}\n"
 
@@ -138,12 +165,19 @@ class Dru:
         return [n for n in RULE_NAME.findall(self.own) if n in RETIRED]
 
 
-def board_setup(rules: Rules) -> dict[str, Any]:
-    """The profile's Board Setup minimums, a .kicad_pro fragment."""
-    found = json.loads(resource(rules.board_setup))
+def fragment(version: str, name: str) -> dict[str, Any]:
+    """Rule set version's .kicad_pro fragment name; ValueError if it is not
+    a JSON object."""
+    found = json.loads(rule_file(version, name))
     if not isinstance(found, dict):
-        raise ValueError(f"{rules.board_setup}: not a JSON object")
+        raise ValueError(f"{RULE_SETS}/{version}/{name}: not a JSON object")
     return found
+
+
+def board_setup(rules: Rules, version: str) -> dict[str, Any]:
+    """The profile's Board Setup minimums in rule set version, a .kicad_pro
+    fragment."""
+    return fragment(version, rules.board_setup)
 
 
 def put(table: dict[str, Any], key: str, value: object) -> None:
@@ -310,10 +344,15 @@ def install(
     )
 
 
-# The house ERC severities and connection grid, a .kicad_pro fragment; and
-# KiCad's ERC severities, least strict first.
-ERC_SETTINGS = "rules/erc_severities.json"
+# A rule set's house ERC severities and connection grid, a .kicad_pro
+# fragment; and KiCad's ERC severities, least strict first.
+ERC_SETTINGS = "erc_severities.json"
 SEVERITIES = ("ignore", "warning", "error")
+
+
+def erc_settings(version: str) -> dict[str, Any]:
+    """Rule set version's ERC severities and connection grid."""
+    return fragment(version, ERC_SETTINGS)
 
 
 def erc_set(project: dict[str, Any], house: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

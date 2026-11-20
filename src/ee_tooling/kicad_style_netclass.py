@@ -65,7 +65,7 @@ IMPEDANCE = re.compile(
     r"(?<![A-Z0-9.])\d+(?:\.\d+)?\s*(?:Z|R|OHMS?)(?![A-Z])|DIFF|_SE(?![A-Z])", re.I
 )
 # The interfaces a differential class may name, each with its skew rule
-# in rules/jlcpcb.kicad_dru (docs/kicad-rules.md, Differential pairs).
+# in the rule sets' jlcpcb.kicad_dru (docs/kicad-rules.md, Differential pairs).
 # DVI shares HDMI's.
 INTERFACES = ("USBFS", "USBHS", "USB3", "PCIE", "HDMI", "ETH1G", "ETH100")
 # The house names for an impedance class, and for a differential one; a

@@ -22,8 +22,8 @@ class GerberOptions:
 
 @dataclass(frozen=True)
 class Rules:
-    """A profile's KiCad rules, files in the ee_tooling package by their
-    paths there."""
+    """A profile's KiCad rules, files of each rule set by their names there
+    (kicad_rules.rule_sets)."""
 
     dru: str  # its .kicad_dru, in sections headed "# --- <name> ---"
     optional: dict[str, str]  # an option of its board options to the section left out when false
