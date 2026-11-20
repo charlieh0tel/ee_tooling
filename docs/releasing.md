@@ -12,7 +12,10 @@ repository takes ee_tooling as a git submodule following `main`
   else the patch.
 - A breaking change is one a board repository must act on: a command,
   option, `fab.toml` key, Python or Rust API, skill or output file
-  that is removed, renamed or changed in meaning.
+  that is removed, renamed or changed in meaning.  A change of the
+  rules (a new rule set) is breaking for a board that follows the
+  current set, not for one that pins its rules (`docs/kicad-rules.md`,
+  Pinning a board's rules).
 - A release is an annotated tag `vX.Y.Z` on a commit of `main` that
   has passed every check.  Its notes, breaking changes first, are its
   GitHub release's.
@@ -36,3 +39,32 @@ repository takes ee_tooling as a git submodule following `main`
 
 A broken release is fixed in the next patch version; a tag is never
 moved or reused.
+
+## Rule sets
+
+A rule set is the rules files as a release shipped them, in
+`src/ee_tooling/rules/VERSION/` (`docs/kicad-rules.md`); a board pins
+one by its version.  A released set's files never change, nor what
+they install: `tests/test_rule_sets.py` holds each set's output for two
+boards byte for byte, in `adopt` and in `fab-release`'s DRC.
+
+A release that changes the rules:
+
+1. Copies the newest set's directory to `src/ee_tooling/rules/X.Y.Z/`,
+   X.Y.Z the version of the release that will ship it (renamed before
+   the release if that version changes), and makes the changes there,
+   never in an older set.  A profile's file names are the same in every set, as is
+   each section a profile's option leaves out.
+2. Updates `docs/kicad-rules.md` to the new set.
+3. Writes the new set's expected output:
+   `EE_TOOLING_WRITE_GOLDEN=1 uv run pytest tests/test_rule_sets.py`
+   writes the files missing in `tests/rule_sets/X.Y.Z/`, never one that
+   is there; read them, and commit them with the set.
+4. Lists the rules' changes in the release's notes, as breaking for a
+   board that follows the current set.
+
+A change of the code that applies the rules (`kicad_rules.py`: the
+markers, the Board Setup raise, a minimum raised to the board's Board
+Setup value, the ERC settings) must leave every set's expected output
+as it is: a change that cannot is breaking for every board, pinned or
+not, and needs the owner's decision.

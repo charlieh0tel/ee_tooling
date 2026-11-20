@@ -2,7 +2,8 @@
 custom DRC rules installed in the board's .kicad_dru between markers, the
 board's own rules after them, and its Board Setup minimums in the
 .kicad_pro, raised to, never lowered.  The rules come from a rule set, the
-rules files as an ee_tooling release shipped them.
+rules files as an ee_tooling release shipped them: the current one, or the
+one a board pins in fab.toml.
 
 fab-release runs DRC with them on a scratch copy of the project, and
 ee-tooling-adopt installs them in the board's own files.
@@ -20,8 +21,12 @@ from typing import Any
 
 from ee_tooling.profiles.profile import Rules
 
-# The markers around the installed rules: the begin line names the profile.
+# The markers around the installed rules: the begin line names the profile,
+# and the line after it the rule set, but for UNRECORDED's, whose section
+# boards had installed before a section named its set.
 BEGIN = "# --- ee_tooling: {} rules; written by adopt ---"
+SET_LINE = "# ee_tooling rule set {}"
+UNRECORDED = "0.4.0"
 END = "# --- ee_tooling: end; the board's own rules follow and win ---"
 BEGIN_LINE = re.compile(r"^# --- ee_tooling: .* rules; written by adopt ---[ \t]*$", re.M)
 END_LINE = re.compile(rf"^{re.escape(END)}[ \t]*$", re.M)
@@ -31,9 +36,9 @@ VERSION = "(version 1)"
 # A section heading of a profile's .kicad_dru: "# --- <name> ---", with
 # dashes to fill the line.
 SECTION = re.compile(r"^# --- (.+?) -+[ \t]*$", re.M)
-# The rules ee_tooling's rules files have had and no longer have (git log
-# -p -- src/ee_tooling/rules/): a board's hand copy of an older file keeps
-# them in force below the markers.
+# The rules ee_tooling's rules files had before its first rule set and no
+# set has (git log -p -- src/ee_tooling/rules/): a board's hand copy of an
+# older file keeps them in force below the markers.
 RETIRED = frozenset(
     {
         "Differential pair coupled",
@@ -102,6 +107,52 @@ def rule_file(version: str, name: str) -> str:
     return rules_directory().joinpath(version, name).read_text()
 
 
+# fab.toml's [[board]] key that pins the board's rule set.
+PIN = "rules"
+
+
+def rule_set(pin: object) -> str:
+    """The rule set a board's pin (its PIN value) names, the current one if
+    None; ValueError if it is not a string or names no set."""
+    if pin is None:
+        return current()
+    if not isinstance(pin, str):
+        raise ValueError(f"{PIN!r} is not a string")
+    if pin not in (sets := rule_sets()):
+        raise ValueError(f"{PIN} {pin!r} is not one of {', '.join(sets)}")
+    return pin
+
+
+def pinned_message(name: str, pin: str | None) -> str | None:
+    """What board name's pin says, where it holds the board to a set other
+    than the current one; else None."""
+    if pin is None or pin == current():
+        return None
+    return (
+        f"{name}: ee_tooling's rules pinned at {pin} by fab.toml; the current rules are {current()}"
+    )
+
+
+def rule_names(rules: Rules, version: str) -> set[str]:
+    """The names of the rules of the profile's .kicad_dru in rule set
+    version."""
+    return set(RULE_NAME.findall(rule_file(version, rules.dru)))
+
+
+def retired(rules: Rules, version: str) -> frozenset[str]:
+    """The names of the rules an older rules file of the profile's had
+    (RETIRED, and each older set's) that rule set version does not."""
+    older = rule_sets()[: rule_sets().index(version)]
+    had = RETIRED.union(*(rule_names(rules, v) for v in older))
+    return had - rule_names(rules, version)
+
+
+def known(rules: Rules) -> frozenset[str]:
+    """The names of every rule the profile's rules files have had, in any
+    set or before them."""
+    return RETIRED.union(*(rule_names(rules, v) for v in rule_sets()))
+
+
 def sections(text: str) -> list[tuple[str, str]]:
     """A .kicad_dru's sections, each its name and its text from its heading
     to the next; the text before the first heading is named ""."""
@@ -118,7 +169,8 @@ def installed(name: str, rules: Rules, options: object, version: str) -> str:
     leave_out = {s for option, s in rules.optional.items() if not getattr(options, option)}
     kept = "".join(t for n, t in sections(rule_file(version, rules.dru)) if n not in leave_out)
     body = VERSION_LINE.sub("", kept, count=1).strip("\n")
-    return f"{BEGIN.format(name)}\n{body}\n{END}\n"
+    recorded = "" if version == UNRECORDED else f"{SET_LINE.format(version)}\n"
+    return f"{BEGIN.format(name)}\n{recorded}{body}\n{END}\n"
 
 
 @dataclass(frozen=True)
@@ -158,11 +210,12 @@ class Dru:
         names = set(RULE_NAME.findall(section))
         return [n for n in RULE_NAME.findall(self.own) if n in names]
 
-    def retired(self) -> list[str]:
-        """The names of the board's own rules that are rules ee_tooling's
-        rules files once had and no longer have (RETIRED): a copy of an
-        older file, in force and no longer wanted."""
-        return [n for n in RULE_NAME.findall(self.own) if n in RETIRED]
+    def retired(self, names: frozenset[str]) -> list[str]:
+        """The names of the board's own rules that are among names, the
+        rules ee_tooling's older rules files had and the board's rule set
+        does not (retired): a copy of an older file, in force and no
+        longer wanted."""
+        return [n for n in RULE_NAME.findall(self.own) if n in names]
 
 
 def fragment(version: str, name: str) -> dict[str, Any]:
@@ -261,15 +314,15 @@ MINIMUM = re.compile(r"\(constraint[ \t]+(\w+)[ \t]+\(min[ \t]+([0-9.]+)mm\)")
 MM_PLACES = 6
 
 
-def dropped(old: str | None, new: str) -> tuple[int, list[str]]:
+def dropped(old: str | None, new: str, ours: frozenset[str]) -> tuple[int, list[str]]:
     """What replacing section old with new removes that is not ee_tooling's:
-    the rules between the markers that neither new nor an older rules file
-    of ee_tooling's has (RETIRED), put there by hand; their count of
+    the rules between the markers that neither new nor ours (known: every
+    rules file of ee_tooling's) has, put there by hand; their count of
     non-blank lines and their names.  A value ee_tooling changed, or a rule
-    it retired, is not counted."""
+    of another set, is not counted."""
     if old is None:
         return 0, []
-    ours = set(RULE_NAME.findall(new)) | RETIRED
+    ours = ours | set(RULE_NAME.findall(new))
     starts = [(m.start(), m.group(1)) for m in RULE_NAME.finditer(old)]
     ends = [s for s, _ in starts[1:]] + [len(old)]
     foreign = [
@@ -324,12 +377,17 @@ class Installed:
 
 
 def install(
-    dru: str | None, project: dict[str, Any], section: str, least: dict[str, Any]
+    dru: str | None,
+    project: dict[str, Any],
+    section: str,
+    least: dict[str, Any],
+    gone: frozenset[str],
 ) -> Installed:
     """The board's .kicad_dru (None if it has none) and .kicad_pro with
     Board Setup raised to least and section installed, each of its minimums
-    floored to the raised Board Setup's (floored); ValueError if the
-    .kicad_dru's markers are not in order."""
+    floored to the raised Board Setup's (floored); gone, the rules the
+    section's set retired (retired).  ValueError if the .kicad_dru's
+    markers are not in order."""
     found = Dru.split(dru)
     project, changes = raised(project, least)
     section = floored(section, project)
@@ -340,7 +398,7 @@ def install(
         found.section != section,
         changes,
         found.copied(section),
-        found.retired(),
+        found.retired(gone),
     )
 
 

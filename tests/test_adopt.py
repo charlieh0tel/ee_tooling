@@ -2473,3 +2473,122 @@ def test_mixed_line_endings_kept(tmp_path: Path) -> None:
     raw = (tmp_path / ".gitattributes").read_bytes()
     assert raw.endswith(b"follow and win\r\n" + own)
     assert Path(".gitattributes") not in stale(layout)
+
+
+# The first rule set's section, which a board pinned at it has.
+FIRST_SECTION = installed("jlcpcb", Jlcpcb.rules, Options(), "0.4.0")
+
+
+def pin(root: Path, version: object) -> None:
+    """fab.toml's board pinned at version (a TOML value), or unpinned
+    (None)."""
+    config = root / "fab.toml"
+    text = re.sub(r"^rules = .*\n", "", config.read_text(), flags=re.M)
+    if version is not None:
+        line = f"rules = {json.dumps(version)}\n"
+        text = text.replace('profile = "jlcpcb"\n', f'profile = "jlcpcb"\n{line}', 1)
+    config.write_text(text)
+
+
+def setup_values(root: Path) -> tuple[float, str]:
+    """The board's Board Setup clearance and field_name_whitespace's
+    severity: each set's are different."""
+    project = json.loads((root / "hardware/main/main.kicad_pro").read_text())
+    return (
+        project["board"]["design_settings"]["rules"]["min_clearance"],
+        project["erc"]["rule_severities"]["field_name_whitespace"],
+    )
+
+
+def test_pinned_board_keeps_its_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], newer_set: str
+) -> None:
+    """A board pinned at an older set: --yes installs that set's section,
+    Board Setup and ERC values; --check then passes with a newer set
+    current, saying the pin; a section changed by hand is to be updated."""
+    layout = rules_repository(tmp_path)
+    pin(tmp_path, "0.4.0")
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    said = (
+        f"main: ee_tooling's rules pinned at 0.4.0 by fab.toml; the current rules are {newer_set}"
+    )
+    capsys.readouterr()
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert said in capsys.readouterr().err.splitlines()
+    assert dru.read_text() == f"(version 1)\n{FIRST_SECTION}\n{OWN_RULE}"
+    assert setup_values(tmp_path) == (0.1, "warning")
+    assert stale(layout) == []
+    assert said in capsys.readouterr().err.splitlines()
+    dru.write_text(dru.read_text().replace("(min 0.18mm)", "(min 0.05mm)", 1))
+    assert stale(layout) == [Path("hardware/main/main.kicad_dru")]
+
+
+def test_pin_switched(tmp_path: Path, capsys: pytest.CaptureFixture[str], newer_set: str) -> None:
+    """Unpinned, a board pinned at an older set is to be updated to the
+    current one, its section naming it; pinned back, only its section goes
+    back: Board Setup is not lowered nor an ERC severity made laxer, and
+    no rule of either set is taken for one put there by hand."""
+    layout = rules_repository(tmp_path)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    pin(tmp_path, "0.4.0")
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    pin(tmp_path, None)
+    assert stale(layout) == [
+        Path("hardware/main/main.kicad_dru"),
+        Path("hardware/main/main.kicad_pro"),
+    ]
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    newer = installed("jlcpcb", Jlcpcb.rules, Options(), newer_set)
+    assert newer.splitlines()[1] == f"# ee_tooling rule set {newer_set}"
+    assert dru.read_text() == f"(version 1)\n{newer}\n{OWN_RULE}"
+    assert setup_values(tmp_path) == (0.12, "error")
+    assert stale(layout) == []
+    pin(tmp_path, "0.4.0")
+    assert stale(layout) == [Path("hardware/main/main.kicad_dru")]
+    capsys.readouterr()
+    apply(tmp_path, [s for s in plan(layout) if isinstance(s, Edit)], lambda *_: None)
+    assert "not ee_tooling's" not in capsys.readouterr().err
+    assert dru.read_text() == f"(version 1)\n{FIRST_SECTION}\n{OWN_RULE}"
+    assert setup_values(tmp_path) == (0.12, "error")
+    assert stale(layout) == []
+
+
+def test_pinned_at_the_current_set_not_said(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], newer_set: str
+) -> None:
+    layout = rules_repository(tmp_path)
+    pin(tmp_path, newer_set)
+    capsys.readouterr()
+    plan(layout)
+    assert "pinned" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [("0.3.0", r"rules '0\.3\.0' is not one of 0\.4\.0, 99\.0\.0"), (4, "'rules' is not a string")],
+)
+def test_pin_not_a_set(tmp_path: Path, newer_set: str, value: object, error: str) -> None:
+    layout = rules_repository(tmp_path)
+    pin(tmp_path, value)
+    with pytest.raises(ValueError, match=rf"^fab.toml: \[\[board\]\] 'main': {error}$"):
+        stale(layout)
+
+
+@pytest.mark.parametrize(("version", "kind"), [("0.4.0", "copies"), (None, "is retired")])
+def test_retired_by_the_pinned_set(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    newer_set: str,
+    version: str | None,
+    kind: str,
+) -> None:
+    """A rule the newer set retired, below the end marker: a copy of the
+    section's for a board pinned at a set that has it, retired for one on
+    the newer set."""
+    layout = rules_repository(tmp_path)
+    pin(tmp_path, version)
+    dru = tmp_path / "hardware/main/main.kicad_dru"
+    dru.write_text(dru.read_text() + '(rule "JLCPCB BGA pad size"\n\t(constraint assertion "1"))\n')
+    capsys.readouterr()
+    plan(layout)
+    assert f"1 rule below ee_tooling's end marker {kind}" in capsys.readouterr().err

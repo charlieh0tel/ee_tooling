@@ -75,12 +75,15 @@ from ee_tooling.fabrication import (
 )
 from ee_tooling.git_environment import environment
 from ee_tooling.kicad_rules import (
+    PIN,
     Installed,
     board_setup,
     copied_message,
-    current,
     install,
     installed,
+    pinned_message,
+    retired,
+    rule_set,
 )
 from ee_tooling.kicad_style_netclass import sheet_files
 from ee_tooling.kicad_style_stackup import check_stackup
@@ -263,6 +266,7 @@ class Board:
     fab: Fab  # [board.fab]
     options: dict[str, Any] = field(default_factory=dict)  # [board.<profile>], unchecked
     variants: tuple[str, ...] = ()  # the design variants built, each a build; () the default
+    rules: str | None = None  # the rule set it pins (kicad_rules.PIN); None: the current one
 
     @property
     def pcb(self) -> Path:
@@ -361,7 +365,7 @@ def board(table: dict[str, Any], number: int) -> Board:
     # Beside its own keys, a board has a table of its profile's options.
     # Its type checked first: the profile names a table, a key.
     options = string(where, table, "profile", None)
-    known = {*STRING_KEYS, *LIST_KEYS, FAB, options}
+    known = {*STRING_KEYS, *LIST_KEYS, FAB, PIN, options}
     if unknown := sorted(set(table) - known):
         raise ValueError(f"{where}: unknown key {', '.join(repr(k) for k in unknown)}")
     text = {k: string(where, table, k, d) for k, d in STRING_KEYS.items()}
@@ -374,6 +378,10 @@ def board(table: dict[str, Any], number: int) -> Board:
         raise ValueError(f"{where}: {text['profile']!r} is not a table")
     for name in variant_errors(lists["variants"]):
         raise ValueError(f"{where}: {name}")
+    try:
+        rule_set(table.get(PIN))
+    except ValueError as e:
+        raise ValueError(f"{where}: {e}") from e
     for source in lists["sources"]:
         if os.path.isabs(source) or os.path.normpath(source).split(os.sep)[0] == os.pardir:
             raise ValueError(f"{where}: source {source!r} is outside the repository")
@@ -386,6 +394,7 @@ def board(table: dict[str, Any], number: int) -> Board:
         fab=fab(where, table.get(FAB)),
         options=table.get(text["profile"], {}),
         variants=tuple(lists["variants"]),
+        rules=table.get(PIN),
     )
 
 
@@ -1791,11 +1800,14 @@ def board_rules(root: Path, b: Board, profile: Profile[Any], options: object) ->
     try:
         project = json.loads(project_path.read_text(encoding=PROJECT_TEXT))
         dru = dru_path.read_text(encoding=PROJECT_TEXT) if dru_path.exists() else None
-        version = current()
+        version = rule_set(b.rules)
         section = installed(profile.name, profile.rules, options, version)
-        found = install(dru, project, section, board_setup(profile.rules, version))
+        least = board_setup(profile.rules, version)
+        found = install(dru, project, section, least, retired(profile.rules, version))
     except (OSError, ValueError) as e:
         sys.exit(f"{b.name}: its rules: {e}")
+    if (pinned := pinned_message(b.name, b.rules)) is not None:
+        print(pinned, file=sys.stderr)
     adopt = "run ee_tooling's adopt --yes to make KiCad's DRC the release's"
     warnings = []
     if found.stale:

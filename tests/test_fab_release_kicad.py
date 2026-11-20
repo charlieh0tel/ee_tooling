@@ -116,6 +116,7 @@ def board(root: Path) -> None:
         settings,
         installed("jlcpcb", Jlcpcb.rules, Options(), current()),
         board_setup(Jlcpcb.rules, current()),
+        frozenset(),
     )
     (directory / f"{NAME}.kicad_dru").write_text(found.dru)
     project.write_text(json.dumps(found.project, indent=2) + "\n")

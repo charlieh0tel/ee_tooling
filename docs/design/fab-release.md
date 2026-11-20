@@ -65,6 +65,7 @@ production = "production"        # where YYYYMMDD-REV/ goes
 sources = ["docs"]               # added to the source tgz; default []
 profile = "jlcpcb"               # a key of PROFILES
 variants = ["lite", "full"]      # KiCad 10 design variants; default []
+rules = "0.4.0"                  # the rule set pinned; default the current one
 
 [board.fab]                      # every key required
 ipc_class = 2                    # IPC-A-600 / IPC-6012 class: 1, 2 or 3
@@ -97,6 +98,8 @@ require_lcsc = true              # default false
   leads out of it (`..`) is an error naming it.
 - `adopt` writes the house values for `[board.fab]`; `fab-release`
   never applies them silently.
+- `rules` pins the board's rule set (Rules, below); a version
+  ee_tooling does not have is an error naming the versions it has.
 
 ## The release
 
@@ -382,10 +385,23 @@ class Profile[Options](Protocol):
 - `fab-release` runs DRC on a scratch copy of the project whose
   `.kicad_dru` is the profile's rules, then the board's own rules,
   which win, and whose Board Setup is raised to the profile's minimums.
-  So a release is always checked against the current rules, and a
+  So a release is always checked against the board's rule set, and a
   change to ee_tooling's rules never blocks a release just for being
   newer.  A rule a board breaks fails DRC as any other; so does a
   warning (`--exit-code-violations`).
+- Rule sets: the rules files as each release that changed them shipped
+  them, `rules/VERSION/`, the newest current.  A board follows the
+  current set unless `fab.toml` pins one (`rules = "VERSION"`); then
+  `adopt` installs and checks that set and `fab-release` runs DRC, the
+  canary and its warnings with it, saying the pin once on stderr when
+  it is not the current set (`docs/kicad-rules.md`, Pinning a board's
+  rules).  A pin holds the data, not the code that applies it: each
+  set's output for two boards is held byte for byte by
+  `tests/test_rule_sets.py`.  A set after 0.4.0 names itself on the
+  line after the begin marker; 0.4.0's section has no such line, so
+  boards that installed it are not out of date for lacking one.
+  Nothing is lowered when a pin changes: Board Setup stays as raised,
+  a stricter ERC severity stays.
 - Each minimum of the installed section of a kind Board Setup also
   holds is raised to the board's Board Setup value where that is higher
   (`kicad_rules.floored`): a rule replaces Board Setup's constraint for

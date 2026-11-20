@@ -193,7 +193,7 @@ def drc(
     (tmp_path / "t.kicad_pcb").write_text(board(*items))
     own: dict[str, Any] = project(classes or {})
     own["board"] = {"design_settings": {"rules": dict(setup or {})}}
-    found = install(None, own, DRU, BOARD_SETUP)
+    found = install(None, own, DRU, BOARD_SETUP, frozenset())
     (tmp_path / "t.kicad_dru").write_text(found.section)
     (tmp_path / "t.kicad_pro").write_text(json.dumps(found.project))
     report = tmp_path / "drc.json"

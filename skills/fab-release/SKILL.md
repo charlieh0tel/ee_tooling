@@ -33,6 +33,7 @@ production = "production"          # where YYYYMMDD-REV/ goes
 sources = ["docs"]                 # added to the source tgz; optional, default []
 profile = "jlcpcb"                 # the fab: jlcpcb
 variants = ["lite", "full"]        # KiCad 10 design variants built; optional, default []
+rules = "0.4.0"                    # the rule set pinned; optional, default the current one
 
 [board.fab]                        # every key required
 ipc_class = 2                      # IPC-A-600 / IPC-6012 class: 1, 2 or 3
@@ -44,7 +45,10 @@ electrical_test = "100% netlist test per IPC-9252"
 require_lcsc = true
 ```
 
-Every key but `sources`, `variants` and the profile's table is required.
+Every key but `sources`, `variants`, `rules` and the profile's table is required.
+`rules` pins the board's rule set (`docs/kicad-rules.md`, Pinning a
+board's rules): a version ee_tooling does not have is an error naming
+the versions it has.
 `[board.fab]` says what the fab is to build to that the board cannot
 say; the fabrication notes take it.  `adopt` writes the profile's house
 values, never `fab-release`: check them.  A key it
@@ -205,10 +209,15 @@ board repository, a library's submodule): install git-lfs, then
 `git [-C SUBMODULE] lfs pull`.
 
 It warns, naming `adopt --yes`, when the board's `.kicad_dru` lacks the
-profile's current section or its Board Setup is below the profile's
-minimums, and names each rule below the end marker that copies the
-profile's: KiCad's own DRC in the editor then differs from the
-release's.
+profile's section of the board's rule set or its Board Setup is below
+the set's minimums, and names each rule below the end marker that
+copies the profile's: KiCad's own DRC in the editor then differs from
+the release's.  The board's rule set is the current one, or the one
+`rules` pins: DRC, its canary copy and these warnings use it.  A pin
+to a set other than the current one is said once on stderr, with the
+current one's version.  A pin holds the rules only, not the release's
+other checks nor ee_tooling's code: pin the submodule to a tag for
+that.
 
 ## What it reads: the work tree
 

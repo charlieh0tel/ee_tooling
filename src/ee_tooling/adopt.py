@@ -43,19 +43,23 @@ from ee_tooling.fab_release import (
 from ee_tooling.git_environment import environment
 from ee_tooling.kicad_pcbnew import SYSTEM_PYTHON, unsupported
 from ee_tooling.kicad_rules import (
+    PIN,
     Dru,
     board_setup,
     copied_message,
-    current,
     dropped,
     erc_set,
     erc_settings,
     install,
     installed,
+    known,
     lock_message,
     lock_of,
+    pinned_message,
     raised,
+    retired,
     retired_message,
+    rule_set,
 )
 from ee_tooling.profiles import PROFILES
 from ee_tooling.profiles.jlcpcb import Jlcpcb
@@ -710,11 +714,16 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             options = profile.options(b.get(profile.name, {}))
         except ValueError as e:
             raise ValueError(f"{CONFIG}: [[board]] {name!r}: [board.{profile.name}]: {e}") from e
+        try:
+            version = rule_set(b.get(PIN))
+        except ValueError as e:
+            raise ValueError(f"{CONFIG}: [[board]] {name!r}: {e}") from e
         project, dru = Path(directory, f"{name}.kicad_pro"), Path(directory, f"{name}{DRU}")
         if not (root / project).exists():
             print(f"{project.as_posix()} is not there: rules not installed", file=sys.stderr)
             continue
-        version = current()
+        if (pinned := pinned_message(name, b.get(PIN))) is not None:
+            print(pinned, file=sys.stderr)
         section = installed(profile.name, profile.rules, options, version)
         least = board_setup(profile.rules, version)
         house = erc_settings(version)
@@ -725,7 +734,7 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
             raise ValueError(f"{project.as_posix()}: {e}; {by_hand}") from e
         existing = read(root / dru) if (root / dru).exists() else None
         try:
-            found = install(existing, settings, section, least)
+            found = install(existing, settings, section, least, retired(profile.rules, version))
         except ValueError as e:
             raise ValueError(f"{dru.as_posix()}: {e}; {by_hand}") from e
         settings, erc = erc_set(found.project, house)
@@ -740,7 +749,7 @@ def rules_edits(root: Path, config: str | None) -> list[Edit]:
         if found.retired:
             print(retired_message(dru.as_posix(), found.retired), file=sys.stderr)
         close = "close the board in KiCad first"
-        count, names = dropped(Dru.split(existing).section, found.section)
+        count, names = dropped(Dru.split(existing).section, found.section, known(profile.rules))
         if found.stale and count:
             rules = f"; rules: {', '.join(names)}" if names else ""
             print(

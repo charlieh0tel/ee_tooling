@@ -53,7 +53,7 @@ from ee_tooling.fab_release import (
     variant_text_warning,
 )
 from ee_tooling.fabrication import Fab, GerberFile, stackup
-from ee_tooling.kicad_rules import board_setup, current, install, installed
+from ee_tooling.kicad_rules import Installed, board_setup, current, install, installed
 from ee_tooling.kicad_style_stackup import HEADER, check_stackup
 from ee_tooling.profiles.jlcpcb import Corrections, Jlcpcb, Options
 from ee_tooling.profiles.profile import KICAD_GERBERS, GerberOptions, Part, Placement
@@ -155,6 +155,11 @@ def test_config_missing_key(key: str) -> None:
             for x in ("/home/lib", "..", "../lib", "docs/../../lib")
         ),
         (BOARD + BOARD, r"^\[\[board\]\] 'b' is there twice$"),
+        (
+            f'{BOARD}rules = "0.3.0"\n',
+            r"^\[\[board\]\] 'b': rules '0\.3\.0' is not one of 0\.4\.0$",
+        ),
+        (f"{BOARD}rules = 0.4\n", r"^\[\[board\]\] 'b': 'rules' is not a string$"),
         ('board = "b"\n', r"no \[\[board\]\]"),
         ('board = ["b"]\n', r"no \[\[board\]\]"),
     ],
@@ -163,6 +168,13 @@ def test_config_errors(text: str, error: str) -> None:
     """Each bad config is an error naming what is wrong."""
     with pytest.raises(ValueError, match=error):
         load_config(text)
+
+
+def test_config_rules_pinned() -> None:
+    """A board's rule set: the one it pins, or None, the current one."""
+    boards = load_config(f'{BOARD}rules = "0.4.0"\n')
+    assert boards["b"].rules == "0.4.0"
+    assert load_config(BOARD)["b"].rules is None
 
 
 def test_config_profile_options() -> None:
@@ -1778,7 +1790,9 @@ def test_drc_project(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
-    rules = install(f"(version 1)\n{OWN_RULE}", {}, SECTION, board_setup(Jlcpcb.rules, current()))
+    rules = install(
+        f"(version 1)\n{OWN_RULE}", {}, SECTION, board_setup(Jlcpcb.rules, current()), frozenset()
+    )
     (root / "lib").mkdir()
     pcb = r.drc_project(rules)
     scratch = work / "project/hw"
@@ -2265,7 +2279,7 @@ def test_drc_project_links_odd_entries(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
-    r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules, current())))
+    r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules, current()), frozenset()))
     scratch = work / "project/hw"
     assert sorted(p.name for p in scratch.iterdir()) == [
         "b.kicad_dru",
@@ -2291,7 +2305,7 @@ def test_drc_project_stops_on_an_unreadable_board(tmp_path: Path) -> None:
     work.mkdir()
     r = Release(root, load_config(FIXTURE["fab.toml"])["b"], work)
     with pytest.raises(SystemExit, match=r"^DRC's scratch copy: .*b.kicad_pcb: No such file"):
-        r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules, current())))
+        r.drc_project(install(None, {}, SECTION, board_setup(Jlcpcb.rules, current()), frozenset()))
 
 
 def test_source_tgz_leaves_out_git_and_releases(
@@ -3416,3 +3430,73 @@ def test_release_warns_of_tbd(
         "warning: b-1-fab-notes.txt: [TBD: color]: set the solder mask's and silkscreen's"
         " colors in Board Setup, Physical Stackup\n"
     ) in capsys.readouterr().err
+
+
+def release_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str | None
+) -> list[Installed]:
+    """Release the fixture board, its Board Setup clearance 0.1, pinned at
+    version (None: unpinned); return the rules kicad-cli's DRC read, the
+    canary's, then the release's."""
+    toml = FIXTURE["fab.toml"]
+    if version is not None:
+        toml = toml.replace('profile = "jlcpcb"\n', f'profile = "jlcpcb"\nrules = "{version}"\n')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    project = json.loads(FIXTURE["hw/b.kicad_pro"])
+    project["board"]["design_settings"]["rules"]["min_clearance"] = 0.1
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pro", json.dumps(project))
+    read: list[Installed] = []
+    rules_read, drc_project = Release.rules_read, Release.drc_project
+
+    def canary(self: Release, rules: Installed) -> None:
+        read.append(rules)
+        rules_read(self, rules)
+
+    def drc(self: Release, rules: Installed) -> Path:
+        read.append(rules)
+        return drc_project(self, rules)
+
+    monkeypatch.setattr(Release, "rules_read", canary)
+    monkeypatch.setattr(Release, "drc_project", drc)
+    release(tmp_path, monkeypatch)
+    return read
+
+
+def test_release_pinned_board_uses_its_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    newer_set: str,
+) -> None:
+    """A board pinned at an older set, installed: DRC, the canary's copy,
+    Board Setup's minimums and every warning are that set's; the pin said
+    once, nothing else."""
+    read = release_rules(tmp_path, monkeypatch, "0.4.0")
+    first = installed("jlcpcb", Jlcpcb.rules, Options(), "0.4.0")
+    assert [r.dru for r in read] == [f"(version 1)\n{first}\n{OWN_RULE}"] * 2
+    clearances = [r.project["board"]["design_settings"]["rules"]["min_clearance"] for r in read]
+    assert clearances == [0.1] * 2
+    assert profile_quiet(capsys.readouterr().err) == (
+        f"b: ee_tooling's rules pinned at 0.4.0 by fab.toml; the current rules are {newer_set}\n"
+    )
+
+
+def test_release_unpinned_board_uses_the_current_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    newer_set: str,
+) -> None:
+    """The same board unpinned: DRC with the current set, its section
+    stale and its Board Setup below the current minimums, each a warning."""
+    read = release_rules(tmp_path, monkeypatch, None)
+    newer = installed("jlcpcb", Jlcpcb.rules, Options(), newer_set)
+    assert [r.dru for r in read] == [f"(version 1)\n{newer}\n{OWN_RULE}"] * 2
+    clearances = [r.project["board"]["design_settings"]["rules"]["min_clearance"] for r in read]
+    assert clearances == [0.12] * 2
+    adopt = "run ee_tooling's adopt --yes to make KiCad's DRC the release's"
+    assert profile_quiet(capsys.readouterr().err) == (
+        f"warning: b.kicad_dru: ee_tooling's jlcpcb rules missing or out of date: {adopt}\n"
+        "warning: b.kicad_pro: Board Setup below jlcpcb's minimums"
+        f" (board.design_settings.rules.min_clearance: 0.1 -> 0.12): {adopt}\n"
+    )

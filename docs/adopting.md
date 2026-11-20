@@ -69,8 +69,8 @@ the dry run and `--yes` name such an edit "update PATH (project;
 | `hardware/pyproject.toml` | project | the hardware tools' uv project, named `<directory>-hardware`, the repository's directory name with each run of other than ASCII letters and digits a hyphen, lowercased (a package name uv accepts); an existing one whose name uv refuses is named on stderr: rename it there |
 | `fab.toml` | project | one `[[board]]` per `*.kicad_pro` under `hardware/` (its name the project's, whatever its characters), profile `jlcpcb`, with the profile's house `[board.fab]` values |
 | `.claude/skills/fab-release/SKILL.md` | project | the boards' specifics, pointing at ee_tooling's skill |
-| each board's `NAME.kicad_dru` | project, with ee_tooling's section | its profile's rules between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
-| each board's `NAME.kicad_pro` | project | Board Setup's design rule minimums raised to the profile's, never lowered; the ERC severities set from `erc_severities.json`, each kept where the board's is stricter, and the connection grid (`docs/kicad-rules.md`) |
+| each board's `NAME.kicad_dru` | project, with ee_tooling's section | its profile's rules from the board's rule set (the current one, or the one `fab.toml` pins) between `ee_tooling` markers, the board's own rules after them (`docs/kicad-rules.md`); a new file if it has none |
+| each board's `NAME.kicad_pro` | project | Board Setup's design rule minimums raised to the profile's in the board's rule set, never lowered; the ERC severities set from its `erc_severities.json`, each kept where the board's is stricter, and the connection grid (`docs/kicad-rules.md`) |
 
 `adopt` changes a file through a symbolic link only where it keeps the
 project's text in it: `AGENTS.md` and `.gitattributes` (its sections)
@@ -130,7 +130,13 @@ board or schematic (`~NAME.kicad_pro.lck`, `~NAME.kicad_pcb.lck`,
 stops, naming it.  KiCad leaves such a lock file behind when it
 crashes: remove it when KiCad is not running.  `--check` fails while a board's rules section
 is missing or out of date, its Board Setup is below the profile's
-minimums, or its ERC severities or connection grid differ as above.  A
+minimums, or its ERC severities or connection grid differ as above, each
+against the board's rule set.  A board whose `fab.toml` pins a rule set
+(`rules = "VERSION"`, `docs/kicad-rules.md`, Pinning a board's rules) is
+held to that set, whatever the current one: the dry run, `--yes` and
+`--check` say so on stderr, once, when it is not the current one.  A pin
+to a version ee_tooling does not have stops `adopt`, naming the versions
+it has.  A
 board whose profile is not known, or whose `.kicad_pro` is not there,
 is left, said on stderr.  A board whose `[board.<profile>]` its
 profile refuses (an unknown key, a value not `true` or `false`) stops
@@ -423,7 +429,9 @@ directory or `sources` (the repository-root layout, `directory = "."`).
 ## Upgrading a board repository
 
 After a bump across breaking changes (the release's notes list them,
-`docs/releasing.md`), in this order, on one machine.  With the KiCad
+`docs/releasing.md`), in this order, on one machine.  A newer rule set
+is not one for a board that pins its rules (`docs/kicad-rules.md`,
+Pinning a board's rules): `adopt` leaves its rules as they are.  With the KiCad
 project at the repository root, `ee_tooling/` stands for
 `hardware/ee_tooling/` and the root for `hardware/`.
 

@@ -3,7 +3,9 @@
 ee_tooling's rules for KiCad 10's own checks, in rule sets: each the
 files below as an ee_tooling release shipped them, in
 `src/ee_tooling/rules/VERSION/`, VERSION being the release that
-introduced it.  The newest set is the current one.
+introduced it.  The newest set is the current one; a board follows it
+unless its `fab.toml` pins another (Pinning a board's rules, below).
+This document describes the current set.
 DRC and ERC check them live in the editor, and `fab-release` refuses
 a board with DRC or ERC violations.
 
@@ -61,7 +63,8 @@ a board with DRC or ERC violations.
 ## In a board repository
 
 `ee-tooling-adopt --yes` (`docs/adopting.md`) installs a board's
-profile's rules (`kicad_rules.py`), with KiCad closed: KiCad does not
+profile's rules from the board's rule set (`kicad_rules.py`), with
+KiCad closed: KiCad does not
 reload a project file changed under it, and saving from KiCad
 overwrites the change.
 
@@ -72,10 +75,15 @@ overwrites the change.
    ```
    (version 1)
    # --- ee_tooling: jlcpcb rules; written by adopt ---
+   # ee_tooling rule set VERSION
    <the profile's rules>
    # --- ee_tooling: end; the board's own rules follow and win ---
    <the board's own rules>
    ```
+
+   The line after the begin marker names the rule set; the 0.4.0 set's
+   section, as boards installed it before sections named their set,
+   has no such line.
 
    A rerun replaces the section between the markers and keeps the rest.
    A rule between the markers that is not ee_tooling's (neither in the
@@ -85,9 +93,9 @@ overwrites the change.
    number (NaN or Infinity in the `.kicad_pro`) raises no minimum.
    A rule of the board's own with the name of one of the section's (a
    copy made by hand) is named on stderr, and left: it wins over the
-   section's.  So is a rule of the board's own with the name of one
-   ee_tooling's rules once had and no longer has (a hand copy of an
-   older rules file: `JLCPCB track width`, `JLCPCB via diameter`,
+   section's.  So is a rule of the board's own with the name of one an
+   older rules file of ee_tooling's had and the board's rule set does
+   not (a hand copy of an older rules file: `JLCPCB track width`, `JLCPCB via diameter`,
    `JLCPCB hole size`, `JLCPCB via annular ring`, `JLCPCB hole to hole`,
    the two `via hole at no extra cost` rules, `Mounting hole ring`, `No
    right-angle bends`, `Differential pair coupled`): retired, still in
@@ -121,11 +129,58 @@ of its directory linked, at its own path from the
 repository's root under the scratch directory beside links to its
 ancestors' other entries up to the root, so a library path relative to
 the project finds the same library) with the same rules installed and
-Board Setup raised, so a release is checked against this ee_tooling's
-rules whatever the board's files hold; it never writes the board's
-files.  It warns when the board's `.kicad_dru` lacks the current
-section, or its Board Setup is below the minimums, naming
+Board Setup raised, so a release is checked against the board's rule
+set whatever the board's files hold; it never writes the board's
+files.  It warns when the board's `.kicad_dru` lacks the set's
+section, or its Board Setup is below the set's minimums, naming
 `adopt --yes`.
+
+## Pinning a board's rules
+
+A board's `[[board]]` in `fab.toml` may pin its rule set:
+
+```toml
+rules = "0.4.0"
+```
+
+Without `rules`, the board follows the current set.  With it, that set
+is the board's in `adopt` and in `fab-release`:
+
+- `adopt --yes` installs that set's section, raises Board Setup to its
+  minimums and sets its ERC severities and connection grid; `--check`
+  compares the board with that set, so a newer ee_tooling with a newer
+  set does not report the board as to be updated.  A section changed
+  by hand is out of date as for any board.
+- `fab-release` runs DRC, and its canary copy, with that set, and warns
+  against it.
+- A retired rule (above) is one an older rules file had and the pinned
+  set does not.
+- `adopt` (the dry run, `--yes` and `--check`) and `fab-release` say
+  once on stderr, when the pinned set is not the current one:
+  `NAME: ee_tooling's rules pinned at VERSION by fab.toml; the current
+  rules are CURRENT`.  Pinned at the current set, nothing.
+- A version ee_tooling does not have is an error naming the versions
+  it has: `rules '0.3.0' is not one of 0.4.0`.  The first set is
+  0.4.0.
+
+A pin holds the rules: the section, the Board Setup minimums and the
+ERC values.  It does not hold the code that applies them (the markers,
+the Board Setup raise, a minimum raised to the board's Board Setup
+value; tests hold each set's output, `docs/releasing.md`, Rule sets),
+KiCad's own DRC and ERC, the release's other checks, kicad-style-check,
+or the tools: pin the submodule to a tag (`docs/adopting.md`) for
+those.
+
+Nothing is ever lowered.  A board pinned at an older set after a newer
+one was installed gets the older section back, and the older set's
+connection grid; its Board Setup values stay as raised, and an ERC
+severity stays where it is stricter, so its DRC is the older set's
+rules with the board's own, possibly higher, Board Setup minimums.
+
+To unpin, remove `rules`: the board follows the current set, and
+`adopt --check` reports it to be updated until `adopt --yes` installs
+that set.  Pinning at the set the board has installed changes nothing
+in its files.
 
 ## JLCPCB's numbers
 

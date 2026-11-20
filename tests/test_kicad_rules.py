@@ -19,9 +19,13 @@ from ee_tooling.kicad_rules import (
     floored,
     install,
     installed,
+    known,
+    pinned_message,
     raised,
+    retired,
     retired_message,
     rule_file,
+    rule_set,
     rule_sets,
     sections,
 )
@@ -66,12 +70,25 @@ def test_sections() -> None:
 
 @pytest.mark.usefixtures("resources")
 def test_installed_between_markers_without_version() -> None:
-    text = installed("fab", RULES, PriceOptions(True), "1.0.0")
+    text = installed("fab", RULES, PriceOptions(True), "0.4.0")
     assert text.startswith("# --- ee_tooling: fab rules; written by adopt ---\n# a profile's")
     assert text.endswith(
         "(min 0.3mm)))\n# --- ee_tooling: end; the board's own rules follow and win ---\n"
     )
     assert "(version" not in text
+
+
+@pytest.mark.usefixtures("resources")
+def test_installed_names_its_set() -> None:
+    """A set after 0.4.0 is named on the line after the begin marker; 0.4.0's
+    section, as boards have it installed, names none."""
+    text = installed("fab", RULES, PriceOptions(True), "1.0.0")
+    assert text.startswith(
+        "# --- ee_tooling: fab rules; written by adopt ---\n# ee_tooling rule set 1.0.0\n"
+        "# a profile's"
+    )
+    assert Dru.split(f"(version 1)\n{text}").section == text
+    assert "rule set" not in installed("fab", RULES, PriceOptions(True), "0.4.0")
 
 
 @pytest.mark.usefixtures("resources")
@@ -185,12 +202,12 @@ def test_raised_replaces_what_is_not_a_number() -> None:
 
 
 def test_install() -> None:
-    found = install(f"(version 1)\n{OWN}\n", {}, SECTION, LEAST)
+    found = install(f"(version 1)\n{OWN}\n", {}, SECTION, LEAST, frozenset())
     assert found.dru == f"(version 1)\n{SECTION}\n{OWN}\n"
     assert found.stale
     assert found.project == LEAST
     assert found.copied == []
-    again = install(found.dru, found.project, SECTION, LEAST)
+    again = install(found.dru, found.project, SECTION, LEAST, frozenset())
     assert again.dru == found.dru
     assert not again.stale
     assert again.raised == []
@@ -322,21 +339,21 @@ def test_install_floors_and_goes_stale() -> None:
     first; a Board Setup raised later leaves it stale."""
     section = f"{BEGIN.format('fab')}\n{FLOOR_SECTION}{END}\n"
     least = setup_of(min_through_hole_diameter=0.15)
-    found = install(None, setup_of(min_through_hole_diameter=0.6), section, least)
+    found = install(None, setup_of(min_through_hole_diameter=0.6), section, least, frozenset())
     assert "(constraint hole_size (min 0.6mm))" in found.section
     assert found.section in found.dru
-    again = install(found.dru, found.project, section, least)
+    again = install(found.dru, found.project, section, least, frozenset())
     assert not again.stale
-    later = install(found.dru, setup_of(min_through_hole_diameter=0.7), section, least)
+    later = install(found.dru, setup_of(min_through_hole_diameter=0.7), section, least, frozenset())
     assert later.stale and "(min 0.7mm)" in later.section
 
 
 def test_dropped() -> None:
     old = '# a\n(rule "x" (c))\n\n(rule "y" (c))\n'
     new = '# a\n(rule "y" (c))\n'
-    assert dropped(old, new) == (1, ["x"])
-    assert dropped(None, new) == (0, [])
-    assert dropped(new, new) == (0, [])
+    assert dropped(old, new, kicad_rules.RETIRED) == (1, ["x"])
+    assert dropped(None, new, kicad_rules.RETIRED) == (0, [])
+    assert dropped(new, new, kicad_rules.RETIRED) == (0, [])
 
 
 def test_silk_clearance_not_floored() -> None:
@@ -374,7 +391,7 @@ def test_retired_rules_named() -> None:
         '(rule "JLCPCB via hole at no extra cost"\n\t(constraint hole_size (min 0.3mm)))\n'
         '(rule "Mine"\n\t(constraint track_width (min 0.2mm)))\n'
     )
-    found = install(f"(version 1)\n{own}", {}, SECTION, {})
+    found = install(f"(version 1)\n{own}", {}, SECTION, {}, retired(Jlcpcb.rules, current()))
     assert found.retired == ["JLCPCB track width", "JLCPCB via hole at no extra cost"]
     assert retired_message("hw/b.kicad_dru", found.retired) == (
         "hw/b.kicad_dru: 2 rules below ee_tooling's end marker are retired from ee_tooling's"
@@ -403,9 +420,9 @@ def test_dropped_only_foreign_rules() -> None:
         '# old comment\n(rule "y" (constraint hole_size (min 0.4mm)))\n'
         '(rule "JLCPCB track width" (constraint track_width (min 0.1mm)))\n'
     )
-    assert dropped(old, new) == (0, [])
+    assert dropped(old, new, kicad_rules.RETIRED) == (0, [])
     mine = old + '(rule "mine"\n\t(constraint track_width (min 0.3mm)))\n'
-    assert dropped(mine, new) == (2, ["mine"])
+    assert dropped(mine, new, kicad_rules.RETIRED) == (2, ["mine"])
 
 
 def test_rule_sets_by_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -430,3 +447,51 @@ def test_package_rule_sets() -> None:
     for version in rule_sets():
         for name in (Jlcpcb.rules.dru, Jlcpcb.rules.board_setup, kicad_rules.ERC_SETTINGS):
             assert rule_file(version, name)
+
+
+def test_rule_set_pinned(newer_set: str) -> None:
+    """None is the current set; a set ee_tooling has, that set; anything
+    else an error naming the sets."""
+    assert rule_set(None) == newer_set == current()
+    assert rule_set("0.4.0") == "0.4.0"
+    with pytest.raises(ValueError, match=rf"^rules '0\.3\.0' is not one of 0\.4\.0, {newer_set}$"):
+        rule_set("0.3.0")
+    with pytest.raises(ValueError, match=r"^'rules' is not a string$"):
+        rule_set(4)
+
+
+def test_pinned_message(newer_set: str) -> None:
+    """Said for a pin to a set other than the current one only."""
+    assert pinned_message("b", None) is None
+    assert pinned_message("b", newer_set) is None
+    assert pinned_message("b", "0.4.0") == (
+        f"b: ee_tooling's rules pinned at 0.4.0 by fab.toml; the current rules are {newer_set}"
+    )
+
+
+def test_retired_by_set(newer_set: str) -> None:
+    """A rule a later set retired is retired for that set only; one a later
+    set added is not retired for an earlier one; each is known."""
+    assert "JLCPCB BGA pad size" in retired(Jlcpcb.rules, newer_set)
+    assert "JLCPCB BGA pad size" not in retired(Jlcpcb.rules, "0.4.0")
+    assert "Test only rule" not in retired(Jlcpcb.rules, "0.4.0")
+    assert retired(Jlcpcb.rules, "0.4.0") == kicad_rules.RETIRED
+    assert {"JLCPCB BGA pad size", "Test only rule"} <= known(Jlcpcb.rules)
+    assert kicad_rules.RETIRED <= known(Jlcpcb.rules)
+
+
+def test_dropped_from_another_set(newer_set: str) -> None:
+    """A section of one set replaced by another's: no rule of either is
+    taken for one put there by hand."""
+    old = installed("jlcpcb", Jlcpcb.rules, Options(), "0.4.0")
+    new = installed("jlcpcb", Jlcpcb.rules, Options(), newer_set)
+    assert dropped(new, old, known(Jlcpcb.rules)) == (0, [])
+    assert dropped(old, new, known(Jlcpcb.rules)) == (0, [])
+
+
+def test_optional_sections_in_every_set() -> None:
+    """Each section a profile's option leaves out is in every rule set: the
+    option names it, in code, for every set."""
+    for version in rule_sets():
+        names = {n for n, _ in sections(rule_file(version, Jlcpcb.rules.dru))}
+        assert set(Jlcpcb.rules.optional.values()) <= names
