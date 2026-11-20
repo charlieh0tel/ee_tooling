@@ -1,0 +1,44 @@
+{
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_clearance": 1.101,
+        "min_connection": 1.102,
+        "min_copper_edge_clearance": 1.103,
+        "min_groove_width": 1.104,
+        "min_hole_clearance": 1.105,
+        "min_hole_to_hole": 1.106,
+        "min_microvia_diameter": 1.107,
+        "min_microvia_drill": 1.108,
+        "min_silk_clearance": 1.109,
+        "min_text_height": 1.111,
+        "min_text_thickness": 1.112,
+        "min_through_hole_diameter": 1.113,
+        "min_track_width": 1.114,
+        "min_via_annular_width": 1.115,
+        "min_via_diameter": 1.116,
+        "solder_mask_to_copper_clearance": 1.117
+      }
+    }
+  },
+  "erc": {
+    "rule_severities": {
+      "field_name_whitespace": "error"
+    }
+  },
+  "meta": {
+    "filename": "high.kicad_pro",
+    "version": 3
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "microvia_diameter": 1.118
+      }
+    ]
+  },
+  "schematic": {
+    "connection_grid_size": 50.0
+  }
+}
