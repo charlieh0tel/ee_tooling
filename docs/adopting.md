@@ -426,6 +426,25 @@ does not: its `uv add` runs only when `hardware/pyproject.toml` lacks
 ee_tooling.  `fab-release` refuses an uncommitted `uv.lock` in a board's
 directory or `sources` (the repository-root layout, `directory = "."`).
 
+### Release lines
+
+`main` is the current line.  The lines before a breaking release have
+branches that take fixes only: `release/0.1` (from `v0.1.0`) and
+`release/0.2` (from `v0.2.2`).  A board repository may keep its
+submodule on one:
+
+```
+git submodule set-branch --branch release/0.2 hardware/ee_tooling
+git add .gitmodules && git commit -m "Follow ee_tooling release/0.2"
+git submodule update --remote hardware/ee_tooling
+hardware/ee_tooling/adopt --yes
+```
+
+`set-branch` writes `branch = release/0.2` to `.gitmodules`, and `git
+submodule update --remote` then follows that branch.  The `AGENTS.md`
+section that line's `adopt` writes says the submodule is kept there.
+Moving to `main` from an earlier line takes the steps below.
+
 ## Upgrading a board repository
 
 After a bump across breaking changes (the release's notes list them,
