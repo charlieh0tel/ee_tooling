@@ -1,7 +1,8 @@
 # Adopting ee_tooling in a board repository
 
 A board repository takes ee_tooling as a git submodule, following
-ee_tooling's `main`, in the directory that holds the KiCad projects
+ee_tooling's `main` or a release line such as `release/0.2`
+(`Updating`), in the directory that holds the KiCad projects
 and the hardware tools' uv project (`hardware/` here).  The
 submodule's `adopt` script puts the rest in place.
 
@@ -90,3 +91,20 @@ hardware/ee_tooling/adopt --yes
 ```
 
 and commit the new pointer with any files it rewrote.
+
+### Staying on release/0.2
+
+This is the `release/0.2` line; it takes fixes only, and a board
+repository may keep its submodule on it.  `main` is the current line,
+with breaking changes.  To stay on this line:
+
+```
+git submodule set-branch --branch release/0.2 hardware/ee_tooling
+git add .gitmodules && git commit -m "Follow ee_tooling release/0.2"
+git submodule update --remote hardware/ee_tooling
+```
+
+`set-branch` writes `branch = release/0.2` to `.gitmodules`, and
+`git submodule update --remote` then follows that branch.  After the
+submodule moves from a tag to this branch, `adopt --yes` updates the
+`AGENTS.md` section.
