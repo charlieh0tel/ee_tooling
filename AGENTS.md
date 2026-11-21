@@ -43,8 +43,10 @@
   commit before moving onto something unrelated.
 - All checks must pass before committing.
 - Never use -a to commit; always enumerate the files.
-- Releases are `vX.Y.Z` tags (semver, `docs/releasing.md`); a board
-  repository's submodule follows `main`.  Batch breaking changes and
+- Releases are `vX.Y.Z` tags (semver, `docs/releasing.md`).  This
+  branch is the 0.1 release line (`release/0.1`); it takes fixes
+  only, and a board repository may keep its submodule on it.  `main`
+  is the current line, with breaking changes.  Batch breaking changes and
   list each one precisely when it lands.  Tag a release only after
   every check passes (`docs/releasing.md`).  A release's notes, its
   breaking changes first, go in its GitHub release; `CHANGELOG.md` is

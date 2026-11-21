@@ -4,10 +4,12 @@
 
 - Read `@EE_TOOLING@/docs/kicad-style.md` (schematic drawing, board
   layout, silkscreen) before touching a board.
-- `@EE_TOOLING@` is the ee_tooling submodule, following its `main`:
-  its tools, house style and agent skills.  Change it there and push
-  there, then `git submodule update --remote @EE_TOOLING@`,
-  `@EE_TOOLING@/adopt --yes`, and commit the new pointer here.
+- `@EE_TOOLING@` is the ee_tooling submodule, kept on ee_tooling's
+  `release/0.1` branch (supported): its tools, house style and agent
+  skills.  Change it there and push there, then
+  `git submodule update --remote @EE_TOOLING@`,
+  `@EE_TOOLING@/adopt --yes`, and commit the new pointer here.  Moving
+  it to `main` is a migration and the owner's decision; do not move it.
 - `@HARDWARE@/`'s venv is made with `uv venv --system-site-packages
   --python /usr/bin/python3`, for KiCad's pcbnew.
 - Before writing new tooling here (a script, a checker, a skill, a

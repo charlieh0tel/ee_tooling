@@ -24,8 +24,9 @@ Licensed `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`).
 
 ## Use from a board's repository
 
-As a git submodule following `main`, with the rest put in place by its
-`adopt` script (`docs/adopting.md`):
+As a git submodule following `main` (on the `release/0.1` line,
+`-b release/0.1` in place of `-b main`), with the rest put in place
+by its `adopt` script (`docs/adopting.md`):
 
 ```
 git submodule add -b main https://github.com/charlieh0tel/ee_tooling.git hardware/ee_tooling
