@@ -9,7 +9,7 @@ on:
 
 jobs:
   ci:
-    uses: charlieh0tel/deb-workflows/.github/workflows/python-ci.yml@6eaca6cd76e65c14991d0906f74d802bb4f80195 # v1
+    uses: charlieh0tel/deb-workflows/.github/workflows/python-ci.yml@772b6aa621b1353a0066181cdc16fa3bd9cebe66 # v1
   mypy:
     runs-on: ubuntu-latest
     steps:
