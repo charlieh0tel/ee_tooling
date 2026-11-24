@@ -1947,6 +1947,31 @@ def main() -> None:
     ]:
         sys.exit("\n".join(f"{b.name}: {s}" for s in sheet_problems))
     sheet_paths = [p.relative_to(top) for p, _ in sheets_found]
+    # The uncommitted-sources check and the source tgz leave every production
+    # directory out: an input in one would be neither checked nor archived.
+    production_paths = {
+        q: p.production
+        for p in boards.values()
+        for q in (normal(p.production), located(root, p.production))
+        if q is not None
+    }
+
+    def production_of(path: Path) -> Path | None:
+        return next(
+            (v for k, v in production_paths.items() if normal(path).is_relative_to(k)), None
+        )
+
+    if in_production := [
+        f"sheet {p.relative_to(top)}, named by {from_root(parents[p])}: in the production"
+        f" directory {production}"
+        for p, _ in sheets_found
+        if (production := production_of(p.relative_to(top))) is not None
+    ] + [
+        f"library {p}: in the production directory {production}"
+        for p in found_libraries.inside
+        if (production := production_of(p)) is not None
+    ]:
+        sys.exit("\n".join(f"{b.name}: {s}" for s in in_production))
     try:
         # The files the release reads: those git tracks under its sources and
         # libraries, and those it reads by name, tracked or not.

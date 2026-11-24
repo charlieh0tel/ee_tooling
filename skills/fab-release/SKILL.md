@@ -169,7 +169,10 @@ warning naming the footprint and the path.
 It stops, before anything runs, on a sheet file the schematic names that
 is not there, or is outside the repository, naming it and the sheet
 that names it: `kicad-cli` would take it as an empty sheet, its parts
-gone from ERC, parity and every BOM.  It stops unless the board has a stackup and a stackup table on
+gone from ERC, parity and every BOM.  It stops, too, on a sheet file or
+library path in a board's production directory, naming each: the
+uncommitted-sources check and the source tgz leave every production
+directory out.  It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not
 honored: `stackup-table` writes or refreshes the table), ERC is clean,
 DRC (with schematic parity, the profile's rules and Board Setup

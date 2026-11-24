@@ -2685,6 +2685,46 @@ def test_release_refuses_a_sheet_missing_or_outside(
 
 
 @pytest.mark.parametrize(
+    ("files", "table", "error"),
+    [
+        (
+            {
+                "hw/b.kicad_sch": (
+                    '(kicad_sch (sheet (property "Sheetfile" "../production/s.kicad_sch")))\n'
+                ),
+                "production/s.kicad_sch": "(kicad_sch)\n",
+            },
+            None,
+            "b: sheet production/s.kicad_sch, named by hw/b.kicad_sch: in the production"
+            " directory production",
+        ),
+        (
+            {"production/x.pretty/R.kicad_mod": "(footprint R)\n"},
+            '(fp_lib_table (lib (name "x")(uri "${KIPRJMOD}/../production/x.pretty")))\n',
+            "b: library production/x.pretty: in the production directory production",
+        ),
+    ],
+)
+def test_release_refuses_an_input_in_a_production_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    files: dict[str, str],
+    table: str | None,
+    error: str,
+) -> None:
+    """A sheet or a library in a production directory: refused before
+    anything runs (the uncommitted-sources check and the source tgz leave
+    every production directory out)."""
+    for name, text in files.items():
+        monkeypatch.setitem(FIXTURE, name, text)
+    if table is not None:
+        monkeypatch.setitem(FIXTURE, "hw/fp-lib-table", table)
+    with pytest.raises(SystemExit, match=re.escape(error) + "$"):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
+@pytest.mark.parametrize(
     ("rev", "variables", "found"),
     [
         ("1", {}, "1"),

@@ -116,7 +116,10 @@ require_lcsc = true              # default false
   the Git LFS pointer check (`docs/design/git-lfs.md`, The release); the library paths
   (`project_libraries.py`, below); the schematic's sheet files, each
   there and inside the repository, naming it and the sheet that names
-  it; the title block's rev; the release's directory and tag names; a
+  it; no sheet file or library path inside the repository in any
+  board's production directory (as written or through a link: the
+  uncommitted-sources check and the source tgz leave it out), naming
+  each; the title block's rev; the release's directory and tag names; a
   stackup with a copper layer; the stackup table on User.Drawings
   matching it (kicad-style-check's rules, waivers not honored); the
   variants' names.
