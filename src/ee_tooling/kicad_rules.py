@@ -176,10 +176,13 @@ def installed(name: str, rules: Rules, options: object, version: str) -> str:
 @dataclass(frozen=True)
 class Dru:
     """A board's .kicad_dru, split: the section installed between the
-    markers, if any, and the board's own rules, without the version line."""
+    markers, if any, the board's own rules after them (all of them, without
+    markers), and its own rules before them, each without the version
+    line."""
 
     section: str | None
     own: str
+    before: str = ""
 
     @classmethod
     def split(cls, text: str | None) -> "Dru":
@@ -193,29 +196,32 @@ class Dru:
         if len(begins) != 1 or len(ends) != 1 or ends[0].start() < begins[0].start():
             raise ValueError("ee_tooling's markers are not one begin line, then one end line")
         start, end = begins[0].start(), ends[0].end()
-        section = text[start:end] + "\n"
-        own = text[:start] + text[end:]
-        return cls(section, VERSION_LINE.sub("", own, count=1).strip("\n"))
+        before, versions = VERSION_LINE.subn("", text[:start], count=1)
+        after = text[end:] if versions else VERSION_LINE.sub("", text[end:], count=1)
+        return cls(text[start:end] + "\n", after.strip("\n"), before.strip("\n"))
 
     def with_section(self, section: str) -> str:
-        """The .kicad_dru with section installed, the board's own rules
-        after it."""
+        """The .kicad_dru with section installed: the version line, the
+        board's rules from before the markers, the section, then the
+        board's own rules after it."""
+        before = f"{self.before}\n\n" if self.before else ""
         own = f"\n{self.own}\n" if self.own else ""
-        return f"{VERSION}\n{section}{own}"
+        return f"{VERSION}\n{before}{section}{own}"
 
     def copied(self, section: str) -> list[str]:
-        """The names of the board's own rules that the section has too: a
-        copy of the profile's rules outside the markers, which wins over
-        the section."""
+        """The names of the board's own rules after the section that the
+        section has too: a copy of the profile's rules below the markers,
+        which wins over the section."""
         names = set(RULE_NAME.findall(section))
         return [n for n in RULE_NAME.findall(self.own) if n in names]
 
     def retired(self, names: frozenset[str]) -> list[str]:
-        """The names of the board's own rules that are among names, the
+        """The names of the board's own rules, before or after the markers,
+        that are among names, the
         rules ee_tooling's older rules files had and the board's rule set
         does not (retired): a copy of an older file, in force and no
         longer wanted."""
-        return [n for n in RULE_NAME.findall(self.own) if n in names]
+        return [n for n in RULE_NAME.findall(f"{self.before}\n{self.own}") if n in names]
 
 
 def fragment(version: str, name: str) -> dict[str, Any]:
@@ -446,10 +452,10 @@ def retired_message(path: str, names: list[str]) -> str:
     rules files no longer have (Dru.retired)."""
     one = len(names) == 1
     return (
-        f"{path}: {len(names)} {'rule' if one else 'rules'} below ee_tooling's end marker"
+        f"{path}: {len(names)} {'rule' if one else 'rules'} outside ee_tooling's markers"
         f" {'is' if one else 'are'} retired from ee_tooling's rules and still in force:\n"
         + "".join(f"  {n}\n" for n in names)
-        + f"remove {'this rule' if one else 'these rules'} from below the end marker in {path}"
+        + f"remove {'this rule' if one else 'these rules'} from outside the markers in {path}"
     )
 
 

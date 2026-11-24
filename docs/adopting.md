@@ -465,14 +465,14 @@ project at the repository root, `ee_tooling/` stands for
 4. `hardware/ee_tooling/adopt` (the dry run): read what it would do and
    its warnings (hooks that stop running, a `pre-push` replaced, plain
    blobs at HEAD, library submodules' pointers, libraries outside the
-   repository, rules dropped from or retired below the rules section).
+   repository, rules dropped from or retired outside the rules section).
 5. `hardware/ee_tooling/adopt --yes`.
 6. Run the commands it gave for each library submodule's pointers.
 7. In `hardware/`: `uv lock` (or any `uv run`), so `hardware/uv.lock`
    records the new ee_tooling.
-8. Remove from below the end marker of each board's `.kicad_dru` every
-   rule `adopt` named: a hand copy of the profile's rules, which wins
-   over the section's, and a retired rule (`JLCPCB track width`,
+8. Remove from each board's `.kicad_dru` every rule `adopt` named: a
+   hand copy of the profile's rules below the end marker, which wins
+   over the section's, and a retired rule outside the markers (`JLCPCB track width`,
    `JLCPCB via diameter`, `JLCPCB hole size`, `JLCPCB via annular
    ring`, `JLCPCB hole to hole`, the two `via hole at no extra cost`
    rules, among others), which stays in force.

@@ -129,11 +129,37 @@ OWN = '(rule "Mine"\n\t(constraint track_width (min 0.2mm)))'
         (f"(version 1)\n\n{OWN}\n", None, OWN),
         (f"(version 1)\n{SECTION}\n{OWN}\n", SECTION, OWN),
         (f"(version 1)\n{SECTION}", SECTION, ""),
-        (f"(version 1)\n{OWN}\n{SECTION}", SECTION, OWN),
+        (f"(version 1)\n{OWN}\n{SECTION}", SECTION, ""),
     ],
 )
 def test_dru_split(text: str | None, section: str | None, own: str) -> None:
-    assert Dru.split(text) == Dru(section, own)
+    assert Dru.split(text).section == section
+    assert Dru.split(text).own == own
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(OWN, ""), ("", OWN), (OWN, '(rule "After"\n\t(constraint track_width (min 0.3mm)))')],
+)
+def test_stale_section_replaced_in_place(before: str, after: str) -> None:
+    """A board's rules before the markers stay before the section, and so
+    lose to it; its rules after them stay after, and win; the version line
+    stays first."""
+    lead = f"{before}\n\n" if before else ""
+    tail = f"\n{after}\n" if after else ""
+    new = f'{BEGIN.format("fab")}\n(rule "Other")\n{END}\n'
+    found = install(f"(version 1)\n{lead}{SECTION}{tail}", {}, new, {}, frozenset())
+    assert found.stale
+    assert found.dru == f"(version 1)\n{lead}{new}{tail}"
+    assert Dru.split(found.dru) == Dru(new, after, before)
+    assert not install(found.dru, {}, new, {}, frozenset()).stale
+
+
+def test_version_line_after_the_markers() -> None:
+    """A version line only after the markers is dropped, and written
+    first."""
+    found = install(f"{OWN}\n{SECTION}(version 1)\n", {}, SECTION, {}, frozenset())
+    assert found.dru == f"(version 1)\n{OWN}\n\n{SECTION}"
 
 
 @pytest.mark.parametrize(
@@ -166,6 +192,13 @@ def test_dru_copied() -> None:
     own = f'{OWN}\n(rule "Track"\n\t(constraint track_width (min 0.1mm)))'
     assert Dru(None, own).copied(SECTION) == ["Track"]
     assert Dru(None, OWN).copied(SECTION) == []
+    assert Dru(SECTION, OWN, '(rule "Track")').copied(SECTION) == []
+
+
+def test_retired_before_the_markers() -> None:
+    """A retired rule before the markers is in force there too."""
+    dru = f'(version 1)\n(rule "Mounting hole ring")\n\n{SECTION}'
+    assert install(dru, {}, SECTION, {}, kicad_rules.RETIRED).retired == ["Mounting hole ring"]
 
 
 LEAST = {"board": {"design_settings": {"rules": {"a": 0.1, "b": 0.2, "c": 0.3}}}}
@@ -394,9 +427,9 @@ def test_retired_rules_named() -> None:
     found = install(f"(version 1)\n{own}", {}, SECTION, {}, retired(Jlcpcb.rules, current()))
     assert found.retired == ["JLCPCB track width", "JLCPCB via hole at no extra cost"]
     assert retired_message("hw/b.kicad_dru", found.retired) == (
-        "hw/b.kicad_dru: 2 rules below ee_tooling's end marker are retired from ee_tooling's"
+        "hw/b.kicad_dru: 2 rules outside ee_tooling's markers are retired from ee_tooling's"
         " rules and still in force:\n  JLCPCB track width\n  JLCPCB via hole at no extra cost\n"
-        "remove these rules from below the end marker in hw/b.kicad_dru"
+        "remove these rules from outside the markers in hw/b.kicad_dru"
     )
 
 

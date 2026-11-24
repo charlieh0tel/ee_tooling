@@ -2177,7 +2177,7 @@ def test_retired_rules_below_the_marker_named(
     capsys.readouterr()
     plan(layout)
     assert (
-        "hardware/main/main.kicad_dru: 1 rule below ee_tooling's end marker is retired from"
+        "hardware/main/main.kicad_dru: 1 rule outside ee_tooling's markers is retired from"
         " ee_tooling's rules and still in force:\n  JLCPCB via diameter\n"
     ) in capsys.readouterr().err
 
@@ -2574,7 +2574,13 @@ def test_pin_not_a_set(tmp_path: Path, newer_set: str, value: object, error: str
         stale(layout)
 
 
-@pytest.mark.parametrize(("version", "kind"), [("0.4.0", "copies"), (None, "is retired")])
+@pytest.mark.parametrize(
+    ("version", "kind"),
+    [
+        ("0.4.0", "below ee_tooling's end marker copies"),
+        (None, "outside ee_tooling's markers is retired"),
+    ],
+)
 def test_retired_by_the_pinned_set(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -2591,4 +2597,4 @@ def test_retired_by_the_pinned_set(
     dru.write_text(dru.read_text() + '(rule "JLCPCB BGA pad size"\n\t(constraint assertion "1"))\n')
     capsys.readouterr()
     plan(layout)
-    assert f"1 rule below ee_tooling's end marker {kind}" in capsys.readouterr().err
+    assert f"1 rule {kind}" in capsys.readouterr().err

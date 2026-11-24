@@ -70,10 +70,12 @@ overwrites the change.
 
 1. `NAME.kicad_dru`: the profile's rules, without their `(version 1)`
    line, between markers, then the board's own rules, which come last
-   and so win:
+   and so win.  In a `.kicad_dru` the later of two rules for the same
+   item wins:
 
    ```
    (version 1)
+   <the board's rules before the markers, if any: the section wins over them>
    # --- ee_tooling: jlcpcb rules; written by adopt ---
    # ee_tooling rule set VERSION
    <the profile's rules>
@@ -85,16 +87,21 @@ overwrites the change.
    section, as boards installed it before sections named their set,
    has no such line.
 
-   A rerun replaces the section between the markers and keeps the rest.
+   A rerun replaces the section between the markers and keeps the rest
+   where it is: the board's rules before the begin marker stay before
+   it, those after the end marker after it, and the version line first.
+   A file without markers gets the section after its version line, its
+   rules after the section.
    A rule between the markers that is not ee_tooling's (neither in the
    section nor in an older rules file of ee_tooling's: put there by
    hand) is named on stderr, with its lines' count, as it goes; a value
    ee_tooling changed is not.  A Board Setup value that is not a finite
    number (NaN or Infinity in the `.kicad_pro`) raises no minimum.
-   A rule of the board's own with the name of one of the section's (a
-   copy made by hand) is named on stderr, and left: it wins over the
-   section's.  So is a rule of the board's own with the name of one an
-   older rules file of ee_tooling's had and the board's rule set does
+   A rule of the board's own after the markers with the name of one of
+   the section's (a copy made by hand) is named on stderr, and left: it
+   wins over the section's (one before the markers loses to it, and is
+   not named).  So is a rule of the board's own, before or after the
+   markers, with the name of one an older rules file of ee_tooling's had and the board's rule set does
    not (a hand copy of an older rules file: `JLCPCB track width`, `JLCPCB via diameter`,
    `JLCPCB hole size`, `JLCPCB via annular ring`, `JLCPCB hole to hole`,
    the two `via hole at no extra cost` rules, `Mounting hole ring`, `No
