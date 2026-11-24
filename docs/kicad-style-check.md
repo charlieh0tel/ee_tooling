@@ -81,10 +81,12 @@ it.  Schematics and projects from KiCad 8 and 9 are read.
   The header is found in English only.  A pre-KiCad 10 table (the group
   `group-boardStackUp`) is reported for replacing.
 - The table matching the stackup: a row per layer or dielectric
-  sublayer, and each material, thickness (any of KiCad's units), Er and
-  loss tangent the stackup gives.  `stackup-table` writes or refreshes
-  the table (`docs/stackup-table.md`).  `fab-release` refuses a board
-  these rules find, whatever its waivers.
+  sublayer, its type (in any case), and each material, thickness (any of
+  KiCad's units), color, Er and loss tangent the stackup gives, as
+  printed: a ratio, and a thickness in mm, to six significant digits; a
+  thickness in another unit within 0.0005 mm.  `stackup-table` writes or
+  refreshes the table (`docs/stackup-table.md`).  `fab-release` refuses
+  a board these rules find, whatever its waivers.
 
 ### Routing: kicad_style_routing.py
 

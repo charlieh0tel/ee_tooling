@@ -1,5 +1,8 @@
+import pytest
+
 from ee_tooling.kicad_style_stackup import HEADER, check_stackup
 from ee_tooling.sexpr import parse
+from ee_tooling.stackup_table import refresh
 
 # A two-layer stackup as KiCad 10 writes it, with the rows its stackup
 # table gives it: (layer, type, material, thickness, color, Er, loss tangent).
@@ -96,3 +99,49 @@ def test_values_changed() -> None:
         "stackup table: dielectric 1: loss tangent 'Not specified', not 0.02;"
         " out of date: replace it",
     ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "cell", "found"),
+    [
+        # Values a few thousandths apart: the table prints them exactly.
+        ("(loss_tangent 0.02)", "(loss_tangent 0.016)", None, "loss tangent '0.02', not 0.016"),
+        ("(loss_tangent 0.02)", "(loss_tangent 0.0035)", (6, "0"), "loss tangent '0', not 0.0035"),
+        ("(epsilon_r 4.5)", "(epsilon_r 4.504)", None, "Er '4.5', not 4.504"),
+        ("(thickness 1.51)", "(thickness 1.5104)", None, "thickness '1.51 mm', not 1.5104"),
+        ("", "", (1, "Prepreg"), "type 'Prepreg', not 'core'"),
+        ('(material "FR4")', '(material "FR4") (color "Green")', None, "color '', not 'Green'"),
+    ],
+)
+def test_stale_column(old: str, new: str, cell: tuple[int, str] | None, found: str) -> None:
+    """Each column the table carries but the layer's name is compared,
+    dielectric 1's here."""
+    rows = [list(r) for r in ROWS]
+    if cell:
+        rows[3][cell[0]] = cell[1]
+    assert check(SETUP.replace(old, new), table(rows)) == [
+        f"stackup table: dielectric 1: {found}; out of date: replace it"
+    ]
+
+
+def test_type_case() -> None:
+    """KiCad gives a type initial capitals, stackup-table capitalizes it."""
+    rows = [list(r) for r in ROWS]
+    rows[1][1] = "Top solder mask"
+    assert check(SETUP, table(rows)) == []
+
+
+def test_written_table_passes() -> None:
+    """A table stackup-table writes passes, sublayers, colors and all."""
+    setup = (
+        '(setup (stackup (layer "F.Mask" (type "Top Solder Mask") (thickness 0.02)'
+        ' (material "Liquid Ink") (color "Green") (epsilon_r 3.8))'
+        ' (layer "F.Cu" (type "copper") (thickness 0.035))'
+        ' (layer "dielectric 1" (type "prepreg") (thickness 0.1) (material "FR408")'
+        " (epsilon_r 3.7) (loss_tangent 0.0095) addsublayer (thickness 0.2)"
+        ' (material "FR4") (epsilon_r 4.4) (loss_tangent 0.02))'
+        ' (layer "B.Cu" (type "copper") (thickness 0.035))))'
+    )
+    text = f"(kicad_pcb (version 20260206) {setup})\n"
+    written = refresh(text, parse(text), (100, 100)).text
+    assert len(check_stackup(parse(written)).findings) == 0

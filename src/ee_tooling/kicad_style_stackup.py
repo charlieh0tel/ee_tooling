@@ -5,9 +5,10 @@ The board has a physical stackup (Board Setup), and KiCad 10's stackup
 table (Place > Add Stackup Table) on User.Drawings, matching it.  KiCad
 writes the table once, as a (table ...) of seven columns headed HEADER,
 one row per layer or dielectric sublayer, top first; it does not follow
-later changes to the stackup.  A row matches its layer when its material,
-thickness, Er and loss tangent match each the stackup gives (KiCad prints
-its own defaults for the rest).  The header is found in English only.
+later changes to the stackup.  A row matches its layer when its type,
+and its material, thickness, color, Er and loss tangent where the stackup
+gives them (KiCad prints its own defaults for the rest), match the
+stackup's as printed.  The header is found in English only.
 """
 
 import math
@@ -19,8 +20,9 @@ from ee_tooling.sexpr import Expression, child, children
 
 # KiCad 10's stackup table header (pcbnew/board_tables/board_stackup_table.cpp).
 HEADER = ("Layer Name", "Type", "Material", "Thickness", "Color", "Epsilon R", "Loss Tangent")
-# The columns compared with the stackup, by position in HEADER.
-MATERIAL, THICKNESS, EPSILON_R, LOSS_TANGENT = 2, 3, 5, 6
+# The columns compared with the stackup (all but the layer's name), by
+# position in HEADER.
+TYPE, MATERIAL, THICKNESS, COLOR, EPSILON_R, LOSS_TANGENT = 1, 2, 3, 4, 5, 6
 # The layer the table belongs on: KiCad's canonical name, and its user name.
 LAYER = "Dwgs.User"
 LAYER_NAME = "User.Drawings"
@@ -29,9 +31,11 @@ OLD_GROUP = "group-boardStackUp"
 # A thickness as KiCad prints it in the user's units, and each unit in mm.
 LENGTH = re.compile(r"^\s*([\d.]+)\s*(mm|mils?|in|um|µm)\s*$")
 UNIT_MM = {"mm": 1.0, "mil": 0.0254, "mils": 0.0254, "in": 25.4, "um": 0.001, "µm": 0.001}
-# Values this close match: KiCad prints a few digits.
-THICKNESS_TOLERANCE = 0.0005  # mm
-RATIO_TOLERANCE = 0.005  # Er and loss tangent, absolute
+# A thickness in a unit other than mm this close matches, mm: KiCad
+# rounds it.  A ratio (Er, loss tangent) and a thickness in mm match as
+# printed, to %g's six significant digits, as stackup-table writes them.
+THICKNESS_TOLERANCE = 0.0005
+PRINTED_UNIT = "mm"
 
 
 def cells(table: Expression) -> list[str]:
@@ -55,35 +59,42 @@ def tables(board: Expression) -> list[Expression]:
     return headed
 
 
-def length(text: str) -> float | None:
-    """A printed thickness in mm; None if not a length ("Not specified")."""
+def length_matches(text: str, wanted: float) -> bool:
+    """Whether a printed thickness matches wanted, mm; never if not a
+    length ("Not specified")."""
     m = LENGTH.match(text)
-    return float(m[1]) * UNIT_MM[m[2]] if m else None
+    if not m:
+        return False
+    if m[2] == PRINTED_UNIT:
+        return f"{float(m[1]):g}" == f"{wanted:g}"
+    return math.isclose(float(m[1]) * UNIT_MM[m[2]], wanted, abs_tol=THICKNESS_TOLERANCE)
 
 
-def ratio(text: str) -> float | None:
+def ratio_matches(text: str, wanted: float) -> bool:
     try:
-        return float(text)
+        return f"{float(text):g}" == f"{wanted:g}"
     except ValueError:
-        return None
-
-
-def close(found: float | None, wanted: float, tolerance: float) -> bool:
-    return found is not None and math.isclose(found, wanted, abs_tol=tolerance)
+        return False
 
 
 def differences(row: list[str], layer: StackupLayer) -> list[str]:
     """What a table row says that its stackup layer does not."""
     out = []
+    # KiCad gives a type initial capitals, stackup-table capitalizes it.
+    if layer.type and row[TYPE].casefold() != layer.type.casefold():
+        out.append(f"type {row[TYPE]!r}, not {layer.type!r}")
     if layer.material and row[MATERIAL] != layer.material:
         out.append(f"material {row[MATERIAL]!r}, not {layer.material!r}")
-    checks = (
-        ("thickness", THICKNESS, length, layer.thickness, THICKNESS_TOLERANCE),
-        ("Er", EPSILON_R, ratio, layer.epsilon_r, RATIO_TOLERANCE),
-        ("loss tangent", LOSS_TANGENT, ratio, layer.loss_tangent, RATIO_TOLERANCE),
+    if layer.thickness is not None and not length_matches(row[THICKNESS], layer.thickness):
+        out.append(f"thickness {row[THICKNESS]!r}, not {layer.thickness:g}")
+    if layer.color and row[COLOR] != layer.color:
+        out.append(f"color {row[COLOR]!r}, not {layer.color!r}")
+    ratios = (
+        ("Er", EPSILON_R, layer.epsilon_r),
+        ("loss tangent", LOSS_TANGENT, layer.loss_tangent),
     )
-    for what, column, parse, wanted, tolerance in checks:
-        if wanted is not None and not close(parse(row[column]), wanted, tolerance):
+    for what, column, wanted in ratios:
+        if wanted is not None and not ratio_matches(row[column], wanted):
             out.append(f"{what} {row[column]!r}, not {wanted:g}")
     return out
 
