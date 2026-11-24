@@ -1187,6 +1187,14 @@ def recover(dest: Path, tagged: str | None) -> None:
     one, untagged, is built again)."""
     building = dest.parent / f".{dest.name}{BUILDING}"
     aside = dest.parent / f".{dest.name}{OLD}"
+    # Never a run's: followed, recovery would remove or move what it names.
+    if links := [p for p in (building, aside) if p.is_symlink()]:
+        sys.exit(
+            "".join(
+                f"{p} is a symbolic link, not a release run's: nothing touched\n" for p in links
+            )
+            + "remove it, then run again"
+        )
     if building.exists():
         shutil.rmtree(building)
         print(f"{building}: an interrupted build's: removed", file=sys.stderr)

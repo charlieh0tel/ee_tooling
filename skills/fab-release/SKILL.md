@@ -318,7 +318,8 @@ stderr: the building directory removed (never tagged); `.old` with no
 release in place put back; `.old` beside a release, the one whose
 COMMIT is the tag's commit kept and the other removed, or, neither
 named by the tag, the old one kept (a fresh release killed before its
-tag is left in place, untagged).  With
+tag is left in place, untagged).  A `.building` or `.old` that is a
+symbolic link stops the run, nothing touched: no run makes one.  With
 `variants`, the BOMs, CPL, ODB++ and IPC-2581 are per variant,
 `NAME-REV-VARIANT-...`, and the Gerber zip too where the silkscreens
 differ (Design variants):

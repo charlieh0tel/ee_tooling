@@ -3240,6 +3240,27 @@ def test_release_recovers_an_interrupted_swap(
     assert "20261118-1" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("leftover", [".20261118-1.old", ".20261118-1.building"])
+def test_release_refuses_a_leftover_that_is_a_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, leftover: str
+) -> None:
+    """A killed run's leftover that is a symbolic link: refused, naming it,
+    nothing touched, its target's files neither removed nor moved."""
+    target = tmp_path / "elsewhere"
+    package(target, "2" * 40)
+    (target / ".gitignore").write_text("*\n")
+    before = sorted(p.name for p in target.iterdir())
+    production = tmp_path / "repo/production"
+    production.mkdir(parents=True)
+    (production / leftover).symlink_to(target)
+    with pytest.raises(SystemExit, match=rf"{re.escape(leftover)} is a symbolic link"):
+        release(tmp_path, monkeypatch)
+    assert sorted(p.name for p in target.iterdir()) == before
+    assert (production / leftover).is_symlink()
+    assert sorted(p.name for p in production.iterdir()) == [leftover]
+    assert kicad_calls(tmp_path) == []
+
+
 def test_release_hidden_directories_ignored_by_git(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
