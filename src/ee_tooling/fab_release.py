@@ -193,6 +193,12 @@ OTHER_LAYERS = (
 )
 # The board PDF's layers after the copper, one page each.
 BOARD_PDF_LAYERS = ("F.Silkscreen", "B.Silkscreen", "F.Fab", "B.Fab", "User.Drawings")
+# The source tgz's files it writes itself, from its top directory: the
+# commit it was built from, and each build's PDFs in PDF_DIRECTORY, after
+# the stem, NAME or NAME-VARIANT.
+COMMIT_FILE = "COMMIT"
+PDF_DIRECTORY = "pdf"
+PDF_KINDS = ("-schematic.pdf", "-board.pdf")
 
 # The BOM export's fields.  Whether a part is fitted comes from a second
 # export with --exclude-dnp, which reads KiCad's DNP attribute: ${DNP} in
@@ -1149,18 +1155,25 @@ def release_lock(lock: Path) -> Iterator[None]:
 
 def package_commit(release: Path) -> str | None:
     """The commit a release directory's source tgz says it was built from
-    (its COMMIT's first line; "-dirty" kept), or None if it says none."""
+    (the first line of the COMMIT it writes, at its top directory, never a
+    source file of that name; "-dirty" kept), or None if it says none."""
     for tgz in sorted(release.glob("*-source.tgz")):
         try:
             with tarfile.open(tgz) as t:
-                member = next((m for m in t.getmembers() if m.name.endswith("/COMMIT")), None)
-                found = t.extractfile(member) if member is not None else None
+                found = t.extractfile(f"{tgz.name.removesuffix('.tgz')}/{COMMIT_FILE}")
                 if found is not None:
                     first = found.read().decode().split("\n", 1)[0]
                     return first.removeprefix("commit ").strip() or None
-        except (OSError, tarfile.TarError, UnicodeDecodeError):
+        except (OSError, KeyError, tarfile.TarError, UnicodeDecodeError):
             continue
     return None
+
+
+def generated_sources(name: str, builds: Iterable[str | None]) -> list[Path]:
+    """The source tgz's files it writes itself, from its top directory, for
+    a board's builds (None: the default)."""
+    stems = [name if v is None else f"{name}-{v}" for v in builds]
+    return [Path(COMMIT_FILE), *(Path(PDF_DIRECTORY, f"{s}{k}") for s in stems for k in PDF_KINDS)]
 
 
 def recover(dest: Path, tagged: str | None) -> None:
@@ -1734,8 +1747,9 @@ class Release:
         """The source tgz, with the schematic and board PDFs of each variant
         (None: the default)."""
         b = self.board
-        pdf = self.work / "pdf"
+        pdf = self.work / PDF_DIRECTORY
         pdf.mkdir()
+        schematic, board = PDF_KINDS
         for v in variants:
             stem = b.name if v is None else f"{b.name}-{v}"
             self.kicad(
@@ -1744,7 +1758,7 @@ class Release:
                 "pdf",
                 *variant_flag(v),
                 "-o",
-                str(pdf / f"{stem}-schematic.pdf"),
+                str(pdf / f"{stem}{schematic}"),
                 self.path(b.sch),
             )
             self.kicad(
@@ -1758,7 +1772,7 @@ class Release:
                 "Edge.Cuts",
                 *variant_flag(v),
                 "-o",
-                str(pdf / f"{stem}-board.pdf"),
+                str(pdf / f"{stem}{board}"),
                 self.path(b.pcb),
             )
         top = out.stem.removesuffix(".tar")
@@ -1769,11 +1783,11 @@ class Release:
             for f in files:
                 t.add(self.root / f, arcname=f"{top}/{f}", recursive=False)
             for f in sorted(pdf.iterdir()):
-                t.add(f, arcname=f"{top}/pdf/{f.name}")
+                t.add(f, arcname=f"{top}/{PDF_DIRECTORY}/{f.name}")
             info = (
                 f"commit {commit}\nbuilt {datetime.datetime.now().isoformat(timespec='seconds')}\n"
             )
-            ti = tarfile.TarInfo(f"{top}/COMMIT")
+            ti = tarfile.TarInfo(f"{top}/{COMMIT_FILE}")
             ti.size = len(info)
             t.addfile(ti, io.BytesIO(info.encode()))
 
@@ -1983,6 +1997,16 @@ def main() -> None:
         sys.exit(f"{e.filename}: {e.strerror}")
     if pointers:
         sys.exit(pointer_message(pointers, modules))
+    # A source file of a name the source tgz writes would be two files of
+    # one name there, and recovery could read the wrong COMMIT.
+    archived = tracked(
+        root, b.source_paths(root, sheet_paths), [x.production for x in boards.values()]
+    )
+    if written := sorted(set(archived) & set(generated_sources(b.name, [*b.variants] or [None]))):
+        sys.exit(
+            f"{b.name}: {', '.join(map(str, written))}: the source tgz writes a file of that name"
+            " at its top: rename it, or leave it out of sources"
+        )
     rev = revision(pcb_text)
     if rev is None:
         sys.exit(f"no revision in {b.pcb.name}'s title block")

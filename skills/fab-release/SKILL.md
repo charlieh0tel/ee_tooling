@@ -142,7 +142,10 @@ board PDFs (`pdf/`) and `COMMIT` (the commit, `-dirty` if built from
 uncommitted sources, and when it was built).  It holds each file once,
 and never an untracked or ignored file (KiCad's backups, a venv), `.git`
 or a board's production directory, wherever they fall under a source
-(`sources = ["."]`).
+(`sources = ["."]`).  A source file at a name it writes itself
+(`COMMIT`, or a build's `pdf/STEM-schematic.pdf` or
+`pdf/STEM-board.pdf`, at the archive's top) stops the release before
+anything runs: rename it, or leave it out of `sources`.
 
 A library the board reads (footprints, symbols, 3D models) lives inside
 the repository, normally a git submodule (`docs/kicad-style.md`,

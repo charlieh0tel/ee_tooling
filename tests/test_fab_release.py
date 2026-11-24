@@ -3138,15 +3138,57 @@ def test_release_takes_over_a_killed_runs_lock(
     assert not held.exists()
 
 
-def package(directory: Path, commit: str) -> None:
-    """A release directory whose source tgz says it was built from commit."""
+def package(directory: Path, commit: str, decoy: str | None = None) -> None:
+    """A release directory whose source tgz says it was built from commit;
+    before its COMMIT, with decoy, a source file docs/COMMIT naming that."""
     directory.mkdir(parents=True)
-    info = f"commit {commit}\nbuilt 2026-11-18T00:00:00\n".encode()
     with tarfile.open(directory / "b-1-source.tgz", "w:gz") as t:
-        member = tarfile.TarInfo("b-1-source/COMMIT")
-        member.size = len(info)
-        t.addfile(member, io.BytesIO(info))
+        for name, named in (("docs/COMMIT", decoy), ("COMMIT", commit)):
+            if named is None:
+                continue
+            info = f"commit {named}\nbuilt 2026-11-18T00:00:00\n".encode()
+            member = tarfile.TarInfo(f"b-1-source/{name}")
+            member.size = len(info)
+            t.addfile(member, io.BytesIO(info))
     (directory / "b-1-bom.csv").write_text(f"{commit}\n")
+
+
+def test_recover_reads_the_generated_commit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A source file docs/COMMIT, archived before the generated COMMIT:
+    not taken for it, so the package the tag names is kept."""
+    tagged, old = "1" * 40, "2" * 40
+    dest = tmp_path / "20261118-1"
+    package(dest, tagged, decoy=old)
+    package(tmp_path / ".20261118-1.old", old)
+    fab_release.recover(dest, tagged)
+    assert (dest / "b-1-bom.csv").read_text() == f"{tagged}\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["20261118-1"]
+
+
+@pytest.mark.parametrize("name", ["COMMIT", "pdf/b-schematic.pdf"])
+def test_release_refuses_a_source_named_as_a_generated_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """A source file the source tgz would hold at a name it writes itself:
+    refused before anything runs; one elsewhere (docs/COMMIT) is not."""
+    toml = FIXTURE["fab.toml"].replace('sources = ["docs"]', 'sources = ["."]')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    monkeypatch.setitem(FIXTURE, name, "x\n")
+    monkeypatch.setitem(FIXTURE, "docs/COMMIT", "x\n")
+    with pytest.raises(
+        SystemExit, match=rf"^b: {re.escape(name)}: the source tgz writes a file of that name"
+    ):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+    monkeypatch.delitem(FIXTURE, name)
+    shutil.rmtree(tmp_path)
+    tmp_path.mkdir()
+    root, _ = release(tmp_path, monkeypatch)
+    assert fab_release.package_commit(root / "production/20261118-1") == git(
+        root, "rev-parse", "HEAD"
+    )
 
 
 @pytest.mark.parametrize(
