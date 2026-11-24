@@ -2854,6 +2854,28 @@ def test_release_refuses_a_source_through_a_link(
     assert kicad_calls(tmp_path) == []
 
 
+@pytest.mark.parametrize("directory", ["hw", "boards/hw"])
+def test_release_refuses_a_directory_through_a_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, directory: str
+) -> None:
+    """A board directory that is, or goes through, a link: refused, naming
+    it (the source tgz would hold none of the project's files)."""
+    for name, text in list(FIXTURE.items()):
+        if name.startswith("hw/"):
+            monkeypatch.delitem(FIXTURE, name)
+            monkeypatch.setitem(FIXTURE, f"real/{name}", text)
+    toml = FIXTURE["fab.toml"].replace('directory = "hw"', f'directory = "{directory}"')
+    monkeypatch.setitem(FIXTURE, "fab.toml", toml)
+    root = tmp_path / "repo"
+    (root / directory).parent.mkdir(parents=True)
+    (root / directory).symlink_to(root / "real/hw")
+    with pytest.raises(
+        SystemExit, match=rf"^fab.toml: directory '{directory}' goes through the link {directory}:"
+    ):
+        release(tmp_path, monkeypatch)
+    assert kicad_calls(tmp_path) == []
+
+
 def test_uncommitted_library_through_a_link(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

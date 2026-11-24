@@ -225,7 +225,9 @@ require_lcsc = true              # default false
   schematic's hierarchy, and `sources`; the PDFs and `COMMIT`; each file
   once; never `.git`, a production directory, or an untracked or
   ignored file under a source.  A `sources` path that is, or goes
-  through, a link is refused (it would be archived as the bare link).
+  through, a link is refused (it would be archived as the bare link), as
+  is a board `directory` (`git ls-files` would list none of the
+  project's files).
 - A library a board reads lives inside the repository, normally a git
   submodule (`docs/kicad-style.md`, Files); a clone beside the
   repository is not supported.  Besides the project's own `NAME.pretty`

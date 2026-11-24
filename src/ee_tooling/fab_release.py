@@ -1880,7 +1880,13 @@ def main() -> None:
     if name not in boards:
         sys.exit(f"{CONFIG} has no board {name!r}: one of {', '.join(boards)}")
     b = boards[name]
-    # A source through a link would be archived as the bare link.
+    # A source through a link would be archived as the bare link; the
+    # board's directory through one, without the project's files.
+    if link := through_link(root, b.directory):
+        sys.exit(
+            f"{CONFIG}: directory {str(b.directory)!r} goes through the link {link}:"
+            " name its target"
+        )
     for s in b.sources:
         if link := through_link(root, s):
             sys.exit(f"{CONFIG}: source {str(s)!r} goes through the link {link}: name its target")
