@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from ee_tooling.kicad_style_board import Point, place, unplace
@@ -708,3 +710,36 @@ def test_bend_on_pad_or_via() -> None:
 
 def test_zero_length_track_is_no_bend() -> None:
     assert bends(segment((5, 5), (15, 5), "SIG"), segment((15, 5), (15, 5), "SIG")) == []
+
+
+# A quarter arc of radius 0.5 mm from (14.5, 5) to (15, 4.5), heading north
+# (-y) at its end; its last chord heads 11 degrees off that.
+QUARTER = (
+    f"(arc (start 14.5 5) (mid {14.5 + 0.5 * math.sqrt(0.5):.4f} {4.5 + 0.5 * math.sqrt(0.5):.4f})"
+    ' (end 15 4.5) (width 0.25) (layer "F.Cu") (net "SIG"))'
+)
+
+
+@pytest.mark.parametrize(
+    ("degrees", "expected"),
+    [
+        (90, ["SIG: right-angle bend at (15, 4.5) on F.Cu"]),
+        (-90, ["SIG: right-angle bend at (15, 4.5) on F.Cu"]),
+        (95, []),
+        (-95, []),
+        (85, ["SIG: 85-degree bend at (15, 4.5) on F.Cu"]),
+        (180, []),
+    ],
+)
+def test_bend_after_arc(degrees: float, expected: list[str]) -> None:
+    """An arc's direction at its end is its tangent there, not its last
+    chord's: the track leaving turns degrees from straight back south,
+    east of it for positive."""
+    turn = math.radians(degrees)
+    end = (round(15 + 5 * math.sin(turn), 4), round(4.5 + 5 * math.cos(turn), 4))
+    assert bends(QUARTER, segment((15, 4.5), end, "SIG")) == expected
+    reversed_arc = QUARTER.replace("(start 14.5 5)", "(start X)").replace(
+        "(end 15 4.5)", "(end 14.5 5)"
+    )
+    reversed_arc = reversed_arc.replace("(start X)", "(start 15 4.5)")
+    assert bends(reversed_arc, segment((15, 4.5), end, "SIG")) == expected

@@ -118,7 +118,8 @@ no plane found, stderr says the via rules are not checked.
   supply and ground (a power pin, where the board gives pin types).
 - No right-angle bend: two tracks' ends meeting on one layer and net,
   where no other track ends or runs and off any pad or via, at 90
-  degrees between them (within 1 degree) or sharper.  A track ending on
+  degrees between them (within 1 degree) or sharper, an arc taken along
+  its tangent at its end.  A track ending on
   another's run (a T) is a branch, not a bend.
 - A board with no tracks or vias is not checked.
 

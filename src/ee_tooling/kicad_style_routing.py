@@ -27,11 +27,11 @@ regulator's).  The decoupling map is
 placement.toml's (placement.py's Rules), or else `inferred_decoupling`.
 
 Bends (`check_bends`): no right-angle bend.  A bend is two track ends
-meeting, on one layer and net, where no other track ends or runs and
-off any pad or via; the angle between the two tracks there is 180
-straight on, 135 at a 45-degree bend.  At RIGHT_ANGLE, within
-AXIS_TOLERANCE, or sharper is a problem.  A track ending on another's
-run (a T) is a branch, not a bend.
+meeting, on one layer and net, where no other track ends or runs and off
+any pad or via; the angle between the two tracks there is 180 straight
+on, 135 at a 45-degree bend, an arc's direction at its end being its
+tangent there.  At RIGHT_ANGLE, within AXIS_TOLERANCE, or sharper is a
+problem.  A track ending on another's run (a T) is a branch, not a bend.
 
 Copper connects so: a track's end on another track of its layer and net
 (within half that track's width); a track's copper over a pad or a via,
@@ -70,6 +70,7 @@ from ee_tooling.kicad_style_board import (
     Segment,
     arc,
     at,
+    center,
     distance,
     edge,
     layers,
@@ -248,6 +249,20 @@ class Track:
     width: float
     layer: str
     net: str
+    center: Point | None = None  # an arc's; None for a segment
+
+    def leaving(self, start: bool) -> Point:
+        """A point along the track's direction from its start (or end) on:
+        the next point for a segment, along the tangent for an arc."""
+        joint, toward = self.points[:2] if start else (self.points[-1], self.points[-2])
+        if self.center is None:
+            return toward
+        rx, ry = joint[0] - self.center[0], joint[1] - self.center[1]
+        # The tangent, perpendicular to the radius, the way the arc runs.
+        tx, ty = -ry, rx
+        if tx * (toward[0] - joint[0]) + ty * (toward[1] - joint[1]) < 0:
+            tx, ty = ry, -rx
+        return joint[0] + tx, joint[1] + ty
 
     @property
     def ends(self) -> tuple[Point, Point]:
@@ -432,14 +447,18 @@ def read(board: Expression) -> Copper:
             continue
         ends = [child(s, k) for k in ("start", "mid", "end")]
         points = [(number(e[1]), number(e[2])) for e in ends if e]
+        middle = None
         if s[0] == "arc":
             if len(points) != 3:
                 raise BoardError("an arc without start, mid and end")
+            middle = center(*points)
             points = arc(*points)
         elif len(points) != 2:
             raise BoardError("a segment without start and end")
         width = child(s, "width")
-        c.tracks.append(Track(tuple(points), number(width[1]) if width else 0.0, on[0], net(s)))
+        c.tracks.append(
+            Track(tuple(points), number(width[1]) if width else 0.0, on[0], net(s), middle)
+        )
     for v in children(board, "via"):
         position, _ = at(v)
         named = [x for x in layers(v) if x in stack]
@@ -1051,13 +1070,14 @@ def bend_angle(joint: Point, a: Point, b: Point) -> float:
 
 def check_bends(c: Copper) -> list[Finding]:
     """Right-angle and sharper bends between two tracks."""
-    # Each track end, by layer, net and point: the point next along it.
+    # Each track end, by layer, net and point: a point along the track's
+    # direction from there.
     ends: dict[tuple[str, str, Point], list[Point]] = defaultdict(list)
     for t in c.tracks:
         if t.points[0] == t.points[-1]:
             continue  # a zero-length track has no direction
-        ends[t.layer, t.net, t.points[0]].append(t.points[1])
-        ends[t.layer, t.net, t.points[-1]].append(t.points[-2])
+        ends[t.layer, t.net, t.points[0]].append(t.leaving(start=True))
+        ends[t.layer, t.net, t.points[-1]].append(t.leaving(start=False))
     problems = []
     for (layer, name, p), nexts in ends.items():
         if len(nexts) != 2:
