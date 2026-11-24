@@ -85,7 +85,9 @@ wires versus labels are not checked.
 
 Plane nets are the `poured` nets of `placement.toml` beside the board
 (`docs/placement.md`), or else a net whose zone on a layer covers half
-the board or more.
+the board or more.  A `poured` net with no zone is a problem, since the
+via rules cannot be checked without its plane; with no `poured` nets and
+no plane found, stderr says the via rules are not checked.
 
 - Every SMD pad on a plane net whose plane is on another layer: a stub
   of straight tracks to a via reaching the plane, the via's center
@@ -211,6 +213,7 @@ item.  Ids and subject fields are part of the semver API.
 | Stackup | `stackup-table-layer` | `layer` | a stackup table on a layer other than User.Drawings; `layer` is the board layer it is drawn on (e.g. User.Comments) |
 | Stackup | `stackup-table-rows` | none | a stackup table with a row count not the stackup's |
 | Stackup | `stackup-table-row` | `layer` | a stackup table's row not matching its stackup layer; `layer` is that stackup layer (e.g. In1.Cu) |
+| Routing | `plane-missing` | `net` | a `poured` net with no zone |
 | Routing | `decoupling-no-pin` | `capacitor`, `pin` | placement.toml's pin not on the board |
 | Routing | `decoupling-no-pad` | `capacitor`, `pin` | the capacitor has no pad on the pin's net |
 | Routing | `via-off-plane` | `net`, `pad` | a stub's via not reaching the plane |

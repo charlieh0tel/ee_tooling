@@ -14,7 +14,9 @@ either.  No via serves two pads, and no trace on a plane net runs from
 pad to pad but within a part.  A
 decoupled supply pin is exempt, being fed through its capacitor, and so
 is the run from it to its capacitors; a capacitor's supply pad needs no
-via of its own (the supply check sees that it is fed).
+via of its own (the supply check sees that it is fed).  A poured net
+(placement.toml) with no zone is a finding: without its plane the via
+rules would pass with nothing to check.
 
 Supply through the capacitor (`check_supply`): a decoupled supply pin
 reaches no zone and no other part's pad except through one of its
@@ -82,6 +84,7 @@ from ee_tooling.kicad_style_board import (
 )
 from ee_tooling.kicad_style_finding import ROUTING_RULES, Checked, Finding, found
 from ee_tooling.placement import Decoupling, Rules
+from ee_tooling.placement_kicad import RULES
 from ee_tooling.sexpr import Expression, child, children, number
 
 # A net is a plane on a layer when one of its copper zones there covers at
@@ -1100,6 +1103,20 @@ def check_routing(board: Expression, rules: Rules | None = None) -> Checked:
     plane = planes(c, rules)
     decoupling = rules.decoupling if rules and rules.decoupling else inferred_decoupling(c)
     fed, problems = feeds(c, decoupling)
+    if rules and rules.poured:
+        problems += [
+            found(
+                "plane-missing",
+                f"{name}: poured ({RULES}), but no zone: the via rules cannot be checked",
+                net=name,
+            )
+            for name in sorted(rules.poured - set(plane))
+        ]
+    elif not plane:
+        print(
+            "routing: no plane found (no zone covers half the board): via rules not checked",
+            file=sys.stderr,
+        )
     groups: dict[int, set[int]] = defaultdict(set)  # pin: it and its capacitors' pads
     for f in fed:
         groups[f.pin] |= {f.pin, f.capacitor_pad}

@@ -67,6 +67,7 @@ STACKUP_RULES = {
 
 # The routing rules: each id and its subject's fields.
 ROUTING_RULES = {
+    "plane-missing": ("net",),
     "decoupling-no-pin": ("capacitor", "pin"),
     "decoupling-no-pad": ("capacitor", "pin"),
     "via-off-plane": ("net", "pad"),

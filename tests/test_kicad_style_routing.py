@@ -436,6 +436,21 @@ def test_shared_via() -> None:
     ]
 
 
+def test_poured_net_without_plane() -> None:
+    stub = [segment((10, 10), (10.9, 10), "GND"), via(10.9, 10, "GND")]
+    rules = Rules(frozenset({"GND", "+3V3"}), ())
+    assert check(GND_PAD, *stub, rules=rules) == [
+        "+3V3: poured (placement.toml), but no zone: the via rules cannot be checked",
+        "GND: poured (placement.toml), but no zone: the via rules cannot be checked",
+    ]
+    assert check(GND_PLANE, GND_PAD, *stub, rules=Rules(frozenset({"GND"}), ())) == []
+
+
+def test_no_plane(capsys: pytest.CaptureFixture[str]) -> None:
+    assert check(GND_PAD, segment((10, 10), (10.9, 10), "GND"), via(10.9, 10, "GND")) == []
+    assert "no plane found" in capsys.readouterr().err
+
+
 def test_no_tracks(capsys: pytest.CaptureFixture[str]) -> None:
     assert check_routing(parse(board(GND_PLANE, GND_PAD))).findings == []
     assert "no tracks or vias, not checked" in capsys.readouterr().err
