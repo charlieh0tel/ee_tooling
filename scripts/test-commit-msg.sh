@@ -49,7 +49,13 @@ Claude <noreply@anthropic.com>'
 
 expect pass messages 'Fix the BOM rotation'
 expect pass messages 'Credit Claude Monet in the examples'
-expect pass messages '# Co-Authored-By: an editor comment'
+# A line starting with # is the message's too: git keeps it from -m or
+# -F, and the history has it as committed.
+expect refuse messages '# Co-Authored-By: Claude <noreply@anthropic.com>'
+expect refuse messages 'Fix it
+
+# Generated with [Claude Code](https://claude.ai/code)'
+expect pass messages '# Credit Claude Monet in the examples'
 expect refuse messages 'Fix it
 
 Co-Authored-By: Claude <noreply@anthropic.com>'
@@ -115,6 +121,36 @@ expect_commit refuse 'Claude Code' 'Fix the BOM rotation'
 expect_commit refuse 'Ann Smith' 'Fix it
 
 Co-Authored-By: Claude <noreply@anthropic.com>'
+# git keeps a line starting with # given with -m.
+expect_commit refuse 'Ann Smith' 'Fix it
+
+# Generated with [Claude Code](https://claude.ai/code)'
+
+# expect_edited pass|refuse EDIT: a `git commit -v` of a change that
+# mentions claude.ai/code, its message written in the editor by the sed
+# script EDIT, passes or is refused: what follows the scissors line,
+# the diff, which git drops, is not checked.
+expect_edited() {
+    printf 'see claude.ai/code\n' >"$CONSUMER/notes.txt"
+    git -C "$CONSUMER" add notes.txt
+    if (cd "$CONSUMER" &&
+        GIT_EDITOR="sed -i -e '$2'" GIT_AUTHOR_NAME='Ann Smith' GIT_AUTHOR_EMAIL=a@example.com \
+            GIT_COMMITTER_NAME='Ann Smith' GIT_COMMITTER_EMAIL=a@example.com \
+            git commit -q -v) 2>/dev/null; then
+        result=pass
+    else
+        result=refuse
+    fi
+    git -C "$CONSUMER" rm -q --cached notes.txt 2>/dev/null
+    if [ "$result" != "$1" ]; then
+        echo "FAIL: expected $1, got $result: a consumer's edited commit: '$2'" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+# Refused first: the passing one commits the change.
+expect_edited refuse '1s/^/Add the notes\n\nCo-Authored-By: Claude <noreply@anthropic.com>/'
+expect_edited pass '1s/^/Add the notes/'
 
 if [ "$failures" -ne 0 ]; then
     echo "commit-msg tests: $failures failed" >&2

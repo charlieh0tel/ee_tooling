@@ -9,9 +9,14 @@
 # every commit's author and committer, one `Name <address>` a line as
 # `git var` gives them.  scripts/test-commit-msg.sh tests both.
 #
-# In a message, lines starting with # are the editor's comments, not
-# the message.  A trailer line, an address, or the footer, rather than
-# any mention of them, so a message may describe this check.
+# A message is checked whole, its lines starting with # too: git keeps
+# them in a message given with -m or -F, and a commit in the history
+# has them as committed.  As the hook, where git opened an editor (it
+# sets GIT_EDITOR to : where it did not), the scissors line git writes
+# above `git commit -v`'s diff and everything after it, which git
+# drops, are not checked.  A trailer line, an address, or the footer,
+# rather than any mention of them, so a message may describe this
+# check.
 MESSAGE_PATTERN='^[[:space:]]*(co-authored-by|claude-session):|@anthropic\.com|claude\.ai/code|generated with \[?claude'
 # The one co-author trailer that passes: Dependabot's, which GitHub adds
 # to the squash merge of a Dependabot pull request.  The whole line and
@@ -22,9 +27,12 @@ DEPENDABOT_TRAILER='^[[:space:]]*co-authored-by:[[:space:]]*dependabot\[bot\][[:
 # word (Claude Code, Claude Bot) or claude[bot]; a name naming
 # Anthropic.  A person named Claude passes.
 IDENTITY_PATTERN='<[^>]*@([^>@]*\.)?anthropic\.com>|^[[:space:]]*claude([[:space:]]+(code|bot|assistant|agent|ai)([[:space:]][^<]*)?|\[bot\])?[[:space:]]*<|^[^<]*anthropic[^<]*<'
+# Git's scissors line, after the comment character (core.commentChar).
+SCISSORS=' ------------------------ >8 ------------------------$'
 
+# check_message FILE: refuse the message in FILE.
 check_message() {
-    if grep -v '^#' "$1" | grep -viE "$DEPENDABOT_TRAILER" | grep -qiE "$MESSAGE_PATTERN"; then
+    if grep -viE "$DEPENDABOT_TRAILER" "$1" | grep -qiE "$MESSAGE_PATTERN"; then
         echo "commit refused: the message credits an AI assistant, which this repository's commits never do (AGENTS.md)" >&2
         exit 1
     fi
@@ -45,7 +53,13 @@ case "$1" in
     check_identities "$(cat "$2")"
     ;;
 *)
-    check_message "$1"
+    message="$1"
+    if [ "${GIT_EDITOR-}" != ":" ]; then
+        message=$(mktemp) || exit 1
+        trap 'rm -f "$message"' EXIT
+        sed "/^[^ ]\{1,\}$SCISSORS/,\$d" "$1" >"$message" || exit 1
+    fi
+    check_message "$message"
     identities=$(git var GIT_AUTHOR_IDENT && git var GIT_COMMITTER_IDENT) || exit 1
     check_identities "$identities"
     ;;

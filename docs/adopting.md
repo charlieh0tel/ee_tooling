@@ -376,6 +376,11 @@ workflow would run as code, stops `adopt` in every mode before any file
 is written: move the submodule (`git mv`).  The commands `adopt`'s
 messages give are quoted for the shell.
 
+The commit-msg hook and the attribution job check a message whole,
+its lines starting with `#` too: git keeps them in a message given
+with `-m` or `-F`.  The hook skips only what git drops after an
+editor: `git commit -v`'s scissors line and the diff below it.
+
 `.githooks/pre-push` runs `git lfs pre-push`, which uploads the pushed
 commits' Git LFS objects; without it a push sends pointers whose files
 no other clone can fetch.  It refuses a push from a machine without
