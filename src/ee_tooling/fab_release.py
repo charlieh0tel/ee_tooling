@@ -354,11 +354,20 @@ def variant_errors(names: Iterable[str]) -> list[str]:
     return out
 
 
+def outside(path: str) -> bool:
+    """Whether a path from the repository root, as written, is absolute or
+    leads out of it (..)."""
+    return os.path.isabs(path) or os.path.normpath(path).split(os.sep)[0] == os.pardir
+
+
 def board(table: dict[str, Any], number: int) -> Board:
     """A [[board]], the number-th; ValueError naming a bad key."""
     where = f"[[board]] {number}"
     name = string(where, table, "name", None)
     where = f"[[board]] {name!r}"
+    # The name names files and the tag: one path component.
+    if "/" in name or os.sep in name or "\0" in name or name in ("", os.curdir, os.pardir):
+        raise ValueError(f"{where}: 'name' is not one path component")
     for key, why in GONE_KEYS.items():
         if key in table:
             raise ValueError(f"{where}: {key!r} is gone: {why}")
@@ -382,8 +391,10 @@ def board(table: dict[str, Any], number: int) -> Board:
         rule_set(table.get(PIN))
     except ValueError as e:
         raise ValueError(f"{where}: {e}") from e
+    if outside(text["directory"]):
+        raise ValueError(f"{where}: directory {text['directory']!r} is outside the repository")
     for source in lists["sources"]:
-        if os.path.isabs(source) or os.path.normpath(source).split(os.sep)[0] == os.pardir:
+        if outside(source):
             raise ValueError(f"{where}: source {source!r} is outside the repository")
     return Board(
         name=name,

@@ -94,8 +94,10 @@ require_lcsc = true              # default false
   holding any board's `directory` or `sources` path (the
   uncommitted-sources check leaves every production directory out);
   inside a board's directory is allowed (the repository-root layout).
-- Each `sources` path is inside the repository; one that is absolute or
-  leads out of it (`..`) is an error naming it.
+- Each `sources` path and the `directory` are inside the repository; one
+  that is absolute or leads out of it (`..`) is an error naming it.
+- A `name` is one path component (no `/`, not empty, `.` or `..`): it
+  names the release's files and its tag.
 - `adopt` writes the house values for `[board.fab]`; `fab-release`
   never applies them silently.
 - `rules` pins the board's rule set (Rules, below); a version

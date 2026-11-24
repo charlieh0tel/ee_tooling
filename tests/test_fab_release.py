@@ -154,6 +154,20 @@ def test_config_missing_key(key: str) -> None:
             )
             for x in ("/home/lib", "..", "../lib", "docs/../../lib")
         ),
+        *(
+            (
+                BOARD.replace('directory = "hw"', f'directory = "{x}"'),
+                rf"^\[\[board\]\] 'b': directory '{x}' is outside the repository$",
+            )
+            for x in ("/home/hw", "..", "../hw", "hw/../../hw")
+        ),
+        *(
+            (
+                BOARD.replace('name = "b"', f"name = {x!r}"),
+                rf"^\[\[board\]\] {re.escape(repr(x))}: 'name' is not one path component$",
+            )
+            for x in ("hw/b", "/b", "", ".", "..")
+        ),
         (BOARD + BOARD, r"^\[\[board\]\] 'b' is there twice$"),
         (
             f'{BOARD}rules = "0.3.0"\n',

@@ -63,8 +63,10 @@ holding a board's `directory` or a `sources` path; inside a board's
 directory is allowed.
 `adopt` writes `production` for a lone board and `production/<name>` for
 each of several.  There is no `copper` key: the copper layers, top to
-bottom, are the stackup's.  Each `sources` path is inside the repository: one that
-is absolute or leads out of it (`..`) is an error naming it, and one
+bottom, are the stackup's.  A `name` is one path component (no `/`,
+not empty, `.` or `..`).  The `directory` and each `sources` path are
+inside the repository: one that
+is absolute or leads out of it (`..`) is an error naming it, and a `sources` path
 that is, or goes through, a symbolic link is refused, naming the link
 (the tgz would hold the bare link): name the link's target.  A
 `fab.toml` that does not parse, a board name not in it, a file it names
