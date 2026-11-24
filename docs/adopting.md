@@ -108,10 +108,15 @@ old or new.  A file with other hard links (`AGENTS.md` a hard link of
 `CLAUDE.md`, say) is written in place instead, after a scratch copy,
 so every name keeps sharing it; a link adopt writes through is written
 at its target, and the target's directory must be writable too, which
-`--yes` checks first.  The scratch file such a run may leave beside one
-(`.NAME.PID.ee_tooling-tmp`) is named by `--check` ("left over") and
-removed by `--yes` first, before anything else (one in the old skill's
-directory would move with it).
+`--yes` checks first.  A run may leave a scratch file beside a file
+(`.NAME.PID.ee_tooling-tmp`).  One beside a file without other hard
+links is named by `--check` ("left over") and removed by `--yes`
+first, before anything else (one in the old skill's directory would
+move with it).  One beside a file with other hard links may hold the
+only whole new text, if the write in place failed or was killed
+midway: a failed write names it in its error, `--check` names it
+("left over, maybe the only whole new text ..."), and `--yes` keeps
+it and says so.  Check the file, then remove the scratch file by hand.
 
 A board whose `directory` in `fab.toml` resolves outside the
 repository, or into another repository (a directory with a `.git` on the

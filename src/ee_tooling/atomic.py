@@ -6,9 +6,10 @@ import stat
 from pathlib import Path
 
 # The scratch file a write makes beside its target, and how to know one a
-# killed write left: .NAME.PID.ee_tooling-tmp.
+# killed or failed write left, its target's name the group:
+# .NAME.PID.ee_tooling-tmp.
 TEMPORARY = ".{name}.{pid}.ee_tooling-tmp"
-LEFTOVER = re.compile(r"^\..+\.\d+\.ee_tooling-tmp$")
+LEFTOVER = re.compile(r"^\.(.+)\.\d+\.ee_tooling-tmp$")
 
 
 def write_bytes(target: Path, data: bytes) -> None:
@@ -16,25 +17,37 @@ def write_bytes(target: Path, data: bytes) -> None:
     then renamed over it, its mode kept (a new file's from the umask).  A
     symbolic link is written through: its target is written, the link
     kept.  A file with other hard links is written in place, so every name
-    keeps sharing it: its old contents are lost if the write fails
-    midway, which a scratch copy written first and kept beside it until
-    the write is done makes recoverable."""
+    keeps sharing it, after a scratch copy of data is written beside it:
+    if the write in place fails or is killed midway, the target may be
+    neither old nor new, and the scratch copy, the only whole new text, is
+    kept (an OSError names both)."""
     target = target.resolve()
     temporary = target.with_name(TEMPORARY.format(name=target.name, pid=os.getpid()))
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        if target.exists() and target.stat().st_nlink > 1:
-            with target.open("r+b") as f:
-                f.write(data)
-                f.truncate()
-            return
-        if target.exists():
-            temporary.chmod(stat.S_IMODE(target.stat().st_mode))
-        os.replace(temporary, target)
-    finally:
+        shared = target.exists() and target.stat().st_nlink > 1
+        if not shared:
+            if target.exists():
+                temporary.chmod(stat.S_IMODE(target.stat().st_mode))
+            os.replace(temporary, target)
+    except BaseException:
         temporary.unlink(missing_ok=True)
+        raise
+    if not shared:
+        return
+    try:
+        with target.open("r+b") as f:
+            f.write(data)
+            f.truncate()
+    except OSError as e:
+        raise OSError(
+            e.errno,
+            f"{e.strerror}; written in place, maybe in part: its whole new text is in {temporary}",
+            str(target),
+        ) from e
+    temporary.unlink()
 
 
 def write_text(target: Path, text: str) -> None:

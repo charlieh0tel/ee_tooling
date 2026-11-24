@@ -602,8 +602,13 @@ def unsaved(root: Path, path: Path) -> str | None:
 
 # The project files the release needs: --check names one missing.
 RELEASE_NEEDS = (Path(CONFIG),)
-# Why a scratch file of an interrupted write is removed.
+# Why a scratch file of an interrupted write is removed; what --check calls
+# one --yes keeps (leftover_kept).
 LEFTOVER_WHY = "left by a write that was interrupted"
+LEFTOVER_KEPT = (
+    "left over, maybe the only whole new text of a file with other hard links"
+    " (check that file, then remove this by hand)"
+)
 # Directories not searched for them: git's, the venv's.
 NOT_SEARCHED = {".git", ".venv"}
 
@@ -620,6 +625,20 @@ def leftovers(root: Path) -> list[Path]:
         ]
         found += [(here / n).relative_to(root) for n in names if LEFTOVER.match(n)]
     return sorted(found)
+
+
+def leftover_kept(root: Path, leftover: Path) -> str | None:
+    """Why a leftover scratch file (leftovers) is kept, or None: its target
+    has other hard links, so was written in place (atomic.write_bytes), and
+    the scratch file may hold its only whole new text."""
+    match = LEFTOVER.match(leftover.name)
+    target = leftover.with_name(match.group(1)) if match else None
+    if target is None or not (root / target).is_file() or (root / target).stat().st_nlink < 2:
+        return None
+    return (
+        f"it may be the only whole copy of {target.as_posix()}'s new text, which has other"
+        " hard links and is written in place"
+    )
 
 
 def migrations(layout: Layout) -> list[Remove | Rename | Edit]:
@@ -1228,7 +1247,7 @@ def plan(layout: Layout) -> list[Step]:
     warn_outside_libraries(layout, planned_config(root, planned))
     # An interrupted write's scratch files first: one in the old skill's
     # directory would move with it, and its removal then fail.
-    steps: list[Step] = [Remove(p, LEFTOVER_WHY) for p in leftovers(root)]
+    steps: list[Step] = [Remove(p, LEFTOVER_WHY, leftover_kept(root, p)) for p in leftovers(root)]
     steps += [f for f in planned if f.action(root)]
     steps += migrations(layout)
     steps += rules_edits(root, planned_config(root, planned))
@@ -1441,7 +1460,10 @@ def pending(layout: Layout) -> list[tuple[str, Path]]:
         *(("missing", p) for p in needed),
         *(("to be migrated", p) for p in renamed),
         *(("to be updated", p) for p in rules),
-        *(("left over", p) for p in leftovers(root)),
+        *(
+            ("left over" if leftover_kept(root, p) is None else LEFTOVER_KEPT, p)
+            for p in leftovers(root)
+        ),
     ]
 
 
@@ -1478,10 +1500,8 @@ def main() -> None:
         sys.exit(f"{e.filename}: {e.strerror}; nothing done")
     if a.check:
         for what, p in out_of_date:
-            print(
-                f"{what}: {p.as_posix()}; run {adopt_command(layout.submodule)} --yes",
-                file=sys.stderr,
-            )
+            fix = "" if what == LEFTOVER_KEPT else f"; run {adopt_command(layout.submodule)} --yes"
+            print(f"{what}: {p.as_posix()}{fix}", file=sys.stderr)
         # git-lfs's own report, apart from pending()'s paths: it names the files.
         report = plain_blobs(layout.root)
         if report is not None:

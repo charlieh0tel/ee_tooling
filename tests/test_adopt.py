@@ -1840,6 +1840,27 @@ def test_leftover_scratch_files(tmp_path: Path, capsys: pytest.CaptureFixture[st
     assert stale(layout) == []
 
 
+def test_leftover_of_a_hard_linked_file_kept(tmp_path: Path) -> None:
+    """The scratch file of a hard-linked file written in place may hold the
+    only whole new text: --check names it as such, --yes keeps it."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    os.link(tmp_path / "AGENTS.md", tmp_path / "CLAUDE.md")
+    left = tmp_path / ".AGENTS.md.4242.ee_tooling-tmp"
+    left.write_text("new\n")
+    assert pending(layout) == [(adopt.LEFTOVER_KEPT, Path(".AGENTS.md.4242.ee_tooling-tmp"))]
+    steps = plan(layout)
+    assert steps[0] == Remove(
+        Path(left.name),
+        "left by a write that was interrupted",
+        "it may be the only whole copy of AGENTS.md's new text, which has other hard links and"
+        " is written in place",
+    )
+    assert describe(steps[0], tmp_path).endswith("remove it yourself once the new file is checked)")
+    apply(tmp_path, [steps[0]], lambda *_: None)
+    assert left.read_text() == "new\n"
+
+
 def test_blank_line_after_the_section_kept(tmp_path: Path) -> None:
     """A blank line the project put after the end marker: --check passes and
     --yes leaves it."""
