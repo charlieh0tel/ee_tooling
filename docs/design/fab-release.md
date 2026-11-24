@@ -171,8 +171,11 @@ require_lcsc = true              # default false
   An untracked file under the board's directory or a source counts; an
   ignored one there does not (the tgz holds tracked files only); an
   ignored file the release reads by name (`fab.toml`, the project's own
-  files, a sheet, a library table, a library) counts.  Every git call
-  of the check stops the release on a failure.
+  files, a sheet, a library table, a library) counts.  A file marked
+  skip-worktree or assume-unchanged, which `git status` does not show,
+  counts too, whether changed or not: `git ls-files -v -z` over the same
+  paths in each repository asked, its tag `S` or lower case.  Every git
+  call of the check stops the release on a failure.
 - HEAD's full hash is read as the release begins, before any input is
   read, and the uncommitted-sources check is run before any input is
   copied or ERC runs, HEAD unmoved by then: that is the baseline; COMMIT, the tag (`git

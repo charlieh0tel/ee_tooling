@@ -2974,6 +2974,31 @@ def test_ignored_files_under_a_source(tmp_path: Path, monkeypatch: pytest.Monkey
     assert not [n for n in names if "backups" in n or ".venv" in n]
 
 
+@pytest.mark.parametrize(
+    ("flag", "shown"),
+    [("--skip-worktree", "skip-worktree"), ("--assume-unchanged", "assume-unchanged")],
+)
+def test_uncommitted_hidden_from_git_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flag: str, shown: str
+) -> None:
+    """A source marked skip-worktree or assume-unchanged, which git status
+    does not show: refused, changed or not."""
+    root, _ = release(tmp_path, monkeypatch)
+    git(root, "update-index", flag, "docs/notes.txt")
+    (root / "docs/notes.txt").write_text("changed\n")
+    rebuild_refused(monkeypatch, re.escape(f"{shown}: docs/notes.txt"))
+
+
+def test_uncommitted_hidden_in_a_submodule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A library file in a submodule marked skip-worktree: refused."""
+    root, _ = release(tmp_path, monkeypatch)
+    submodule = library_submodule(tmp_path, root)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118", "--force", "--retag"])
+    main()
+    git(submodule, "update-index", "--skip-worktree", "x.pretty/R.kicad_mod")
+    rebuild_refused(monkeypatch, re.escape("skip-worktree: libs/shared/x.pretty/R.kicad_mod"))
+
+
 def test_untracked_file_under_a_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """An untracked file under a source, not ignored: not the commit's,
     uncommitted."""

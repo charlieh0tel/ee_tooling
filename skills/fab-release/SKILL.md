@@ -193,7 +193,9 @@ link), so a rebuild with `--force` over an uncommitted release goes on.
 An untracked file under the board's directory or a source counts as
 uncommitted; an ignored one there does not (it is not in the tgz), but
 an ignored file the release reads by name (`fab.toml`, the project's own
-files, a sheet, a library table, a library) does.  A path is asked of the
+files, a sheet, a library table, a library) does, as does a file
+marked skip-worktree or assume-unchanged (`git update-index`), changed
+or not: `git status` does not show one.  A path is asked of the
 repository that holds it, and each submodule holding it, at every
 level, by its gitlink in its parent: a submodule moved to another
 commit, or with modified or untracked content, counts, whatever any

@@ -1494,6 +1494,17 @@ class Release:
             prefix = "" if repo == Path(".") else f"{repo}/"
             return [f"{e[:3]}{prefix}{e[3:]}" for e in status_entries(found)]
 
+        # git status does not show a file marked skip-worktree or
+        # assume-unchanged: git ls-files -v tags it S, or in lower case.
+        def hidden(repo: Path, specs: list[str]) -> list[str]:
+            found = git_out(self.root / repo, "ls-files", "-v", "-z", "--", *specs)
+            prefix = "" if repo == Path(".") else f"{repo}/"
+            return [
+                f"{'skip-worktree' if e[0] == 'S' else 'assume-unchanged'}: {prefix}{e[2:]}"
+                for e in found.split("\0")
+                if e and (e[0] == "S" or e[0].islower())
+            ]
+
         def spec(path: Path, repo: Path) -> str:
             rel = path.relative_to(repo)
             return "." if rel == Path(".") else f":(literal){rel}"
@@ -1508,6 +1519,7 @@ class Release:
             ]
             specs = [spec(q, repo) for q in mine]
             lines += status(repo, [*specs, *excluded])
+            lines += hidden(repo, [*specs, *excluded])
             by_names = [spec(q, repo) for q in mine if asked[q]]
             if by_names:
                 lines += [
@@ -1526,6 +1538,7 @@ class Release:
             lines += status(parent, [spec(m, parent)])
             if under:
                 lines += status(m, ["."])
+                lines += hidden(m, ["."])
         return "\n".join(dict.fromkeys(lines))
 
     def tagged(self, name: str) -> str | None:
