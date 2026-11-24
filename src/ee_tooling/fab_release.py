@@ -55,7 +55,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, fields, replace
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from ee_tooling.fabrication import (
     DRILL_SUFFIX,
@@ -1105,11 +1105,64 @@ def running(pid: int) -> bool:
 IGNORE_ALL = ".gitignore"
 # The lock directory's file naming the run that holds it: host, process.
 OWNER = "owner"
+# The directory a run makes in a killed run's lock to take it over: made
+# exclusively, so of the runs that judged the lock stale only one goes on.
+TAKEOVER = "takeover"
+# A lock taken over is renamed, its name plus this and the taker's process,
+# then removed: no other run can take that name for the lock.
+STALE = ".stale-"
 
 
 def ignored_by_git(directory: Path) -> None:
     """A .gitignore of everything in directory, itself included."""
     (directory / IGNORE_ALL).write_text("*\n")
+
+
+def lock_owner(lock: Path) -> str:
+    """The lock's OWNER text; "" if it has none, or none can be read."""
+    try:
+        return (lock / OWNER).read_text()
+    except OSError:
+        return ""
+
+
+def lock_held(lock: Path, owner: str) -> NoReturn:
+    """Stop: the lock, its OWNER text owner, is another run's."""
+    holder = " ".join(owner.split()) or "a run that left no owner"
+    sys.exit(
+        f"{lock}: another run ({holder}) is making this release, or was: wait for it,"
+        f" or, if none runs, remove the lock (rm -r {shlex.quote(str(lock))})"
+    )
+
+
+def take_over(lock: Path, host: str) -> None:
+    """Take over the lock directory, there already, if a killed run left
+    it (its process gone from this host), said on stderr; else stop.  Of
+    runs taking it over at once, one goes on: each claims it by making
+    TAKEOVER in it, exclusively, and reads its OWNER again, so none
+    removes a lock another has taken over since its first read; then the
+    lock is renamed aside, removed and made again, exclusively."""
+    owner = lock_owner(lock)
+    held = owner.split()
+    if not (len(held) == 2 and held[0] == host and held[1].isdigit()):
+        lock_held(lock, owner)
+    if running(int(held[1])):
+        lock_held(lock, owner)
+    try:
+        (lock / TAKEOVER).mkdir()
+    except OSError:
+        lock_held(lock, f"{owner.strip()}, being taken over")
+    if (now := lock_owner(lock)) != owner:
+        (lock / TAKEOVER).rmdir()
+        lock_held(lock, now)
+    print(f"{lock}: left by a run that is gone ({held[1]}): taken over", file=sys.stderr)
+    stale = lock.with_name(f"{lock.name}{STALE}{os.getpid()}")
+    lock.rename(stale)
+    shutil.rmtree(stale)
+    try:
+        lock.mkdir()
+    except FileExistsError:
+        lock_held(lock, lock_owner(lock))
 
 
 @contextlib.contextmanager
@@ -1118,36 +1171,28 @@ def release_lock(lock: Path) -> Iterator[None]:
     write until after its tag and cleanup: made exclusively, its OWNER
     naming this host and process.  One there already: another run's,
     which stops this one; one a killed run left, its process gone from
-    this host, which is taken over, said on stderr; one from another host,
+    this host, which is taken over (take_over()); one from another host,
     not judged (a process id means nothing there), which stops this run,
-    naming the command that removes it."""
+    naming the command that removes it.  On the way out the lock is
+    removed only if its OWNER still names this run."""
     # The directories made for the lock, removed with it if left empty.
     made = [d for d in [lock.parent, *lock.parent.parents] if not d.exists()]
     lock.parent.mkdir(parents=True, exist_ok=True)
     host = socket.gethostname()
+    mine = f"{host} {os.getpid()}\n"
     try:
         lock.mkdir()
     except FileExistsError:
-        try:
-            held = (lock / OWNER).read_text().split()
-        except OSError:
-            held = []
-        if len(held) == 2 and held[0] == host and held[1].isdigit() and not running(int(held[1])):
-            print(f"{lock}: left by a run that is gone ({held[1]}): taken over", file=sys.stderr)
-            shutil.rmtree(lock)
-            lock.mkdir()
-        else:
-            holder = " ".join(held) or "a run that left no owner"
-            sys.exit(
-                f"{lock}: another run ({holder}) is making this release, or was: wait for it,"
-                f" or, if none runs, remove the lock (rm -r {shlex.quote(str(lock))})"
-            )
+        take_over(lock, host)
     ignored_by_git(lock)
-    (lock / OWNER).write_text(f"{host} {os.getpid()}\n")
+    (lock / OWNER).write_text(mine)
     try:
         yield
     finally:
-        shutil.rmtree(lock, ignore_errors=True)
+        if lock_owner(lock) == mine:
+            shutil.rmtree(lock, ignore_errors=True)
+        else:
+            print(f"{lock}: no longer this run's: left", file=sys.stderr)
         for d in made:
             with contextlib.suppress(OSError):
                 d.rmdir()

@@ -201,7 +201,12 @@ require_lcsc = true              # default false
   run; one whose process is gone from this host (a killed run's) is
   taken over, said on stderr; one from another host is not judged (a
   process id means nothing there), and stops the run, naming the
-  command that removes it.  Just before the swap, the release directory
+  command that removes it.  A takeover is exclusive: the run makes
+  `takeover/` in the lock (exclusively; one there stops the run), reads
+  `owner` again (changed: another run's, which stops it), renames the
+  lock to `.DATE-REV.lock.stale-PID`, removes that, and makes the lock
+  again (exclusively).  On the way out a run removes the lock only if
+  `owner` still names it.  Just before the swap, the release directory
   is checked again: one another run made meanwhile is replaced only with
   `--force`, and only if all its files are the board's.
 - The swap: the old release moved aside (`.DATE-REV.old`), the new one

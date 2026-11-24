@@ -1,3 +1,4 @@
+import contextlib
 import importlib.util
 import io
 import json
@@ -3161,6 +3162,69 @@ def test_release_takes_over_a_killed_runs_lock(
     assert (root / "production/20261118-1/b-1-bom.csv").exists()
     assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
     assert not held.exists()
+
+
+def gone_pid() -> int:
+    """The process id of a process that has ended."""
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    return gone.pid
+
+
+def test_lock_takeover_is_exclusive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two runs that both judged a killed run's lock stale: the one that
+    took it over first holds it; the other stops, the lock left as the
+    first's, which removes it on the way out."""
+    dead = gone_pid()
+    held = tmp_path / ".20261118-1.lock"
+    held.mkdir()
+    (held / "owner").write_text(f"{socket.gethostname()} {dead}\n")
+    first = contextlib.ExitStack()
+    other = os.getppid()
+    real = fab_release.running
+    raced: list[bool] = []
+
+    def racing(pid: int) -> bool:
+        # This run judges the lock stale; before it acts, the first run
+        # (another process id) takes it over.
+        if pid == dead and not raced:
+            raced.append(True)
+            with monkeypatch.context() as m:
+                m.setattr(os, "getpid", lambda: other)
+                first.enter_context(fab_release.release_lock(held))
+        return pid != other and real(pid)
+
+    monkeypatch.setattr(fab_release, "running", racing)
+    with pytest.raises(SystemExit, match=rf"another run \({socket.gethostname()} {other}\)"):
+        with fab_release.release_lock(held):
+            pytest.fail("both runs hold the lock")
+    assert (held / "owner").read_text() == f"{socket.gethostname()} {other}\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [held.name]
+    first.close()
+    assert not held.exists()
+
+
+def test_lock_left_when_no_longer_this_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A lock whose owner no longer names this run: not removed."""
+    held = tmp_path / ".20261118-1.lock"
+    with fab_release.release_lock(held):
+        (held / "owner").write_text("elsewhere 1\n")
+    assert (held / "owner").read_text() == "elsewhere 1\n"
+    assert "no longer this run's: left" in capsys.readouterr().err
+
+
+def test_lock_being_taken_over(tmp_path: Path) -> None:
+    """A killed run's lock that another run is taking over: this run
+    stops, the lock left."""
+    held = tmp_path / ".20261118-1.lock"
+    (held / "takeover").mkdir(parents=True)
+    (held / "owner").write_text(f"{socket.gethostname()} {gone_pid()}\n")
+    with pytest.raises(SystemExit, match=r"being taken over\) is making this release"):
+        with fab_release.release_lock(held):
+            pytest.fail("held")
+    assert (held / "takeover").is_dir()
 
 
 def package(directory: Path, commit: str, decoy: str | None = None) -> None:

@@ -304,8 +304,9 @@ A run holds the lock `PRODUCTION/.YYYYMMDD-REV.lock/` (naming its host
 and process) from before it writes anything until its tag is made and
 the old release removed: another run's lock stops it; a lock whose
 process is gone from this host (a killed run's) is taken over, said on
-stderr; one from another host is left for you to remove (the command is
-printed).  The release is built in `PRODUCTION/.YYYYMMDD-REV.building/`;
+stderr, by one run only (a `takeover/` in it stops the others); one
+from another host is left for you to remove (the command is printed).
+A run removes the lock only while its `owner` names that run.  The release is built in `PRODUCTION/.YYYYMMDD-REV.building/`;
 after the last export the old release is moved aside to
 `.YYYYMMDD-REV.old/`, the new one put in its place, the tag made or
 moved, then the old one removed.  Each hidden directory holds a
