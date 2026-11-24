@@ -99,13 +99,14 @@ no plane found, stderr says the via rules are not checked.
   within 1 mm of the pad's copper.  A stub not within 1 degree of N, S,
   E or W is a `note:`.  An exposed or thermal pad (named `EP`, `PAD`
   or `TAB`, or the largest pad of a part with 3 or more, twice the next
-  one's area) needs 2 vias; any other pad of 2.5 mm² or more gets a
+  one's area) needs 2 vias of its own, even traced to a pad of its part
+  that has some; any other pad of 2.5 mm² or more gets a
   `note:` advising 2.
 - Mounting hardware (references `H` and a number: holes, standoffs) is
   exempt.  A via outside the part's courtyard is fine.
 - A pad traced to a pad of its own part that reaches the plane (a
   connector's plated-through shell, a QFN's exposed pad with vias) needs
-  no via of its own.
+  no via of its own, unless it is an exposed or thermal pad.
 - No via serving two pads; no trace on a plane net from pad to pad but
   within one part.
 - A supply pin is reached through its decoupling capacitors: with

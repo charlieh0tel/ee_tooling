@@ -4,19 +4,20 @@ Board layout, Routing), read from the file, not through pcbnew.
 Ground vias (`check_vias`, `check_pad_to_pad`): every SMD pad on a plane
 net (`planes`) whose plane lies on another layer has a stub to a via
 into the plane: one or more straight tracks, all N/S/E/W the same way,
-the via's center within STUB_LENGTH of the pad.  An exposed or thermal pad
-(`thermal_pads`) has BIG_PAD_VIAS or more, in it or on stubs; for any
-other pad of BIG_PAD_AREA or more that is a note.  A via outside the part's
-courtyard is fine.  Mounting hardware (MOUNTING_HARDWARE) is exempt: tied
-to ground, it needs no via.  A pad traced to a pad of its own part that
-reaches the plane (a connector's shell, a QFN's exposed pad) needs none
-either.  No via serves two pads, and no trace on a plane net runs from
-pad to pad but within a part.  A
-decoupled supply pin is exempt, being fed through its capacitor, and so
-is the run from it to its capacitors; a capacitor's supply pad needs no
-via of its own (the supply check sees that it is fed).  A poured net
-(placement.toml) with no zone is a finding: without its plane the via
-rules would pass with nothing to check.
+the via's center within STUB_LENGTH of the pad.  An exposed or thermal
+pad (`thermal_pads`) has BIG_PAD_VIAS or more of its own, in it or on
+stubs, whatever it is traced to; for any other pad of BIG_PAD_AREA or
+more that is a note.  A via outside the part's courtyard is fine.
+Mounting hardware (MOUNTING_HARDWARE) is exempt: tied to ground, it
+needs no via.  A pad traced to a pad of its own part that reaches the
+plane (a connector's shell, a QFN's exposed pad) needs none either, but
+an exposed or thermal pad.  No via serves two pads, and no trace on a
+plane net runs from pad to pad but within a part.  A decoupled supply
+pin is exempt, being fed through its capacitor, and so is the run from
+it to its capacitors; a capacitor's supply pad needs no via of its own
+(the supply check sees that it is fed).  A poured net (placement.toml)
+with no zone is a finding: without its plane the via rules would pass
+with nothing to check.
 
 Supply through the capacitor (`check_supply`): a decoupled supply pin
 reaches no zone and no other part's pad except through one of its
@@ -787,8 +788,9 @@ def check_vias(
     """Rule one: each SMD pad on a plane net, but those in exempt, has
     stubs to vias into the plane, or for those in fed (a capacitor's
     supply pad) may have none, or is traced to a pad of its own part that
-    reaches the plane (its plated-through shell, a pad with a via); no via
-    serves two pads."""
+    reaches the plane (its plated-through shell, a pad with a via), but a
+    thermal pad, which has BIG_PAD_VIAS of its own; no via serves two
+    pads."""
     problems: list[Finding] = []
     thermal = thermal_pads(c)
     for name in sorted(plane):
@@ -847,30 +849,31 @@ def check_vias(
                     served[j].append(i)
             if reaching:
                 reaches.add(i)
-            elif i not in fed:
+            elif i not in fed and i not in thermal:
                 via_less.append(i)
-            if reaching and len(reaching) < BIG_PAD_VIAS:
-                size = f"{round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm"
-                if i in thermal:
-                    problems.append(
-                        found(
-                            "thermal-vias",
-                            f"{what}: {size} thermal pad with {len(reaching)} via,"
-                            f" needs {BIG_PAD_VIAS}",
-                            net=name,
-                            pad=str(p),
-                        )
+            size = f"{round(p.size[0], 2):g} x {round(p.size[1], 2):g} mm"
+            # A thermal pad needs its own vias even with none, though
+            # traced to a pad of its part that has one.
+            if i in thermal and len(reaching) < BIG_PAD_VIAS:
+                vias = f"{len(reaching)} via{'' if len(reaching) == 1 else 's'}"
+                problems.append(
+                    found(
+                        "thermal-vias",
+                        f"{what}: {size} thermal pad with {vias}, needs {BIG_PAD_VIAS}",
+                        net=name,
+                        pad=str(p),
                     )
-                elif p.area() >= BIG_PAD_AREA:
-                    problems.append(
-                        found(
-                            "big-pad-vias",
-                            f"{what}: {size} pad with {len(reaching)} via, {BIG_PAD_VIAS} advised",
-                            note=True,
-                            net=name,
-                            pad=str(p),
-                        )
+                )
+            elif reaching and len(reaching) < BIG_PAD_VIAS and p.area() >= BIG_PAD_AREA:
+                problems.append(
+                    found(
+                        "big-pad-vias",
+                        f"{what}: {size} pad with {len(reaching)} via, {BIG_PAD_VIAS} advised",
+                        note=True,
+                        net=name,
+                        pad=str(p),
                     )
+                )
         for i in via_less:
             p = c.pads[i]
             own = [

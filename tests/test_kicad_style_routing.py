@@ -341,6 +341,18 @@ def test_thermal_pad(center: str) -> None:
     assert check(GND_PLANE, qfn(center), via(9.5, 10, "GND"), via(10.5, 10, "GND")) == []
 
 
+def test_thermal_pad_without_vias() -> None:
+    """An exposed pad with no via of its own, traced to its part's ground
+    pin, which has a stub and via, still needs its 2."""
+    pins = [pad("1", 2, 0, "GND", size=(0.6, 0.3)), pad("2", 2, -1, "S2", size=(0.6, 0.3))]
+    pins.append(pad("3", 2, 1, "S3", size=(0.6, 0.3)))
+    u1 = footprint("U1", 10, 10, pad("EP", 0, 0, "GND", size=(2, 2)), *pins)
+    pin_stub = [segment((12, 10), (13, 10), "GND"), via(13, 10, "GND")]
+    message = "U1 pad EP (GND): 2 x 2 mm thermal pad with 0 vias, needs 2"
+    assert check(GND_PLANE, u1, segment((10, 10), (12, 10), "GND"), *pin_stub) == [message]
+    assert check(GND_PLANE, u1, *pin_stub) == [message]
+
+
 def test_big_pad_a_guideline() -> None:
     """A big pad that is not a thermal one: two vias advised, a note."""
     big = footprint("C1", 10, 10, pad("2", 0, 0, "GND", size=(1, 2.7)), pad("1", 3, 0, "X"))
