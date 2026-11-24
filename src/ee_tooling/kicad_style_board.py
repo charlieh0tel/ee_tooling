@@ -83,18 +83,28 @@ def circle(center: Point, radius: float, start: float, sweep: float) -> list[Poi
     ]
 
 
-def arc(start: Point, middle: Point, end: Point) -> list[Point]:
-    """Points along the arc from start through middle to end."""
+def center(start: Point, middle: Point, end: Point) -> Point | None:
+    """The center of the circle through three points; None if they are on
+    a line."""
     (ax, ay), (bx, by), (cx, cy) = start, middle, end
     d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
     if d == 0:
-        return [start, end]
+        return None
     ux = (
         (ax**2 + ay**2) * (by - cy) + (bx**2 + by**2) * (cy - ay) + (cx**2 + cy**2) * (ay - by)
     ) / d
     uy = (
         (ax**2 + ay**2) * (cx - bx) + (bx**2 + by**2) * (ax - cx) + (cx**2 + cy**2) * (bx - ax)
     ) / d
+    return ux, uy
+
+
+def arc(start: Point, middle: Point, end: Point) -> list[Point]:
+    """Points along the arc from start through middle to end."""
+    found = center(start, middle, end)
+    if found is None:
+        return [start, end]
+    ux, uy = found
     a0, am, a1 = (math.atan2(p[1] - uy, p[0] - ux) for p in (start, middle, end))
     sweep = (a1 - a0) % math.tau
     if (am - a0) % math.tau > sweep:  # the middle is on the other way round
