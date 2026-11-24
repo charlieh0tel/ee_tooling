@@ -28,11 +28,15 @@ def pad(number: str, net: str, x: float, y: float) -> Pad:
 
 
 def part(
-    reference: str, pads: list[Pad], courtyard: Box | None = None, value: str = "x"
+    reference: str,
+    pads: list[Pad],
+    courtyard: Box | None = None,
+    value: str = "x",
+    back: bool = False,
 ) -> Footprint:
     x = sum(p.position[0] for p in pads) / len(pads)
     y = sum(p.position[1] for p in pads) / len(pads)
-    return Footprint(reference, value, (x, y), tuple(pads), courtyard)
+    return Footprint(reference, value, (x, y), tuple(pads), courtyard, back)
 
 
 def test_spanning_tree_shortest() -> None:
@@ -126,6 +130,19 @@ def test_overlaps_but_not_touching() -> None:
         OUTLINE,
     )
     assert score(layout, Rules(frozenset(), ())).overlaps == (("U1", "C2"), ("C1", "C2"))
+
+
+def test_overlaps_on_one_side_only() -> None:
+    """A top part's courtyard does not overlap a bottom part's."""
+    layout = Layout(
+        (
+            part("U1", [pad("1", "A", 1, 1)], Box(0, 0, 2, 2)),
+            part("U2", [pad("1", "A", 1, 1)], Box(0, 0, 2, 2), back=True),
+            part("C1", [pad("1", "A", 1, 1)], Box(1, 1, 3, 3), back=True),
+        ),
+        OUTLINE,
+    )
+    assert score(layout, Rules(frozenset(), ())).overlaps == (("U2", "C1"),)
 
 
 def decoupled(values: dict[str, str], positions: dict[str, float]) -> Layout:

@@ -18,7 +18,7 @@ system Python of 3.12 or later (`docs/stitch.md`, Platforms).
 |---|---|
 | `crossings` | crossings between different nets' ratsnest lines; each net's ratsnest is its pads' minimum spanning tree, poured nets left out |
 | `ratsnest` | the ratsnest's total length, mm |
-| `overlaps` | courtyards that share area, by bounding box on the footprint's side; touching is not overlapping |
+| `overlaps` | courtyards of two parts on the same side (top or bottom) that share area, by bounding box, each courtyard on its footprint's side; touching is not overlapping |
 | `problems` | rules broken: a decoupling capacitor farther from its pin than a larger one on the same pin (`docs/kicad-style.md`), a value that is not a capacitance, a reference, pin or net that is not there |
 | `decoupling C` | the capacitor's distance to its part's supply pin and to its ground pin, each from its pad on that pin's net |
 | `cross A B n` | how many times nets A and B cross |

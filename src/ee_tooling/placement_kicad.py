@@ -60,6 +60,7 @@ def load(board_file: Path) -> Layout:
                 position=point(f.GetPosition()),
                 pads=pads,
                 courtyard=None if yard.IsEmpty() else box(yard.BBox()),
+                back=bool(f.IsFlipped()),
             )
         )
     return Layout(tuple(footprints), box(board.GetBoardEdgesBoundingBox()))

@@ -5,8 +5,9 @@ Each net's ratsnest is its pads' minimum spanning tree, leaving out the
 nets poured as planes.  The score counts crossings between different
 nets' ratsnest lines and sums their length; it measures each decoupling
 capacitor's distance to its part's supply and ground pins, and finds
-overlapping courtyards and decoupling capacitors out of order (the
-smallest value goes closest to the pin, docs/kicad-style.md).
+overlapping courtyards of parts on one side and decoupling capacitors
+out of order (the smallest value goes closest to the pin,
+docs/kicad-style.md).
 """
 
 import itertools
@@ -76,6 +77,7 @@ class Footprint:
     position: Point
     pads: tuple[Pad, ...]
     courtyard: Box | None  # on the footprint's own side; None if it has none
+    back: bool  # on the board's back (bottom) side
 
     def pad(self, number: str) -> Pad:
         try:
@@ -258,9 +260,11 @@ def score(layout: Layout, rules: Rules) -> Score:
         except (KeyError, ValueError) as e:
             problems.append(str(e.args[0]))
     problems += order_problems(layout, measured)
-    yards = [(f.reference, f.courtyard) for f in layout.footprints if f.courtyard]
+    yards = [(f.reference, f.back, f.courtyard) for f in layout.footprints if f.courtyard]
     overlaps = tuple(
-        (r1, r2) for (r1, b1), (r2, b2) in itertools.combinations(yards, 2) if b1.overlaps(b2)
+        (r1, r2)
+        for (r1, s1, b1), (r2, s2, b2) in itertools.combinations(yards, 2)
+        if s1 == s2 and b1.overlaps(b2)
     )
     return Score(
         crossings=crossings,
