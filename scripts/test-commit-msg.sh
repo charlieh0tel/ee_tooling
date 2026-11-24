@@ -59,6 +59,24 @@ Generated with [Claude Code](https://claude.ai/code)'
 expect refuse messages 'Fix it
 
 Claude-Session: https://claude.ai/code/session_x'
+# Dependabot's trailer, as GitHub writes it on a squash merge, is the
+# one co-author that passes; nothing else on or beside that line does.
+expect pass messages 'Bump the actions group
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
+expect refuse messages 'Bump the actions group
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+Co-Authored-By: Claude <noreply@anthropic.com>'
+expect refuse messages 'Bump the actions group
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com> claude.ai/code'
+expect refuse messages 'Bump the actions group
+
+Co-authored-by: dependabot[bot] <dependabot@anthropic.com>'
+expect refuse messages 'Bump the actions group
+
+Co-authored-by: Ann Smith <ann@example.com>'
 
 # The hook as a board repository runs it: ee-tooling-adopt's wrapper
 # (src/ee_tooling/templates/commit-msg) as its .githooks/commit-msg,
