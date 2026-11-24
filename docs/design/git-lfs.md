@@ -144,11 +144,15 @@ The managed section, at the top of `.gitattributes`:
 *.[sS][tT][eE][pP] filter=lfs diff=lfs merge=lfs -text
 *.[sS][tT][pP] filter=lfs diff=lfs merge=lfs -text
 *.[wW][rR][lL] filter=lfs diff=lfs merge=lfs -text
+.githooks/* text eol=lf
 # ee_tooling: end; the project's own lines follow and win
 ```
 
-- The lines are `git lfs track`'s own form, so `git lfs track` lists
-  them.
+- The Git LFS lines are `git lfs track`'s own form, so `git lfs track`
+  lists them.
+- `.githooks/* text eol=lf`: the hooks are checked out with LF line
+  endings, whatever `core.autocrlf` says; the kernel cannot run a
+  script whose `#!/bin/sh` line ends in CR.
 - The section's lines are `src/ee_tooling/templates/gitattributes`;
   `adopt` adds the markers.
 - Every pattern matches any case: makers ship `.PDF` and `.STEP`.

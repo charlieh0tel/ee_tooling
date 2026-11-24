@@ -146,7 +146,18 @@ class File:
     path: Path
     text: str
     owner: Owner
+    # A script git runs (a hook): executable, and written and compared byte
+    # for byte, \n line endings and no byte order mark, as the kernel runs
+    # it.
     executable: bool = False
+
+    def current(self, target: Path) -> bool:
+        """Whether target, there, has the file's text: byte for byte for an
+        executable file, else in any line endings and byte order mark
+        (read)."""
+        if self.executable:
+            return target.read_bytes() == self.text.encode("utf-8")
+        return read(target) == self.text
 
     def action(self, root: Path) -> str | None:
         """create, update or make executable, or None when nothing is to be
@@ -154,7 +165,7 @@ class File:
         target = root / self.path
         if not target.exists():
             return "create"
-        if self.owner is Owner.MANAGED and read(target) != self.text:
+        if self.owner is Owner.MANAGED and not self.current(target):
             return "update"
         if self.owner is Owner.MANAGED and self.executable and not executable(root, self.path):
             return "make executable"
@@ -1078,6 +1089,9 @@ def refuse_links(root: Path, steps: Sequence[Step]) -> None:
 
 # How many of the files plain_at_head finds are named.
 PLAIN_SHOWN = 5
+# The attribute of a .gitattributes line that tracks its pattern through Git
+# LFS.
+LFS_FILTER = "filter=lfs"
 # A file's mode in git that is not a blob of its own: a submodule, a link.
 NOT_A_FILE_MODES = ("160000", "120000")
 
@@ -1090,7 +1104,9 @@ def plain_at_head(root: Path) -> list[str]:
     if not git(root, "rev-parse", "--verify", "-q", "HEAD"):
         return []
     template = importlib.resources.files(__package__).joinpath("templates", "gitattributes")
-    patterns = [line.split()[0] for line in template.read_text().splitlines() if line.strip()]
+    patterns = [
+        line.split()[0] for line in template.read_text().splitlines() if LFS_FILTER in line.split()
+    ]
     found = []
     for entry in git(root, "ls-tree", "-r", "-l", "-z", "HEAD").split("\0"):
         if "\t" not in entry:
@@ -1350,8 +1366,10 @@ def apply(root: Path, steps: Sequence[Step], run: Callable[[Sequence[str], Path]
             case File():
                 target = root / (through_link(root, step) or step.path)
                 target.parent.mkdir(parents=True, exist_ok=True)
-                write(target, step.text)
-                if step.executable:
+                if not step.executable:
+                    write(target, step.text)
+                else:
+                    write_text(target, step.text)
                     target.chmod(0o755)
                     # The mode git tracks, for every clone.
                     if not executable(root, step.path):

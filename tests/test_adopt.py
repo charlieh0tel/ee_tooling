@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -347,6 +347,44 @@ def test_managed_files_updated(tmp_path: Path) -> None:
     assert written(plan(layout)) == {".githooks/commit-msg": Owner.MANAGED}
 
 
+@pytest.mark.parametrize(
+    "spoiled",
+    [lambda b: b.replace(b"\n", b"\r\n"), lambda b: b"\xef\xbb\xbf" + b],
+    ids=["crlf", "bom"],
+)
+def test_managed_hook_byte_for_byte(tmp_path: Path, spoiled: Callable[[bytes], bytes]) -> None:
+    """A hook with CRLF line endings or a byte order mark, which the kernel
+    cannot run (#!/bin/sh followed by a CR), is stale, and rewritten with
+    LF and no mark."""
+    ran(tmp_path)
+    layout = Layout(tmp_path, SUBMODULE)
+    for name in ("commit-msg", "pre-push"):
+        hook = tmp_path / ".githooks" / name
+        good = hook.read_bytes()
+        hook.write_bytes(spoiled(good))
+        assert stale(layout) == [Path(".githooks", name)]
+        apply(tmp_path, plan(layout), lambda *_: None)
+        assert hook.read_bytes() == good
+        assert good.startswith(b"#!/bin/sh\n") and b"\r" not in good
+        assert stale(layout) == []
+
+
+def test_hooks_checked_out_with_lf(tmp_path: Path) -> None:
+    """.gitattributes's section has git check the hooks out with LF."""
+    ran(tmp_path)
+    attributes = subprocess.run(
+        ["git", "check-attr", "eol", "--", ".githooks/commit-msg", ".githooks/pre-push"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert attributes.splitlines() == [
+        ".githooks/commit-msg: eol: lf",
+        ".githooks/pre-push: eol: lf",
+    ]
+
+
 def test_rerun_has_nothing_to_do(tmp_path: Path) -> None:
     ran(tmp_path)
     layout = Layout(tmp_path, SUBMODULE)
@@ -400,6 +438,7 @@ GITATTRIBUTES = """\
 *.[sS][tT][eE][pP] filter=lfs diff=lfs merge=lfs -text
 *.[sS][tT][pP] filter=lfs diff=lfs merge=lfs -text
 *.[wW][rR][lL] filter=lfs diff=lfs merge=lfs -text
+.githooks/* text eol=lf
 # ee_tooling: end; the project's own lines follow and win
 """
 

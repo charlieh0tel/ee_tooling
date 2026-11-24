@@ -63,7 +63,7 @@ the dry run and `--yes` name such an edit "update PATH (project;
 |---|---|---|
 | `.githooks/commit-msg` | managed | runs ee_tooling's commit-msg hook from the submodule |
 | `.githooks/pre-push` | managed | git-lfs's `pre-push`: uploads the pushed commits' Git LFS objects |
-| `.gitattributes` | managed section | first in the file, between `ee_tooling: begin` and `end` markers: the Git LFS patterns (below) |
+| `.gitattributes` | managed section | first in the file, between `ee_tooling: begin` and `end` markers: the Git LFS patterns (below), and `.githooks/* text eol=lf` (Hooks) |
 | `.github/workflows/ee-tooling.yml` | managed | CI: the hook's checks over the whole history, and `--check` (git-lfs installed first where the runner lacks it) |
 | `AGENTS.md` | managed section | between `ee_tooling: begin` and `end` markers; the rest of the file is left as it is |
 | `hardware/pyproject.toml` | project | the hardware tools' uv project, named `<directory>-hardware`, the repository's directory name with each run of other than ASCII letters and digits a hyphen, lowercased (a package name uv accepts); an existing one whose name uv refuses is named on stderr: rename it there |
@@ -396,6 +396,12 @@ the work tree (git runs a hook only so, whatever `core.fileMode` says)
 and, when tracked, in the index (what every clone checks out): `--check`
 fails on it, and `--yes` sets the work tree's bit and stages the index's
 (`git update-index --chmod=+x`) for the next commit.
+
+The kernel cannot run a hook whose `#!/bin/sh` line ends in CR.  A
+managed hook is compared and written byte for byte: one with CRLF line
+endings or a byte order mark is stale, and `--yes` writes it with LF
+and no mark.  `.gitattributes`'s section has `.githooks/* text eol=lf`,
+so every clone checks the hooks out with LF.
 
 `--yes` sets `core.hooksPath` to `.githooks`, so the hooks git runs now
 from elsewhere (`.git/hooks`, or another `core.hooksPath` such as
