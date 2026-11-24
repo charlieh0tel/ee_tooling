@@ -17,8 +17,11 @@ import tomllib
 from collections import defaultdict
 from dataclasses import dataclass
 
+from ee_tooling.kicad_style_board import ON_EDGE, distance, on_board
+
 Point = tuple[float, float]  # mm, in KiCad's axes (y down)
 Edge = tuple[Point, Point]
+Polygon = tuple[Point, ...]  # a closed outline: its last point joins its first
 
 # Pads KiCad leaves on no net, or on a net of their own, have no ratsnest.
 UNCONNECTED = "unconnected-"
@@ -63,6 +66,79 @@ class Box:
 
 
 @dataclass(frozen=True)
+class Courtyard:
+    """A footprint's courtyard on its own side: its outlines, each solid."""
+
+    outlines: tuple[Polygon, ...]
+
+    @property
+    def box(self) -> Box:
+        xs = [p[0] for o in self.outlines for p in o]
+        ys = [p[1] for o in self.outlines for p in o]
+        return Box(min(xs), min(ys), max(xs), max(ys))
+
+    def overlaps(self, other: "Courtyard") -> bool:
+        """Whether they share area; touching outlines do not."""
+        return self.box.overlaps(other.box) and any(
+            shares_area(a, b) for a in self.outlines for b in other.outlines
+        )
+
+
+def sides(polygon: Polygon) -> list[Edge]:
+    return list(zip(polygon, polygon[1:] + polygon[:1], strict=True))
+
+
+def cuts(side: Edge, other: Polygon) -> list[float]:
+    """Where other's outline meets side, as fractions along it, its ends
+    included: where a side of other crosses or touches it, and each of
+    other's points on it."""
+    (ax, ay), (bx, by) = side
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy
+    found = [0.0, 1.0]
+    for (cx, cy), (ex, ey) in sides(other):
+        fx, fy = ex - cx, ey - cy
+        cross = dx * fy - dy * fx
+        if abs(cross) > COLLINEAR:
+            t = ((cx - ax) * fy - (cy - ay) * fx) / cross
+            u = ((cx - ax) * dy - (cy - ay) * dx) / cross
+            if 0 < t < 1 and 0 <= u <= 1:
+                found.append(t)
+    for p in other:
+        if length2 and distance(p, side) <= ON_EDGE:
+            found.append(((p[0] - ax) * dx + (p[1] - ay) * dy) / length2)
+    return sorted(t for t in found if 0 <= t <= 1)
+
+
+def boundary_inside(a: Polygon, b: Polygon) -> bool | None:
+    """Whether some part of a's outline is strictly inside b; None if all
+    of it lies on b's outline, within ON_EDGE."""
+    outline = sides(b)
+    on_outline = True
+    for side in sides(a):
+        (ax, ay), (bx, by) = side
+        for t0, t1 in itertools.pairwise(cuts(side, b)):
+            t = (t0 + t1) / 2
+            mid = (ax + (bx - ax) * t, ay + (by - ay) * t)
+            if any(distance(mid, s) <= ON_EDGE for s in outline):
+                continue
+            on_outline = False
+            if on_board(mid, outline):
+                return True
+    return None if on_outline else False
+
+
+def shares_area(a: Polygon, b: Polygon) -> bool:
+    """Whether two simple polygons share area.  Each piece of either's
+    outline, split where the other's meets it, is inside the other, on its
+    outline or outside it.  They share area if a piece is inside, or if
+    every piece of both lies on the other's outline (the same polygon);
+    otherwise they only touch or are apart."""
+    a_in_b, b_in_a = boundary_inside(a, b), boundary_inside(b, a)
+    return bool(a_in_b or b_in_a) or (a_in_b is None and b_in_a is None)
+
+
+@dataclass(frozen=True)
 class Pad:
     number: str
     net: str  # "" for none
@@ -76,7 +152,7 @@ class Footprint:
     value: str
     position: Point
     pads: tuple[Pad, ...]
-    courtyard: Box | None  # on the footprint's own side; None if it has none
+    courtyard: Courtyard | None  # None if it has none
     back: bool  # on the board's back (bottom) side
 
     def pad(self, number: str) -> Pad:

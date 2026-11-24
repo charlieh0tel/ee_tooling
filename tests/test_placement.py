@@ -4,17 +4,20 @@ import pytest
 
 from ee_tooling.placement import (
     Box,
+    Courtyard,
     Decoupling,
     Footprint,
     Layout,
     Pad,
     Point,
+    Polygon,
     Rules,
     capacitance,
     crosses,
     ratsnest,
     report,
     score,
+    shares_area,
     spanning_tree,
 )
 from ee_tooling.placement_render import render
@@ -27,10 +30,14 @@ def pad(number: str, net: str, x: float, y: float) -> Pad:
     return Pad(number, net, (x, y), Box(x - PAD_HALF, y - PAD_HALF, x + PAD_HALF, y + PAD_HALF))
 
 
+def rectangle(left: float, top: float, right: float, bottom: float) -> Courtyard:
+    return Courtyard((((left, top), (right, top), (right, bottom), (left, bottom)),))
+
+
 def part(
     reference: str,
     pads: list[Pad],
-    courtyard: Box | None = None,
+    courtyard: Courtyard | None = None,
     value: str = "x",
     back: bool = False,
 ) -> Footprint:
@@ -122,9 +129,9 @@ def test_score_crossings_and_length() -> None:
 def test_overlaps_but_not_touching() -> None:
     layout = Layout(
         (
-            part("U1", [pad("1", "A", 1, 1)], Box(0, 0, 2, 2)),
-            part("C1", [pad("1", "A", 3, 1)], Box(2, 0, 4, 2)),  # touches U1
-            part("C2", [pad("1", "A", 2, 3)], Box(1.5, 1.5, 3, 4)),  # overlaps U1 and C1
+            part("U1", [pad("1", "A", 1, 1)], rectangle(0, 0, 2, 2)),
+            part("C1", [pad("1", "A", 3, 1)], rectangle(2, 0, 4, 2)),  # touches U1
+            part("C2", [pad("1", "A", 2, 3)], rectangle(1.5, 1.5, 3, 4)),  # overlaps U1 and C1
             part("R1", [pad("1", "A", 9, 9)]),  # no courtyard
         ),
         OUTLINE,
@@ -132,13 +139,61 @@ def test_overlaps_but_not_touching() -> None:
     assert score(layout, Rules(frozenset(), ())).overlaps == (("U1", "C2"), ("C1", "C2"))
 
 
+# A diamond 4 mm across, centered on (2, 2).
+DIAMOND: Polygon = ((2, 0), (4, 2), (2, 4), (0, 2))
+# An L: a 4 x 4 square with its top right 2 x 2 quarter cut out.
+ELL: Polygon = ((0, 0), (2, 0), (2, 2), (4, 2), (4, 4), (0, 4))
+
+
+def square(left: float, top: float, size: float) -> Polygon:
+    return ((left, top), (left + size, top), (left + size, top + size), (left, top + size))
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [
+        (square(0, 0, 2), square(1, 1, 2), True),  # corners overlap
+        (square(0, 0, 4), square(1, 1, 1), True),  # one inside the other
+        (square(0, 0, 4), square(0, 0, 2), True),  # inside, sharing two sides
+        (square(0, 0, 2), square(0, 0, 2), True),  # the same
+        (DIAMOND, ((1, 1), (3, 1), (3, 3), (1, 3)), True),  # corners through sides
+        (square(0, 0, 2), ((1, -1), (1.5, 1), (1, 3), (0.5, 1)), True),  # crossing, no corner in
+        (square(0, 0, 2), square(2, 0, 2), False),  # sharing a side
+        (square(0, 0, 2), square(2, 1, 2), False),  # sharing part of a side
+        (square(0, 0, 2), square(2, 2, 2), False),  # sharing a corner
+        (DIAMOND, square(3.5, 3.5, 1), False),  # boxes overlap, the shapes do not
+        (DIAMOND, ((3, 3), (4, 3), (3, 4)), False),  # touching a side, from outside
+        (ELL, square(2.5, 0.5, 1), False),  # in the L's notch
+        (ELL, square(1.5, 0.5, 1), True),  # across the notch's side
+        (square(0, 0, 2), square(5, 5, 1), False),  # apart
+    ],
+)
+def test_shares_area(a: Polygon, b: Polygon, expected: bool) -> None:
+    assert shares_area(a, b) is expected
+    assert shares_area(b, a) is expected
+    assert shares_area(a[1:] + a[:1], tuple(reversed(b))) is expected
+
+
+def test_overlaps_by_polygon() -> None:
+    """Rotated courtyards whose bounding boxes overlap but shapes do not."""
+    layout = Layout(
+        (
+            part("U1", [pad("1", "A", 2, 2)], Courtyard((DIAMOND,))),
+            part("C1", [pad("1", "A", 4, 4)], Courtyard((square(3.5, 3.5, 1),))),
+            part("C2", [pad("1", "A", 2, 2)], Courtyard((square(9, 9, 1), square(1.5, 1.5, 1)))),
+        ),
+        OUTLINE,
+    )
+    assert score(layout, Rules(frozenset(), ())).overlaps == (("U1", "C2"),)
+
+
 def test_overlaps_on_one_side_only() -> None:
     """A top part's courtyard does not overlap a bottom part's."""
     layout = Layout(
         (
-            part("U1", [pad("1", "A", 1, 1)], Box(0, 0, 2, 2)),
-            part("U2", [pad("1", "A", 1, 1)], Box(0, 0, 2, 2), back=True),
-            part("C1", [pad("1", "A", 1, 1)], Box(1, 1, 3, 3), back=True),
+            part("U1", [pad("1", "A", 1, 1)], rectangle(0, 0, 2, 2)),
+            part("U2", [pad("1", "A", 1, 1)], rectangle(0, 0, 2, 2), back=True),
+            part("C1", [pad("1", "A", 1, 1)], rectangle(1, 1, 3, 3), back=True),
         ),
         OUTLINE,
     )

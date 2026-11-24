@@ -50,7 +50,8 @@ def render(layout: Layout, rules: Rules, scale: float) -> Image.Image:
     draw.rectangle(rectangle(o), outline=OUTLINE, width=OUTLINE_WIDTH)
     for f in layout.footprints:
         if f.courtyard:
-            draw.rectangle(rectangle(f.courtyard), outline=COURTYARD)
+            for polygon in f.courtyard.outlines:
+                draw.polygon([px(p) for p in polygon], outline=COURTYARD)
         for pad in f.pads:
             draw.rectangle(rectangle(pad.box), fill=POURED_PAD if pad.net in rules.poured else PAD)
         draw.text(px(f.position), f.reference, fill=TEXT, font=font, anchor="mm")

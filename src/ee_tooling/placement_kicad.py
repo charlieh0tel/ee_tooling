@@ -14,7 +14,17 @@ import tomllib
 from pathlib import Path
 
 from ee_tooling.kicad_pcbnew import missing
-from ee_tooling.placement import Box, Footprint, Layout, Pad, Point, Rules, report, score
+from ee_tooling.placement import (
+    Box,
+    Courtyard,
+    Footprint,
+    Layout,
+    Pad,
+    Point,
+    Rules,
+    report,
+    score,
+)
 from ee_tooling.placement_render import render
 
 RULES = "placement.toml"
@@ -40,10 +50,26 @@ def load(board_file: Path) -> Layout:
             float(pcbnew.ToMM(b.GetBottom())),
         )
 
+    def courtyard(f: "pcbnew.FOOTPRINT") -> Courtyard | None:
+        """f's courtyard on its own side, its arcs as KiCad's chords; a
+        hole in it is taken as filled, and said so."""
+        yard = f.GetCourtyard(pcbnew.B_CrtYd if f.IsFlipped() else pcbnew.F_CrtYd)
+        count = yard.OutlineCount()
+        if not count:
+            return None
+        if any(yard.HoleCount(i) for i in range(count)):
+            print(
+                f"{f.GetReference()}: a hole in its courtyard is taken as filled", file=sys.stderr
+            )
+        outlines = []
+        for i in range(count):
+            chain = yard.COutline(i)
+            outlines.append(tuple(point(chain.CPoint(j)) for j in range(chain.PointCount())))
+        return Courtyard(tuple(outlines))
+
     board = pcbnew.LoadBoard(str(board_file))
     footprints = []
     for f in board.GetFootprints():
-        yard = f.GetCourtyard(pcbnew.B_CrtYd if f.IsFlipped() else pcbnew.F_CrtYd)
         pads = tuple(
             Pad(
                 str(p.GetNumber()),
@@ -59,7 +85,7 @@ def load(board_file: Path) -> Layout:
                 value=str(f.GetValue()),
                 position=point(f.GetPosition()),
                 pads=pads,
-                courtyard=None if yard.IsEmpty() else box(yard.BBox()),
+                courtyard=courtyard(f),
                 back=bool(f.IsFlipped()),
             )
         )
