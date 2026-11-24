@@ -44,6 +44,11 @@ wires versus labels are not checked.
 
 ## Board (.kicad_pcb)
 
+A board file older than KiCad 10's (its `(version ...)` under 20260206,
+`KICAD_10_BOARD`) cannot be checked (exit 2): an older file names a
+track's and a zone's net by number alone.  Open it in KiCad 10 and save
+it.  Schematics and projects from KiCad 8 and 9 are read.
+
 ### Zones: kicad_style_board.py
 
 - No filled graphic shape on a copper layer: pours are zones.

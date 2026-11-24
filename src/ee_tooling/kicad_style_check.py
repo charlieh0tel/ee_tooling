@@ -10,8 +10,9 @@ file is never clean.  Notes on what a check cannot decide go to stderr.
 By the file's suffix:
 - .kicad_pro: its net classes (kicad_style_netclass.py), with the board
   and schematic of its name beside it;
-- .kicad_pcb: its zones (kicad_style_board.py), finishing
-  (kicad_style_finishing.py), stackup table (kicad_style_stackup.py) and
+- .kicad_pcb, a KiCad 10 board (an older file cannot be checked): its
+  zones (kicad_style_board.py), finishing (kicad_style_finishing.py),
+  stackup table (kicad_style_stackup.py) and
   routing (kicad_style_routing.py), the last with placement.toml beside
   it if there is one (placement.py);
 - .kicad_sch: the drawing rules (docs/kicad-style.md, Schematic drawing):
@@ -34,7 +35,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ee_tooling.kicad_style_board import CAPACITOR, check_board
+from ee_tooling.kicad_style_board import CAPACITOR, check_board, require_kicad_10
 from ee_tooling.kicad_style_finding import SCHEMATIC_RULES, Checked, Finding, found
 from ee_tooling.kicad_style_finishing import check_finishing
 from ee_tooling.kicad_style_netclass import check_project
@@ -409,6 +410,7 @@ def check_file(path: Path, grid: float) -> Checked:
             return check(read(parse(path.read_text())), grid)
         case ".kicad_pcb":
             board = parse(path.read_text())
+            require_kicad_10(board)
             rules_file = path.parent / RULES
             rules = Rules.load(rules_file.read_text()) if rules_file.exists() else None
             parts = [

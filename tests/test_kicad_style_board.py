@@ -310,6 +310,30 @@ def test_command(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("version", "found"),
+    [
+        ("(version 20241229)", "20241229"),  # KiCad 9
+        ("(version 20240108)", "20240108"),  # KiCad 8
+        ("", "none"),
+    ],
+)
+def test_command_refuses_old_board(tmp_path: Path, version: str, found: str) -> None:
+    old = tmp_path / "old.kicad_pcb"
+    old.write_text(board(SMALL, zone(-1, -1, 3, 3)).replace("(version 20260206)", version))
+    r = subprocess.run(
+        [sys.executable, "-c", "from ee_tooling.kicad_style_check import main; main()", str(old)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (r.returncode, r.stdout) == (2, "")
+    assert (
+        f"{old}: cannot check: file version {found}, older than KiCad 10's 20260206:"
+        " open the board in KiCad 10 and save it"
+    ) in r.stderr
+
+
+@pytest.mark.parametrize(
     ("p", "expected"),
     [
         ((1, 1), (1, 0)),  # beside it

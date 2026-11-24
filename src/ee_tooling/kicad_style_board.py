@@ -37,6 +37,11 @@ ON_EDGE = 0.001
 SPLIT_GAP = 0.5
 
 
+# The board file format version KiCad 10.0 writes, its (version ...).  An
+# older board names a track's and a zone's net by number alone, which
+# these checks read as no net: kicad-style-check refuses it.
+KICAD_10_BOARD = 20260206
+
 # KiCad names a pad's net so when nothing else is on it.
 UNCONNECTED = "unconnected-"
 # A schematic pin's types that carry power.
@@ -290,6 +295,17 @@ def faces(p: Point, zone: Expression, neighbors: list[Neighbor]) -> bool:
         )
         for layer in copper
     )
+
+
+def require_kicad_10(board: Expression) -> None:
+    """Raise BoardError if the board's file is older than KiCad 10's."""
+    version = child(board, "version")
+    found = str(version[1]) if version and len(version) > 1 else "none"
+    if not found.isdigit() or int(found) < KICAD_10_BOARD:
+        raise BoardError(
+            f"file version {found}, older than KiCad 10's {KICAD_10_BOARD}:"
+            " open the board in KiCad 10 and save it"
+        )
 
 
 def check_board(board: Expression) -> Checked:

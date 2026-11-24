@@ -171,11 +171,6 @@ def test_through_pad_layers() -> None:
     assert c.pads[0].through
 
 
-def test_old_net_syntax() -> None:
-    text = board(footprint("R1", 5, 5, pad("1", 0, 0, "X"))).replace('(net "X")', '(net 3 "GND")')
-    assert read(parse(text)).pads[0].net == "GND"
-
-
 def test_planes() -> None:
     small = zone("+5V", "F.Cu", outline=polygon(1, 1, 5, 5))
     c = read(parse(board(GND_PLANE, zone("GND", "B.Cu"), small)))

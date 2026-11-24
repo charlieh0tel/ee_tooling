@@ -41,8 +41,8 @@ reach all its net's copper on its layer inside its outline; the check
 says so on stderr, once per zone.  Pads are their rotated rectangles,
 whatever their shape (a custom pad: its anchor).
 
-KiCad's file, as read here: lengths in mm, y down; an item names its net
-`(net "NAME")` (older files `(net N "NAME")`: the name is last); a pad's
+KiCad 10's file, as read here: lengths in mm, y down; an item names its
+net `(net "NAME")`; a pad's
 `(at X Y A)` is in its footprint's frame, placed by turning it A degrees
 counterclockwise on screen about the footprint's `(at)`, the same on
 either side (a bottom footprint's pads are written already mirrored);
