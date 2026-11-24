@@ -228,6 +228,37 @@ def test_corrections_refused(text: str) -> None:
         Corrections.load(text)
 
 
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        ("[rotations]\nC1 = 90\n", r"unknown table 'rotations'"),
+        ("[rotation]\nC1 = true\n", r"rotation C1: True is not a finite number"),
+        ("[rotation]\nC1 = nan\n", r"rotation C1: nan is not a finite number"),
+        ("[rotation]\nC1 = inf\n", r"rotation C1: inf is not a finite number"),
+        ('[offset]\nC1 = "12"\n', r"offset C1: '12' is not two numbers"),
+        ("[offset]\nC1 = [1.0, 2.0, 3.0]\n", r"offset C1: \[1.0, 2.0, 3.0\] is not two numbers"),
+        ("[offset]\nC1 = [1.0]\n", r"offset C1: \[1.0\] is not two numbers"),
+        ("[offset]\nC1 = [1.0, false]\n", r"offset C1: False is not a finite number"),
+        ("[offset]\nC1 = [1.0, -inf]\n", r"offset C1: -inf is not a finite number"),
+        ("[unchecked]\nC1 = 1\n", r"unchecked C1: 1 is not a description"),
+    ],
+)
+def test_corrections_malformed(text: str, error: str) -> None:
+    """A misspelled table, or a value not of its form, is refused, naming it."""
+    with pytest.raises(ValueError, match=error):
+        Corrections.load(text)
+
+
+def test_corrections_load() -> None:
+    corrections = Corrections.load(
+        '[rotation]\nC1 = -90\nC2 = 45.5\n[offset]\nC3 = [0, 1.5]\n[unchecked]\nC4 = "a part"\n'
+    )
+    assert corrections == Corrections(
+        rotation={"C1": -90.0, "C2": 45.5}, offset={"C3": (0.0, 1.5)}, unchecked={"C4": "a part"}
+    )
+    assert Corrections.load("") == Corrections({}, {}, {})
+
+
 def test_builtin_corrections_name_the_file(monkeypatch: pytest.MonkeyPatch) -> None:
     def bad(cls: type[Corrections], text: str) -> Corrections:
         raise ValueError("bad")

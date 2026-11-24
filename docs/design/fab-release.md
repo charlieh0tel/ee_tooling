@@ -108,7 +108,9 @@ require_lcsc = true              # default false
 - Config, `Board`, `--date`, `--force`, `--allow-dirty`, `--retag`, and
   the release's tag (`NAME-YYYYMMDD-REV`).
 - Before anything runs: the profile built (a bad `parts.toml` stops the
-  run); each board's profile options checked; the board's files there;
+  run: a table other than `[rotation]`, `[offset]` and `[unchecked]`, a
+  rotation not a finite number, an offset not two, a description not a
+  string); each board's profile options checked; the board's files there;
   the Git LFS pointer check (`docs/design/git-lfs.md`, The release); the library paths
   (`project_libraries.py`, below); the schematic's sheet files, each
   there and inside the repository, naming it and the sheet that names

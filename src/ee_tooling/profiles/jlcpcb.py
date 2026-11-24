@@ -22,6 +22,8 @@ FAB_DEFAULTS = {
 }
 # The corrections' file, in the ee_tooling package.
 PARTS = "parts.toml"
+# Its tables, each optional: rotations, offsets, and parts not checked yet.
+TABLES = ("rotation", "offset", "unchecked")
 BOM_HEADER = ("Comment", "Designator", "Footprint", "LCSC Part #")
 CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Layer")
 
@@ -36,17 +38,39 @@ class Corrections:
 
     @classmethod
     def load(cls, text: str) -> "Corrections":
-        """ValueError (tomllib's own among them) if text is not TOML, or a
-        table or value is not of its form."""
+        """ValueError (tomllib's own among them) if text is not TOML, has a
+        table other than its own, or a table or value is not of its form:
+        a rotation a finite number, an offset two, a description a string."""
         t = tomllib.loads(text)
-        try:
-            return cls(
-                rotation={k: float(v) for k, v in t.get("rotation", {}).items()},
-                offset={k: (float(v[0]), float(v[1])) for k, v in t.get("offset", {}).items()},
-                unchecked={k: str(v) for k, v in t.get("unchecked", {}).items()},
-            )
-        except (TypeError, IndexError, AttributeError) as e:
-            raise ValueError(f"not a rotation, offset or description: {e}") from e
+        if unknown := sorted(set(t) - set(TABLES)):
+            raise ValueError(f"unknown table {', '.join(repr(k) for k in unknown)}")
+        tables = {}
+        for name in TABLES:
+            table = t.get(name, {})
+            if not isinstance(table, dict):
+                raise ValueError(f"{name} is not a table")
+            tables[name] = table
+
+        def number(where: str, v: object) -> float:
+            if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v):
+                raise ValueError(f"{where}: {v!r} is not a finite number")
+            return float(v)
+
+        def pair(where: str, v: object) -> tuple[float, float]:
+            if not isinstance(v, list) or len(v) != 2:
+                raise ValueError(f"{where}: {v!r} is not two numbers")
+            return number(where, v[0]), number(where, v[1])
+
+        def description(where: str, v: object) -> str:
+            if not isinstance(v, str):
+                raise ValueError(f"{where}: {v!r} is not a description")
+            return v
+
+        return cls(
+            rotation={k: number(f"rotation {k}", v) for k, v in tables["rotation"].items()},
+            offset={k: pair(f"offset {k}", v) for k, v in tables["offset"].items()},
+            unchecked={k: description(f"unchecked {k}", v) for k, v in tables["unchecked"].items()},
+        )
 
     @classmethod
     def builtin(cls) -> "Corrections":

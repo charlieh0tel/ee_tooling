@@ -63,6 +63,9 @@ placement preview, compare each part's magenta pin-1 dot with our pin 1
 - a part not yet seen in a preview goes in `[unchecked]`, and the tool
   says to check it.
 
+Any other table, or a value not of its form (a rotation a finite
+number, an offset `[x, y]`, a description a string), stops the release.
+
 Both are in the part's own frame, as seen on the top.  KiCad places a
 bottom-side footprint as its library footprint mirrored in y, then
 turned by its rotation; so on the bottom the offset's y is negated
