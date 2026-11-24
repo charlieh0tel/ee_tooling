@@ -16,7 +16,8 @@ made with `uv venv --system-site-packages --python /usr/bin/python3`;
 close the board in KiCad first.
 
 A spot is clear when the via's copper keeps every other net's pad, track
-and via at the larger of the two items' own clearances; its hole keeps
+and via, and every pad of its own net without a hole (an SMD pad), at the
+larger of the two items' own clearances; its hole keeps
 every hole at the board's hole-to-hole minimum; it is on the board, its
 copper the board's copper-to-edge clearance in from every outline; it is
 outside every rule area that forbids vias (the board's or a footprint's)
@@ -85,13 +86,14 @@ class Board:
         return self.kicad.VECTOR2I(self.kicad.FromMM(p[0]), self.kicad.FromMM(p[1]))
 
     def copper(self) -> list[Any]:
-        """Every pad, track and via on another net."""
+        """Every pad, track and via on another net, and every pad on the
+        net without a hole: a via in an SMD pad is an open via-in-pad."""
         items = [t for t in self.board.GetTracks() if t.GetNetname() != self.net]
         items += [
             p
             for f in self.board.GetFootprints()
             for p in f.Pads()
-            if p.GetNetname() != self.net or not p.GetNetname()
+            if p.GetNetname() != self.net or not p.GetNetname() or not p.HasHole()
         ]
         return items
 

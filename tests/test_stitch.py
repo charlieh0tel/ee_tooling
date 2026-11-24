@@ -103,20 +103,24 @@ def zone(layer: str) -> str:
     )
 
 
-BOARD = (
-    "(kicad_pcb (version 20260206) (generator pcbnew)"
-    " (general (thickness 1.6))"
-    ' (layers (0 "F.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user))'
-    ' (gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type solid)) (layer "Edge.Cuts"))'
-    f" {TRACK} {zone('F.Cu')} {zone('B.Cu')})"
-)
+def pcb_text(*items: str) -> str:
+    return (
+        "(kicad_pcb (version 20260206) (generator pcbnew)"
+        " (general (thickness 1.6))"
+        ' (layers (0 "F.Cu" signal) (2 "B.Cu" signal) (25 "Edge.Cuts" user))'
+        " (gr_rect (start 0 0) (end 40 30) (stroke (width 0.05) (type solid))"
+        ' (layer "Edge.Cuts"))'
+        f" {' '.join(items)} {zone('F.Cu')} {zone('B.Cu')})"
+    )
 
 
-@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="needs kicad-cli")
-def test_stitch_board(tmp_path: Path) -> None:
-    pytest.importorskip("pcbnew")
+BOARD = pcb_text(TRACK)
+
+
+def run_stitch(tmp_path: Path, text: str) -> tuple[Path, subprocess.CompletedProcess[str]]:
+    """stitch run on a board of text, with a project file beside it."""
     pcb = tmp_path / "b.kicad_pcb"
-    pcb.write_text(BOARD)
+    pcb.write_text(text)
     (tmp_path / "b.kicad_pro").write_text(json.dumps({"meta": {"filename": "b.kicad_pro"}}))
     r = subprocess.run(
         [sys.executable, "-c", "from ee_tooling.stitch_kicad import main; main()", str(pcb)],
@@ -124,6 +128,23 @@ def test_stitch_board(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
+    return pcb, r
+
+
+def via_points(board: Expression) -> list[Point]:
+    return [
+        (float(str(at[1])), float(str(at[2])))
+        for v in board
+        if isinstance(v, list) and v and v[0] == "via"
+        for at in v
+        if isinstance(at, list) and at[0] == "at"
+    ]
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="needs kicad-cli")
+def test_stitch_board(tmp_path: Path) -> None:
+    pytest.importorskip("pcbnew")
+    pcb, r = run_stitch(tmp_path, BOARD)
     assert r.returncode == 0, r.stderr
     after = parse(pcb.read_text())
     vias = [v for v in after if isinstance(v, list) and v and v[0] == "via"]
@@ -136,3 +157,28 @@ def test_stitch_board(tmp_path: Path) -> None:
         at = next(c for c in v if isinstance(c, list) and c[0] == "at")
         p = (float(str(at[1])), float(str(at[2])))
         assert distance(p, ((5, 15), (35, 15))) >= 0.125 + radius + 0.2 - 1e-6
+
+
+# A 6 x 2.4 mm SMD pad on GND near the top edge, where the ring's marks are.
+SMD_PAD = (
+    '(footprint "T:Pad" (layer "F.Cu") (at 10 2)'
+    ' (pad "1" smd rect (at 0 0) (size 6 2.4) (layers "F.Cu" "F.Paste" "F.Mask")'
+    ' (net "GND")))'
+)
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="needs kicad-cli")
+def test_stitch_keeps_out_of_own_smd_pad(tmp_path: Path) -> None:
+    """No via in an SMD pad of its own net: it keeps the pad at its clearance."""
+    pytest.importorskip("pcbnew")
+    pcb, r = run_stitch(tmp_path, pcb_text(TRACK, SMD_PAD))
+    assert r.returncode == 0, r.stderr
+    vias = via_points(parse(pcb.read_text()))
+    assert vias
+    # The via's radius (KiCad's default via, 0.6 mm) and 0.2 mm, KiCad's
+    # default clearance, from the pad's rectangle.
+    radius = 0.3
+    for x, y in vias:
+        dx = max(abs(x - 10) - 3, 0.0)
+        dy = max(abs(y - 2) - 1.2, 0.0)
+        assert math.hypot(dx, dy) >= radius + 0.2 - 1e-6, (x, y)

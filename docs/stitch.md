@@ -56,8 +56,10 @@ already near it needs none.
 
 ## A clear spot
 
-- The via's copper keeps every other net's pad, track and via at the
-  larger of the two items' own clearances (pcbnew's netclass ones).
+- The via's copper keeps every other net's pad, track and via, and
+  every pad of its own net without a hole (an SMD pad: a via in one is
+  an open via-in-pad, which DRC passes), at the larger of the two
+  items' own clearances (pcbnew's netclass ones).
 - Its hole keeps every hole at Board Setup's hole-to-hole minimum.
 - It is on the board, its copper Board Setup's copper-to-edge clearance
   in from every outline.
