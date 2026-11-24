@@ -73,6 +73,12 @@ runs DRC with the board's own rules, its `.kicad_dru` included.  Each
 new via a violation names (a custom rule's clearance, a via no zone
 reaches) is taken out, and the zones refilled, up to 3 times.
 
+All of it is done on a copy in a temporary directory beside the board
+written, with the project file and `.kicad_dru` copied beside it.  The
+board is replaced whole, only once DRC has run; if `kicad-cli` is not on
+`PATH` (checked first), fails, or still flags new vias after 3 rounds,
+`stitch` exits non-zero and the board is left as it was.
+
 It prints what it added, each mark without room and each via taken out,
 then any stitching gap still over 10 mm, and exits 1 if one is left: the
 owner decides it, with `--at` or by hand.

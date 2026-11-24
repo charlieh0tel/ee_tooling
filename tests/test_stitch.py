@@ -1,6 +1,7 @@
 import itertools
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
@@ -117,8 +118,11 @@ def pcb_text(*items: str) -> str:
 BOARD = pcb_text(TRACK)
 
 
-def run_stitch(tmp_path: Path, text: str) -> tuple[Path, subprocess.CompletedProcess[str]]:
-    """stitch run on a board of text, with a project file beside it."""
+def run_stitch(
+    tmp_path: Path, text: str, path: str | None = None
+) -> tuple[Path, subprocess.CompletedProcess[str]]:
+    """stitch run on a board of text, with a project file beside it, and
+    PATH path if given."""
     pcb = tmp_path / "b.kicad_pcb"
     pcb.write_text(text)
     (tmp_path / "b.kicad_pro").write_text(json.dumps({"meta": {"filename": "b.kicad_pro"}}))
@@ -127,6 +131,7 @@ def run_stitch(tmp_path: Path, text: str) -> tuple[Path, subprocess.CompletedPro
         capture_output=True,
         text=True,
         check=False,
+        env=None if path is None else {**os.environ, "PATH": path},
     )
     return pcb, r
 
@@ -182,3 +187,31 @@ def test_stitch_keeps_out_of_own_smd_pad(tmp_path: Path) -> None:
         dx = max(abs(x - 10) - 3, 0.0)
         dy = max(abs(y - 2) - 1.2, 0.0)
         assert math.hypot(dx, dy) >= radius + 0.2 - 1e-6, (x, y)
+
+
+def test_stitch_without_kicad_cli(tmp_path: Path) -> None:
+    """Without kicad-cli, stitch says so and leaves the board as it was."""
+    empty = tmp_path / "bin"
+    empty.mkdir()
+    pcb, r = run_stitch(tmp_path, BOARD, path=str(empty))
+    assert r.returncode != 0
+    assert "kicad-cli" in r.stderr
+    assert "Traceback" not in r.stderr
+    assert pcb.read_bytes() == BOARD.encode()
+
+
+def test_stitch_drc_failing(tmp_path: Path) -> None:
+    """When kicad-cli fails, stitch says so and leaves the board as it was."""
+    pytest.importorskip("pcbnew")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "kicad-cli"
+    fake.write_text("#!/bin/sh\necho broken >&2\nexit 3\n")
+    fake.chmod(0o755)
+    pcb, r = run_stitch(tmp_path, BOARD, path=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    assert r.returncode != 0
+    assert "kicad-cli" in r.stderr
+    assert "broken" in r.stderr
+    assert "Traceback" not in r.stderr
+    assert pcb.read_bytes() == BOARD.encode()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["b.kicad_pcb", "b.kicad_pro", "bin"]

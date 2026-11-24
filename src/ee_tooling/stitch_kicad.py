@@ -8,8 +8,11 @@ the clear spot nearest its mark.  A mark with a ground barrel already
 near it needs no via.  Then KiCad refills the zones and runs DRC with the
 board's own rules (kicad-cli pcb drc --refill-zones --save-board); each
 new via DRC reports (a custom rule's clearance, a via no zone reaches) is
-taken out again, and the zones refilled.  The board is written to BOARD
-itself unless -o; the project file must be beside the board written.
+taken out again, and the zones refilled.  All that is done on a copy in
+a temporary directory beside the board written, with its project and
+custom rules; the board is written (to BOARD itself unless -o) only once
+DRC has run, whole or not at all, and is left as it was if DRC fails.
+The project file must be beside the board written.
 
 It reads and writes the board with KiCad's pcbnew, so it runs in a venv
 made with `uv venv --system-site-packages --python /usr/bin/python3`;
@@ -27,6 +30,7 @@ and every mounting hole's courtyard.
 import argparse
 import json
 import math
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pcbnew
 
+from ee_tooling.atomic import write_bytes
 from ee_tooling.kicad_pcbnew import missing
 from ee_tooling.kicad_style_board import Point, Segment, edge, on_board, parse_point, where
 from ee_tooling.kicad_style_finishing import (
@@ -59,6 +64,9 @@ MARGIN = 1.0
 SAME = 0.005
 # How many times DRC may take vias out before stitch gives up.
 DRC_ROUNDS = 3
+KICAD_CLI = "kicad-cli"
+# Beside a board, the files DRC reads its rules from, if there.
+RULE_FILES = (".kicad_pro", ".kicad_dru")
 
 
 @dataclass(frozen=True)
@@ -229,12 +237,14 @@ def stitch(
 
 def drc(board: Path) -> list[Point]:
     """Refill the board's zones and run KiCad's DRC with its own rules,
-    saving the board; where each via a violation names is."""
+    saving the board; where each via a violation names is.  Raises
+    subprocess.CalledProcessError if kicad-cli fails, OSError or ValueError
+    if its report cannot be read."""
     with tempfile.TemporaryDirectory() as directory:
         report = Path(directory) / "drc.json"
         subprocess.run(
             [
-                "kicad-cli",
+                KICAD_CLI,
                 "pcb",
                 "drc",
                 "--refill-zones",
@@ -249,6 +259,7 @@ def drc(board: Path) -> list[Point]:
             ],
             check=True,
             capture_output=True,
+            text=True,
         )
         found = json.loads(report.read_text())
     items = [
@@ -272,6 +283,24 @@ def remove(pcbnew: ModuleType, board_file: Path, vias: list[Point]) -> None:
             if any(math.dist(p, v) <= SAME for v in vias):
                 board.Remove(t)
     board.Save(str(board_file))
+
+
+def checked(pcbnew: ModuleType, work: Path, out: Path, added: list[Point]) -> list[Point]:
+    """The vias DRC took out of the saved board work, which is written to
+    out; exits if DRC still fails new vias after DRC_ROUNDS."""
+    rejected: list[Point] = []
+    for _ in range(DRC_ROUNDS):
+        flagged = list(
+            dict.fromkeys(p for p in drc(work) if any(math.dist(p, a) <= SAME for a in added))
+        )
+        if not flagged:
+            return rejected
+        for p in flagged:
+            print(f"{out}: via at {where(p)} fails DRC, taken out", file=sys.stderr)
+        rejected += flagged
+        added = [a for a in added if all(math.dist(a, p) > SAME for p in flagged)]
+        remove(pcbnew, work, flagged)
+    sys.exit(f"{out}: DRC still fails new vias after {DRC_ROUNDS} rounds; {out} left as it was")
 
 
 def via_size(text: str) -> Via:
@@ -300,6 +329,8 @@ def main() -> None:
             f"--{name}", type=float, default=getattr(defaults, name), help=f"{help_text}, mm"
         )
     args = parser.parse_args()
+    if shutil.which(KICAD_CLI) is None:
+        sys.exit(f"stitch needs {KICAD_CLI}, for DRC, and it is not on PATH")
     try:
         # Imported here, to say what to do when the venv lacks it.
         import pcbnew
@@ -328,21 +359,23 @@ def main() -> None:
     added, missed = stitch(expression, Placer(b), settings, args.at)
     for m in missed:
         print(f"{out}: no clear spot within reach of {where(m)}", file=sys.stderr)
-    board.Save(str(out))
-    rejected: list[Point] = []
-    for _ in range(DRC_ROUNDS):
-        flagged = list(
-            dict.fromkeys(p for p in drc(out) if any(math.dist(p, a) <= SAME for a in added))
-        )
-        if not flagged:
-            break
-        for p in flagged:
-            print(f"{out}: via at {where(p)} fails DRC, taken out", file=sys.stderr)
-        rejected += flagged
-        added = [a for a in added if all(math.dist(a, p) > SAME for p in flagged)]
-        remove(pcbnew, out, flagged)
-    else:
-        sys.exit(f"{out}: DRC still fails new vias after {DRC_ROUNDS} rounds")
+    with tempfile.TemporaryDirectory(dir=out.parent, prefix=f".{out.name}.") as directory:
+        work = Path(directory) / out.name
+        for suffix in RULE_FILES:
+            if out.with_suffix(suffix).exists():
+                shutil.copy(out.with_suffix(suffix), work.with_suffix(suffix))
+        board.Save(str(work))
+        try:
+            rejected = checked(pcbnew, work, out, added)
+        except subprocess.CalledProcessError as e:
+            sys.exit(
+                f"{out}: {KICAD_CLI} pcb drc failed, exit {e.returncode}: {e.stderr.strip()};"
+                f" {out} left as it was"
+            )
+        except (OSError, ValueError) as e:
+            sys.exit(f"{out}: {KICAD_CLI} pcb drc's report: {e}; {out} left as it was")
+        write_bytes(out, work.read_bytes())
+    added = [a for a in added if all(math.dist(a, p) > SAME for p in rejected)]
     print(
         f"{out}: {len(added)} {net} vias added; {len(missed)} marks without room;"
         f" {len(rejected)} taken out by DRC"
