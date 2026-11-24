@@ -1277,6 +1277,19 @@ def recover(dest: Path, tagged: str | None) -> None:
     )
 
 
+def tagged_commit(root: Path, name: str) -> str | None:
+    """The full hash of the commit tag `name` is on, or None."""
+    r = subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", f"refs/tags/{name}^{{commit}}"],
+        cwd=root,
+        env=environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
 def tool_command(tool: str, path: Path, root: Path) -> str:
     """The command that runs one of ee_tooling's tools on path from the
     current directory: with the uv project whose venv runs this one, when
@@ -1588,8 +1601,7 @@ class Release:
 
     def tagged(self, name: str) -> str | None:
         """The full hash of the commit tag `name` is on, or None."""
-        r = self.run("git", "rev-parse", "-q", "--verify", f"refs/tags/{name}^{{commit}}")
-        return r.stdout.strip() if r.returncode == 0 else None
+        return tagged_commit(self.root, name)
 
     def head(self) -> str:
         return self.git("rev-parse", "HEAD").strip()
@@ -2089,17 +2101,10 @@ def main() -> None:
     dest = root / b.production / f"{a.date}-{rev}"
     # The release directory's lock, held until its tag is made and the
     # old release removed; what a killed run left recovered under it.
-    tag_name = f"{b.name}-{dest.name}"
-    on_tag = subprocess.run(
-        ["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag_name}^{{commit}}"],
-        cwd=root,
-        env=environment(),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
     with release_lock(dest.parent / f".{dest.name}{LOCK}"):
-        recover(dest, on_tag.stdout.strip() if on_tag.returncode == 0 else None)
+        # The tag read under the lock: a run may have made it since this
+        # one began.
+        recover(dest, tagged_commit(root, f"{b.name}-{dest.name}"))
         if dest.exists() and not a.force:
             sys.exit(f"{dest} exists; use --force to replace it")
         found = stackup(pcb)

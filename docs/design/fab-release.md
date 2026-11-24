@@ -218,8 +218,9 @@ require_lcsc = true              # default false
 - Invariant: the release directory holds the package the tag names, or,
   between the moves, that package is in `.DATE-REV.old`; a package a tag
   names is never removed.  A killed run's leftovers are recovered by
-  the next run, under the lock, before anything else, each step said on
-  stderr: `.building` removed (never tagged); `.old` with no release in
+  the next run, under the lock, before anything else, the tag read
+  under the lock just before (a run may make it while another begins),
+  each step said on stderr: `.building` removed (never tagged); `.old` with no release in
   place put back; `.old` beside a release, the one whose COMMIT is the
   tag's commit kept, the other removed, or, neither named, the old one
   kept.  A fresh release killed before its tag stays in place,

@@ -12,7 +12,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
@@ -3327,6 +3327,35 @@ def test_release_recovers_an_interrupted_swap(
     assert sorted(p.name for p in production.iterdir()) == ["20261118-1"]
     assert not (production / "20261118-1/.gitignore").exists()
     assert "20261118-1" in capsys.readouterr().err
+
+
+def test_release_reads_the_tag_under_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tag made after the run began, before it took the lock (a run
+    killed after its tag, before removing the old release): recovery
+    compares with it, and keeps the package it names."""
+    production = tmp_path / "repo/production"
+    root, _ = release(tmp_path, monkeypatch)
+    commit = git(root, "rev-parse", "HEAD")
+    git(root, "tag", "-d", "b-20261118-1")
+    shutil.rmtree(production / "20261118-1")
+    package(production / "20261118-1", commit)
+    package(production / ".20261118-1.old", "2" * 40)
+    lock = fab_release.release_lock
+
+    @contextlib.contextmanager
+    def tagged_meanwhile(path: Path) -> Iterator[None]:
+        git(root, "tag", "-a", "-m", "x", "b-20261118-1", commit)
+        with lock(path):
+            yield
+
+    monkeypatch.setattr(fab_release, "release_lock", tagged_meanwhile)
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118"])
+    with pytest.raises(SystemExit, match="exists; use --force"):
+        main()
+    assert (production / "20261118-1/b-1-bom.csv").read_text() == f"{commit}\n"
+    assert sorted(p.name for p in production.iterdir()) == ["20261118-1"]
 
 
 @pytest.mark.parametrize("leftover", [".20261118-1.old", ".20261118-1.building"])
