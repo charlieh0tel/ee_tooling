@@ -1126,10 +1126,14 @@ def lock_owner(lock: Path) -> str:
         return ""
 
 
+class LockHeld(SystemExit):
+    """A lock directory another run holds, which stops a release."""
+
+
 def lock_held(lock: Path, owner: str) -> NoReturn:
     """Stop: the lock, its OWNER text owner, is another run's."""
     holder = " ".join(owner.split()) or "a run that left no owner"
-    sys.exit(
+    raise LockHeld(
         f"{lock}: another run ({holder}) is making this release, or was: wait for it,"
         f" or, if none runs, remove the lock (rm -r {shlex.quote(str(lock))})"
     )
@@ -1275,6 +1279,34 @@ def recover(dest: Path, tagged: str | None) -> None:
         " in its place removed",
         file=sys.stderr,
     )
+
+
+# A killed run's leftover beside a release directory: .DATE-REV plus OLD or
+# BUILDING, DATE-REV the first group.
+LEFTOVER = re.compile(rf"\.(.+)(?:{re.escape(OLD)}|{re.escape(BUILDING)})")
+
+
+def recover_leftovers(root: Path, name: str, production: Path, skipped: str) -> None:
+    """recover() each release directory in production, but skipped (the
+    one being released, recovered under its lock as it is built), that a
+    killed run left a building or old directory of, each under its own
+    lock and with its tag (NAME-DATE-REV) read under it; one whose lock
+    another run holds left, said on stderr."""
+    found = sorted(
+        {
+            m[1]
+            for p in production.iterdir()
+            if (p.is_dir() or p.is_symlink()) and (m := LEFTOVER.fullmatch(p.name))
+        }
+        if production.is_dir()
+        else set()
+    )
+    for release in (r for r in found if r != skipped):
+        try:
+            with release_lock(production / f".{release}{LOCK}"):
+                recover(production / release, tagged_commit(root, f"{name}-{release}"))
+        except LockHeld as e:
+            print(f"{production / release}: not recovered: {e.code}", file=sys.stderr)
 
 
 def tagged_commit(root: Path, name: str) -> str | None:
@@ -2101,6 +2133,7 @@ def main() -> None:
     dest = root / b.production / f"{a.date}-{rev}"
     # The release directory's lock, held until its tag is made and the
     # old release removed; what a killed run left recovered under it.
+    recover_leftovers(root, b.name, dest.parent, dest.name)
     with release_lock(dest.parent / f".{dest.name}{LOCK}"):
         # The tag read under the lock: a run may have made it since this
         # one began.

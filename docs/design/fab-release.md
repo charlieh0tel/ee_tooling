@@ -224,7 +224,11 @@ require_lcsc = true              # default false
   place put back; `.old` beside a release, the one whose COMMIT is the
   tag's commit kept, the other removed, or, neither named, the old one
   kept.  A fresh release killed before its tag stays in place,
-  untagged; its next build needs `--force`.  A `.building` or `.old`
+  untagged; its next build needs `--force`.  A run first recovers, the same way,
+  the leftovers of every other `DATE-REV` in its production directory
+  (each `.DATE-REV.old` or `.DATE-REV.building` directory), each under
+  its own lock with its own tag; one whose lock another run holds is
+  left, said on stderr.  A `.building` or `.old`
   that is a symbolic link (no run makes one) stops the run, nothing
   touched: followed, recovery would remove or move what it names.
 - The tag's message is `NAME REV: fab release PRODUCTION/DATE-REV`,

@@ -317,7 +317,8 @@ or, between the moves, that package is in `.YYYYMMDD-REV.old/`; the
 package a tag names is never removed.  A failure, `git tag`'s too, puts
 the old release back.  A killed run's leftovers are recovered by the
 next run, under the lock, before anything else, the tag read under the
-lock, each step said on
+lock (a run first recovers every other `YYYYMMDD-REV`'s in its
+production directory, each under its own lock), each step said on
 stderr: the building directory removed (never tagged); `.old` with no
 release in place put back; `.old` beside a release, the one whose
 COMMIT is the tag's commit kept and the other removed, or, neither

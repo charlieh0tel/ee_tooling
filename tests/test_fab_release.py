@@ -3329,6 +3329,43 @@ def test_release_recovers_an_interrupted_swap(
     assert "20261118-1" in capsys.readouterr().err
 
 
+def test_release_recovers_every_leftover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release of another DATE-REV recovers what killed runs left of
+    every other one, each under its own lock: an old release with none in
+    place put back; a tagged package kept and the old one removed; a
+    building directory removed; one whose lock another run holds left,
+    said."""
+    production = tmp_path / "repo/production"
+    root, _ = release(tmp_path, monkeypatch)
+    commit = git(root, "rev-parse", "HEAD")
+    (production / "20261118-1").rename(production / ".20261118-1.old")
+    package(production / "20261116-1", commit)
+    git(root, "tag", "-a", "-m", "x", "b-20261116-1", commit)
+    package(production / ".20261116-1.old", "2" * 40)
+    (production / ".20261115-1.building").mkdir()
+    held = production / ".20261114-1.lock"
+    held.mkdir()
+    (held / "owner").write_text(f"{socket.gethostname()} {os.getpid()}\n")
+    (production / ".20261114-1.building").mkdir()
+    capsys.readouterr()
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261119"])
+    main()
+    assert (production / "20261118-1/b-1-source.tgz").exists()
+    assert (production / "20261116-1/b-1-bom.csv").read_text() == f"{commit}\n"
+    assert sorted(p.name for p in production.iterdir()) == [
+        ".20261114-1.building",
+        ".20261114-1.lock",
+        "20261116-1",
+        "20261118-1",
+        "20261119-1",
+    ]
+    err = capsys.readouterr().err
+    assert ".20261114-1.lock: another run" in err
+    assert ".20261115-1.building: an interrupted build's: removed" in err
+
+
 def test_release_reads_the_tag_under_the_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
