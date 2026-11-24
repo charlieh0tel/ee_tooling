@@ -9,12 +9,12 @@ on:
 
 jobs:
   ci:
-    uses: charlieh0tel/deb-workflows/.github/workflows/python-ci.yml@0abfb3e29c9024240b31e7dd6d63a381c39d62c4 # v1
+    uses: charlieh0tel/deb-workflows/.github/workflows/python-ci.yml@6eaca6cd76e65c14991d0906f74d802bb4f80195 # v1
   mypy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - run: uv run mypy
   kicad:
     # The tests the other jobs skip for want of kicad-cli (KiCad 10),
@@ -36,7 +36,7 @@ jobs:
             10.*) ;;
             *) echo "::error::KiCad $version, not 10: is the PPA down?"; exit 1 ;;
           esac
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - run: |
           set -o pipefail
           uv venv --system-site-packages --python /usr/bin/python3
