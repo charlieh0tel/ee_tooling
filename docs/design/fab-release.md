@@ -240,7 +240,9 @@ require_lcsc = true              # default false
   variables for its stock libraries (`${KICADn_FOOTPRINT_DIR}`,
   `${KICADn_SYMBOL_DIR}`, `${KICADn_3DMODEL_DIR}`, n any version or
   none, and the legacy `${KISYSMOD}` and `${KISYS3DMOD}`) is a stock
-  library: allowed, and not in the source tgz.  Any other variable
+  library: allowed, and not in the source tgz.  The variable is the
+  path's first and only one, with no `..` after it; a stock variable
+  with another variable, or with `..`, is refused.  Any other variable
   (`${KICAD10_TEMPLATE_DIR}`, `${KICAD10_3RD_PARTY}`, a user's own), a
   KiCad 5 `$(NAME)` and a home directory (`~`) are refused: their value
   is the user's.  A path is placed with its links followed: a link
@@ -710,8 +712,10 @@ Breaking changes (`docs/releasing.md`: a board repository must act):
     reads that is a link out of the repository is refused.
 18. A library path (a project library table's, a 3D model's) outside
     the repository, through a link out of it, under a variable other
-    than `${KIPRJMOD}` and KiCad's stock library variables, in KiCad 5's
-    `$(NAME)` form or under `~` is refused, naming each as written.
+    than `${KIPRJMOD}` and KiCad's stock library variables (a stock
+    variable with another, or with `..` after it, among them), in
+    KiCad 5's `$(NAME)` form or under `~` is refused, naming each as
+    written.
 19. A schematic sheet file that is not there, or is outside the
     repository, is refused, naming it and the sheet that names it.
 20. A title-block rev using a text variable the project does not define

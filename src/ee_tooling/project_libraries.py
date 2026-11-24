@@ -4,8 +4,9 @@ libraries live inside its repository).
 
 A path is resolved as KiCad 10.0.8 does: ${KIPRJMOD} is the project's
 directory, and a relative path is from it.  A path under one of KiCad's
-own install variables names its stock libraries, which are not the
-repository's; any other variable is the user's, unknown here.
+own install variables, as its only variable and with no .. after it,
+names its stock libraries, which are not the repository's; any other
+variable is the user's, unknown here.
 """
 
 import os
@@ -24,6 +25,9 @@ PROJECT = "KIPRJMOD"
 # model libraries: versioned (KICAD10_3DMODEL_DIR, KICAD6_FOOTPRINT_DIR,
 # ...) and the legacy names of the footprint and 3D model directories.
 STOCK = re.compile(r"KICAD\d*_(FOOTPRINT|SYMBOL|3DMODEL)_DIR|KISYS3DMOD|KISYSMOD")
+# A path's separators, either platform's, and its parent directory.
+SEPARATOR = re.compile(r"[/\\]")
+PARENT = ".."
 # A path naming what this module cannot place: an environment variable in
 # KiCad 5's $(NAME) form, or a home directory, ~ or ~user.
 UNKNOWN_FORMS = ("$(",)
@@ -137,7 +141,11 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
             return "unknown"
         names = VARIABLE.findall(path)
         if any(STOCK.fullmatch(n) for n in names):
-            return "stock"
+            # Stock only as the one variable, first, and not left by ..
+            first = VARIABLE.match(path)
+            rest = path[first.end() :] if first is not None else ""
+            stock = len(names) == 1 and first is not None and PARENT not in SEPARATOR.split(rest)
+            return "stock" if stock else "unknown"
         return "unknown" if any(n != PROJECT for n in names) else "project"
 
     def place(path: str, written: Path, fix: str) -> None:

@@ -178,6 +178,28 @@ def test_stock_variables(tmp_path: Path, name: str, stock: bool) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("path", "stock"),
+    [
+        ("${KICAD10_FOOTPRINT_DIR}/a.pretty", True),
+        ("${KICAD10_FOOTPRINT_DIR}/x/./a.pretty", True),
+        ("${KICAD10_FOOTPRINT_DIR}/../../../home/u/mylib.pretty", False),
+        ("${KICAD10_FOOTPRINT_DIR}/a/../a.pretty", False),
+        ("${KICAD10_FOOTPRINT_DIR}/..", False),
+        ("${KICAD10_FOOTPRINT_DIR}/${MYLIBS}/a.pretty", False),
+        ("${MYLIBS}/${KICAD10_FOOTPRINT_DIR}/a.pretty", False),
+        ("${KIPRJMOD}/${KICAD10_FOOTPRINT_DIR}/a.pretty", False),
+        ("/opt/${KICAD10_FOOTPRINT_DIR}/a.pretty", False),
+    ],
+)
+def test_stock_paths(tmp_path: Path, path: str, stock: bool) -> None:
+    """A stock path is one stock variable, first, then no .. and no other
+    variable; anything else under a stock variable is refused."""
+    (tmp_path / "fp-lib-table").write_text(f'(fp_lib_table (lib (name "a")(uri "{path}")))')
+    found = libraries(tmp_path, Path("."), parse("(kicad_pcb)"))
+    assert (found.stock, found.outside) == (([path], []) if stock else ([], [path]))
+
+
 @pytest.mark.parametrize("path", ["$(HOME)/lib.pretty", "~/lib.pretty", "~user/lib.pretty"])
 def test_unknown_forms(tmp_path: Path, path: str) -> None:
     """KiCad 5's $(NAME), and a home directory: not placed, refused."""
