@@ -165,6 +165,13 @@ CANARY = f'(rule "{CANARY_NAME}"\n\t(constraint assertion "false"))\n'
 # The work directory's subdirectory of the scratch copy of the project, as
 # the board has it, that every other kicad-cli command reads.
 EXPORT_PROJECT = "board"
+# The work directory's subdirectory of the scratch copy of the project, as
+# the board has it, whose zones kicad-cli refills and saves: the release
+# refuses a board whose stored zone fills differ from these.
+FILLS_PROJECT = "fills"
+# KiCad's internal unit, nm, per mm: zone fills are compared in it, so a
+# number's formatting does not matter.
+NM_PER_MM = 1_000_000
 # In DRC's scratch copy, the project's files copied, by suffix to its name
 # (kicad-cli reads them; a link would let anything KiCad writes beside
 # them reach the board's), and those left out (KiCad's cache, which it
@@ -1322,6 +1329,70 @@ def tagged_commit(root: Path, name: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def fill_ring(pts: Expression) -> object:
+    """A filled polygon's outline, comparable: its points in nm, each
+    repeated or collinear one dropped (KiCad 10.0.8's refill of a board it
+    has just filled and saved may add or drop one), started at its least;
+    with any item not a point, its items as written."""
+    points = pts[1:]
+    if not all(isinstance(p, list) and len(p) == 3 and p[0] == "xy" for p in points):
+        return repr(pts)
+    ring = [
+        (round(float(str(p[1])) * NM_PER_MM), round(float(str(p[2])) * NM_PER_MM))
+        for p in points
+        if isinstance(p, list)
+    ]
+
+    def straight(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int]) -> bool:
+        # b on the line through a and c (or repeating one): a point to drop.
+        return (b[0] - a[0]) * (c[1] - b[1]) == (b[1] - a[1]) * (c[0] - b[0])
+
+    kept: list[tuple[int, int]] = []
+    for point in ring:
+        while len(kept) > 1 and straight(kept[-2], kept[-1], point):
+            kept.pop()
+        if not kept or kept[-1] != point:
+            kept.append(point)
+    # Where the ring closes, its last point then its first.
+    start = 0
+    while len(kept) - start > 2:
+        if straight(kept[-2], kept[-1], kept[start]):
+            kept.pop()
+        elif straight(kept[-1], kept[start], kept[start + 1]):
+            start += 1
+        else:
+            break
+    kept = kept[start:]
+    least = kept.index(min(kept)) if kept else 0
+    return tuple(kept[least:] + kept[:least])
+
+
+def zone_fills(pcb: Expression) -> dict[str, tuple[str, list[tuple[str, object]]]]:
+    """Each zone's name for a message (its net and layers) and its filled
+    polygons (each its layer and fill_ring()), sorted, by its uuid: the
+    board's zones and its footprints'."""
+    out: dict[str, tuple[str, list[tuple[str, object]]]] = {}
+    for zone in [
+        *children(pcb, "zone"),
+        *(z for f in children(pcb, "footprint") for z in children(f, "zone")),
+    ]:
+        uuid = child(zone, "uuid")
+        # KiCad 10 names the net in (net NAME); earlier, in (net_name NAME).
+        nets = [n[1] for n in (child(zone, "net_name"), child(zone, "net")) if n and len(n) > 1]
+        on = next((n for n in nets if type(n) is str and n), "no net")
+        layers = [*(child(zone, "layer") or [])[1:], *(child(zone, "layers") or [])[1:]]
+        name = f"{on} on {','.join(map(str, layers))}"
+        polygons = sorted(
+            (
+                (str((child(f, "layer") or ["", ""])[1]), fill_ring(child(f, "pts") or []))
+                for f in children(zone, "filled_polygon")
+            ),
+            key=repr,
+        )
+        out[str(uuid[1]) if uuid and len(uuid) > 1 else f"zone {len(out)}"] = (name, polygons)
+    return out
+
+
 def tool_command(tool: str, path: Path, root: Path) -> str:
     """The command that runs one of ee_tooling's tools on path from the
     current directory: with the uv project whose venv runs this one, when
@@ -1495,6 +1566,7 @@ class Release:
         own = [self.root / b.directory / f"{b.name}{s}" for s in (DRU, ".kicad_pro")]
         dru, project = (f.read_text(encoding=PROJECT_TEXT) if f.exists() else None for f in own)
         self.inputs = self.scratch_project(EXPORT_PROJECT, dru, project)
+        self.zones_filled(dru, project)
         erc = self.work / "erc.rpt"
         if self.run(
             "kicad-cli", "sch", "erc", "--exit-code-violations", "-o", str(erc), self.path(b.sch)
@@ -1514,6 +1586,30 @@ class Release:
         ).returncode:
             sys.exit(f"DRC is not clean, with {self.board.profile}'s rules:\n{report(drc)}")
         return head, status
+
+    def zones_filled(self, dru: str | None, project: str | None) -> None:
+        """Stop unless the board's stored zone fills are kicad-cli's: its
+        zones refilled and saved in a scratch copy of its project (dru and
+        project its own) must fill as the board has them.  Every output
+        then uses the stored fills, as DRC and IPC-2581 do."""
+        b = self.board
+        stored = zone_fills(parse((self.root / b.pcb).read_text(encoding=PROJECT_TEXT)))
+        if not stored:
+            return
+        board = self.scratch_project(FILLS_PROJECT, dru, project) / b.pcb.name
+        out = self.work / "fills.rpt"
+        self.kicad("pcb", "drc", "--refill-zones", "--save-board", "-o", str(out), str(board))
+        refilled = zone_fills(parse(board.read_text(encoding=PROJECT_TEXT)))
+        named = {**refilled, **stored}
+        if stale := sorted(
+            named[z][0]
+            for z in named
+            if stored.get(z, ("", None))[1] != refilled.get(z, ("", None))[1]
+        ):
+            sys.exit(
+                f"{b.pcb}: zone fills out of date ({', '.join(stale)}): refill every zone in"
+                " KiCad (Edit, Fill All Zones), save and commit"
+            )
 
     def checkout(self, modules: Sequence[Path]) -> Path | None:
         """The ee_tooling checkout the release runs from, from the root, when
@@ -1670,7 +1766,6 @@ class Release:
             *([] if options.x2 else ["--no-x2"]),
             *(["--subtract-soldermask"] if options.subtract_soldermask else []),
             *([] if options.protel_extensions else ["--no-protel-ext"]),
-            "--check-zones",
             *variant_flag(variant),
             "-o",
             str(directory),
@@ -1773,7 +1868,6 @@ class Release:
             str(ODB_PRECISION),
             "--compression",
             ODB_COMPRESSION,
-            "--check-zones",
             *variant_flag(variant),
             "-o",
             str(out),

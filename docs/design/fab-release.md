@@ -123,7 +123,7 @@ require_lcsc = true              # default false
   stackup with a copper layer; the stackup table on User.Drawings
   matching it (kicad-style-check's rules, waivers not honored); the
   variants' names.
-- Checks, before anything is written: ERC; DRC with schematic parity
+- Checks, before anything is written: the zone fills (below); ERC; DRC with schematic parity
   and the profile's rules (Rules, below); committed sources (below);
   each build's parts and placements (Design variants, below) and the
   profile's `check`.
@@ -132,6 +132,23 @@ require_lcsc = true              # default false
   (`NAME-REV-odb.tgz`), IPC-2581 revision C (`NAME-REV-ipc2581.zip`),
   `stackup.txt`, `fab-notes.txt`, the schematic and board PDFs (the
   board's with User.Drawings), and the source tgz.
+- Zone fills: every output, DRC and IPC-2581 too, uses the board's
+  stored fills (no `--check-zones`, which refills the Gerber and ODB++
+  exports only).  So a board whose stored fills are stale is refused,
+  before ERC: in a third scratch copy of the project (the board's own
+  `.kicad_dru` and `.kicad_pro`), `kicad-cli pcb drc --refill-zones
+  --save-board` refills and saves the zones, and each zone's
+  `filled_polygon`s (the board's and its footprints', by uuid; each
+  outline's points in nm, a repeated or collinear point dropped, from
+  its least point; the polygons sorted) must be the board's (on One-Air-Max,
+  a refill of a board KiCad 10.0.8 had just filled and saved added or
+  dropped collinear points, nothing else); the message
+  names each zone that differs by net and layers, and says to refill
+  every zone in KiCad and save.  A board refilled and saved by KiCad
+  10.0.8 passes (`tests/test_fab_release_kicad.py`: the StickHub demo
+  refilled; its shipped fills, an older KiCad's, are refused; by hand,
+  17 of KiCad 10.0.8's demo boards (all but `sonde xilinx`) refilled and saved, then refilled
+  twice more, compared equal).  A board with no zone skips it.
 - The house BOM, `NAME-REV-bom.csv`: Reference, Value, Footprint, Qty,
   DNP, LCSC, MPN, Manufacturer, Datasheet.  A DNP part is a row of its
   own with Qty 0 and DNP `yes`, never grouped with fitted parts.

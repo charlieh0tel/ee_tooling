@@ -407,13 +407,13 @@ def test_gerber_options(
     added: str | None,
 ) -> None:
     """Each Gerber option the other way from JLCPCB's: one flag removed or
-    added, before --check-zones, and nothing else changed."""
+    added, before -o, and nothing else changed."""
     options = Jlcpcb.gerbers
     expected = gerber_calls(tmp_path, monkeypatch, options)
     if removed is not None:
         expected[call].remove(removed)
     if added is not None:
-        expected[call].insert(expected[call].index("--check-zones"), added)
+        expected[call].insert(expected[call].index("-o"), added)
     flipped = replace(options, **{option: not getattr(options, option)})
     assert gerber_calls(tmp_path, monkeypatch, flipped) == expected
 
@@ -435,7 +435,6 @@ def test_odb_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
             "6",
             "--compression",
             "tgz",
-            "--check-zones",
             "-o",
             str(out),
             str(tmp_path / "hardware/jig/jig.kicad_pcb"),
@@ -526,6 +525,10 @@ if key.startswith("sch export bom") and "--exclude-dnp" in args:
 # As kicad-cli 10.0.8 does: NAME.kicad_prl beside the project it reads.
 board = pathlib.Path(args[-1])
 board.with_suffix(".kicad_prl").write_text("{}\\n")
+if "--save-board" in args and os.environ.get("FAKE_REFILL"):
+    # Its zones refilled: the board's text with FAKE_REFILL's [old, new].
+    old, new = json.loads(os.environ["FAKE_REFILL"])
+    board.write_text(board.read_text().replace(old, new))
 for name, text in outputs[key].items():
     (out / name if name else out).write_text(text)
 if key == "pcb drc":
@@ -881,7 +884,6 @@ RELEASE_CALLS = [
         "User.Drawings",
         "--no-x2",
         "--subtract-soldermask",
-        "--check-zones",
         "-o",
         "WORK/gerbers",
         "WORK/board/hw/b.kicad_pcb",
@@ -915,7 +917,6 @@ RELEASE_CALLS = [
         "6",
         "--compression",
         "tgz",
-        "--check-zones",
         "-o",
         "ROOT/production/.20261118-1.building/b-1-odb.tgz",
         "WORK/board/hw/b.kicad_pcb",
@@ -3476,6 +3477,92 @@ def test_release_tag_failure_keeps_the_old_release(
     assert {f.name: f.read_bytes() for f in dest.iterdir()} == before
     assert sorted(p.name for p in (root / "production").iterdir()) == ["20261118-1"]
     assert git(root, "rev-parse", "b-20261118-1^{commit}") == tagged
+
+
+# A zone on the fixture board, filled: its fill's first point as written.
+# A zone on the fixture board, and its fill.
+OUTLINE = "(polygon (pts (xy 0 0) (xy 10 0) (xy 10 10)))"
+FILL = '(filled_polygon (layer "F.Cu") (pts (xy 0.5 0.5) (xy 9.5 0.5) (xy 9.5 9.5)))'
+ZONE = f'(zone (net 1) (net_name "GND") (layer "F.Cu") (uuid "z1") {OUTLINE} {FILL})'
+
+
+@pytest.mark.parametrize(
+    ("zone", "refill", "stale"),
+    [
+        # kicad-cli fills it as the board has it.
+        (ZONE, None, False),
+        # The same, its numbers written another way.
+        (ZONE, ("(xy 0.5 0.5)", "(xy 0.500000 0.5)"), False),
+        # Filled otherwise: the board's fill is out of date.
+        (ZONE, ("(xy 0.5 0.5)", "(xy 0.6 0.5)"), True),
+        # A zone the board has never filled.
+        (ZONE.replace(f" {FILL}", ""), (OUTLINE, f"{OUTLINE} {FILL}"), True),
+    ],
+)
+def test_release_refuses_stale_zone_fills(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    zone: str,
+    refill: tuple[str, str] | None,
+    stale: bool,
+) -> None:
+    """The board's zones refilled and saved in a scratch copy, as the
+    board's own project fills them, before ERC: a fill that differs is
+    refused before anything is written; the exports use the stored fills
+    (no --check-zones)."""
+    pcb = FIXTURE["hw/b.kicad_pcb"].rstrip().removesuffix(")") + f"\n  {zone})\n"
+    monkeypatch.setitem(FIXTURE, "hw/b.kicad_pcb", pcb)
+    if refill is not None:
+        monkeypatch.setenv("FAKE_REFILL", json.dumps(refill))
+    if stale:
+        with pytest.raises(
+            SystemExit,
+            match=r"^hw/b.kicad_pcb: zone fills out of date \(GND on F.Cu\): refill every zone",
+        ):
+            release(tmp_path, monkeypatch)
+        assert not (tmp_path / "repo/production").exists()
+        calls = kicad_calls(tmp_path)
+    else:
+        _, calls = release(tmp_path, monkeypatch)
+        assert not [c for c in calls if "--check-zones" in c]
+    assert calls[0] == [
+        "pcb",
+        "drc",
+        "--refill-zones",
+        "--save-board",
+        "-o",
+        "WORK/fills.rpt",
+        "WORK/fills/hw/b.kicad_pcb",
+    ]
+    assert (tmp_path / "repo/hw/b.kicad_pcb").read_text() == pcb
+
+
+def test_zone_fills() -> None:
+    """Each zone's fills, the board's and its footprints', by uuid, named
+    by net (KiCad 10's (net NAME), or (net_name NAME)) and layers; each a
+    ring of points in nm, from its least, a repeated or collinear point
+    dropped; one with an item not a point, as written."""
+    pcb = parse(
+        '(kicad_pcb (zone (net 1) (net_name "") (layers "F.Cu" "B.Cu") (uuid "a")'
+        ' (filled_polygon (layer "B.Cu") (pts (xy 1 0) (xy 2 0) (xy 2 2) (xy 0 2) (xy 0 0)))'
+        ' (filled_polygon (layer "F.Cu")'
+        " (pts (xy 0 0) (xy 1.0000001 0) (xy 2 0) (xy 2 0) (xy 2 2) (xy 0 2))))"
+        ' (zone (net "GND") (layer "In1.Cu") (uuid "c")'
+        ' (filled_polygon (layer "In1.Cu") (pts (xy 0 0) (arc (start 1 1)))))'
+        ' (footprint "x" (zone (net_name "GND") (layer "F.Cu") (uuid "b"))))'
+    )
+    square = ((0, 0), (2000000, 0), (2000000, 2000000), (0, 2000000))
+    assert fab_release.zone_fills(pcb) == {
+        "a": (
+            "no net on F.Cu,B.Cu",
+            [("B.Cu", square), ("F.Cu", square)],
+        ),
+        "c": (
+            "GND on In1.Cu",
+            [("In1.Cu", "['pts', ['xy', '0', '0'], ['arc', ['start', '1', '1']]]")],
+        ),
+        "b": ("GND on F.Cu", []),
+    }
 
 
 def test_release_refuses_rules_kicad_cli_does_not_read(

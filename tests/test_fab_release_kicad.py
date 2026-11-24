@@ -60,12 +60,14 @@ def git(root: Path, *args: str) -> str:
     ).stdout
 
 
-def board(root: Path) -> None:
+def board(root: Path, refilled: bool = True) -> None:
     """The demo in root/BOARD: its library at LIBRARY, named
     ${KIPRJMOD}-relative; a title-block rev; every footprint placed;
     variants lite and full in the .kicad_pro, as KiCad's GUI keeps them,
     R1 DNP in lite on the board and in the schematic; the profile's rules
-    installed with the demo's own; a stackup table."""
+    installed with the demo's own; a stackup table; with refilled, its
+    zones refilled and the board saved by KiCad 10 (the demo's own fills
+    are an older KiCad's)."""
     directory = root / BOARD
     shutil.copytree(DEMO, directory)
     shutil.move(directory / "footprints.pretty", root / LIBRARY)
@@ -121,17 +123,40 @@ def board(root: Path) -> None:
     (directory / f"{NAME}.kicad_dru").write_text(found.dru)
     project.write_text(json.dumps(found.project, indent=2) + "\n")
     (root / "fab.toml").write_text(FAB_TOML)
+    if refilled:
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run(
+                [
+                    "kicad-cli",
+                    "pcb",
+                    "drc",
+                    "--refill-zones",
+                    "--save-board",
+                    "-o",
+                    str(Path(tmp) / "fill.rpt"),
+                    str(pcb),
+                ],
+                capture_output=True,
+                check=True,
+            )
+        pcb.with_suffix(".kicad_prl").unlink()
 
 
-@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="no kicad-cli (KiCad 10) on the path")
-@pytest.mark.skipif(not DEMO.exists(), reason=f"no KiCad demo in {DEMO}")
+KICAD = pytest.mark.skipif(
+    shutil.which("kicad-cli") is None or not DEMO.exists(),
+    reason=f"no kicad-cli (KiCad 10) on the path, or no KiCad demo in {DEMO}",
+)
+
+
+@KICAD
 def test_release_with_kicad_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Each variant's BOM and placement exports take --variant (R1 DNP in
     lite only: the ${DNP} column, the CPL); the Gerbers compared (the same:
     one zip); DRC on the scratch copy, its library found beside the board's
-    directory."""
+    directory; the zone fills, as KiCad 10 saved them, not taken for
+    stale."""
     root = tmp_path / "repo"
     root.mkdir()
     board(root)
@@ -170,9 +195,32 @@ def test_release_with_kicad_cli(
     assert ["--exclude-dnp" in c for c in exports] == [False, True, False, True]
     placements = [c for c in calls if c[:4] == ("kicad-cli", "pcb", "export", "pos")]
     assert [c[c.index("--variant") + 1] for c in placements] == ["lite", "lite", "full", "full"]
-    canary, drc = (c for c in calls if c[:3] == ("kicad-cli", "pcb", "drc"))
+    fills, canary, drc = (c for c in calls if c[:3] == ("kicad-cli", "pcb", "drc"))
+    # The zones refilled in a scratch copy: KiCad 10 fills them as saved.
+    assert "--refill-zones" in fills
+    assert fills[-1].endswith(f"fills/{BOARD}/{NAME}.kicad_pcb")
     assert canary[-1].endswith(f"rules/{BOARD}/{NAME}.kicad_pcb")
     assert drc[-1].endswith(f"project/{BOARD}/{NAME}.kicad_pcb")
     with zipfile.ZipFile(dest / "StickHub-A-gerbers-jlcpcb.zip") as z:
         assert "StickHub-User_Drawings.gbr" in z.namelist()
     assert "differ" not in capsys.readouterr().err
+
+
+@KICAD
+def test_release_refuses_stale_zone_fills(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The demo with its own fills, an older KiCad's, which KiCad 10
+    refills otherwise: refused, naming the zones, nothing written."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    board(root, refilled=False)
+    git(root, "init", "-q")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "board")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["fab-release", "--date", "20261118"])
+    monkeypatch.chdir(root)
+    with pytest.raises(
+        SystemExit, match=rf"^{BOARD}/{NAME}.kicad_pcb: zone fills out of date \(\+1V8 on B.Cu, "
+    ):
+        main()
+    assert not (root / "production").exists()

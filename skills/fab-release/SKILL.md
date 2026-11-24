@@ -177,7 +177,11 @@ library path in a board's production directory, naming each: the
 uncommitted-sources check and the source tgz leave every production
 directory out.  It stops unless the board has a stackup and a stackup table on
 User.Drawings matching it (kicad-style-check's rules, waivers not
-honored: `stackup-table` writes or refreshes the table), ERC is clean,
+honored: `stackup-table` writes or refreshes the table), its zone
+fills are current (kicad-cli refills and saves a scratch copy, which
+must fill as the board has it: else refill every zone in KiCad, Edit,
+Fill All Zones, save and commit; every output then uses the stored
+fills), ERC is clean,
 DRC (with schematic parity, the profile's rules and Board Setup
 minimums, on a scratch copy of the project: `docs/kicad-rules.md`) is
 clean, kicad-cli having read the custom rules (a rule that does not
