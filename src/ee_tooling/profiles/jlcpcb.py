@@ -30,8 +30,8 @@ CPL_HEADER = ("Designator", "Val", "Package", "Mid X", "Mid Y", "Rotation", "Lay
 class Corrections:
     """JLCPCB's corrections to KiCad's placement, by LCSC part (parts.toml)."""
 
-    rotation: dict[str, float]  # degrees added to KiCad's rotation
-    offset: dict[str, tuple[float, float]]  # mm added, in the part's frame (rotation 0, y up)
+    rotation: dict[str, float]  # degrees added to KiCad's rotation (on the bottom, subtracted)
+    offset: dict[str, tuple[float, float]]  # mm added, in the part's frame (rotation 0, y up, top)
     unchecked: dict[str, str]  # part description, for parts with no correction known yet
 
     @classmethod
@@ -96,6 +96,11 @@ def jlcpcb_cpl(
 ) -> tuple[list[list[str]], set[str]]:
     """The placements in JLCPCB's columns, for the parts in refs.
 
+    A corrections' offset and rotation are in the part's own frame.  KiCad
+    places a bottom-side footprint as its library footprint mirrored in y,
+    then turned by its rotation, so there the offset's y and the rotation
+    correction change sign.
+
     Returns the rows and the designators placed.
     """
     out = []
@@ -104,12 +109,15 @@ def jlcpcb_cpl(
         if p.reference not in refs:
             continue
         lcsc = refs[p.reference]
+        top = p.side.lower() == "top"
+        sign = 1 if top else -1
         ox, oy = corrections.offset.get(lcsc, (0.0, 0.0))
+        oy *= sign
         t = math.radians(p.rotation)
         x = p.x + ox * math.cos(t) - oy * math.sin(t)
         y = p.y + ox * math.sin(t) + oy * math.cos(t)
-        rot = (p.rotation + corrections.rotation.get(lcsc, 0.0)) % 360
-        layer = "Top" if p.side.lower() == "top" else "Bottom"
+        rot = (p.rotation + sign * corrections.rotation.get(lcsc, 0.0)) % 360
+        layer = "Top" if top else "Bottom"
         out.append([p.reference, p.value, p.package, f"{x:.4f}mm", f"{y:.4f}mm", f"{rot:g}", layer])
         placed.add(p.reference)
     return out, placed

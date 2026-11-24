@@ -265,12 +265,13 @@ require_lcsc = true              # default false
   `fab-notes.txt`.
 - Its BOM `NAME-REV-jlcpcb-bom.csv` (Comment, Designator, Footprint,
   LCSC Part #; DNP left out) and CPL `NAME-REV-jlcpcb-cpl.csv`, with
-  `parts.toml`'s rotations and offsets.  A part in its BOM and not
-  placed refuses the release.  A fitted part with no LCSC number is a
-  warning, naming each one, on stderr; with `require_lcsc = true` in
-  `[board.jlcpcb]` (default false), it refuses the release.  A part
-  whose correction is not known yet (`parts.toml`'s `[unchecked]`) is a
-  warning.
+  `parts.toml`'s rotations and offsets (on the bottom, mirrored as
+  KiCad mirrors the footprint: offset y negated, rotation subtracted).
+  A part in its BOM and not placed refuses the release.  A fitted part
+  with no LCSC number is a warning, naming each one, on stderr; with
+  `require_lcsc = true` in `[board.jlcpcb]` (default false), it
+  refuses the release.  A part whose correction is not known yet
+  (`parts.toml`'s `[unchecked]`) is a warning.
 - IPC-2581's distributor: the `LCSC` field, distributor "LCSC".
 - Rules, in each rule set (`rules/VERSION/`): `jlcpcb.kicad_dru` in
   sections (JLCPCB's limits, the house rules), and

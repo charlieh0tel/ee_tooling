@@ -2,7 +2,8 @@
 # KiCad's footprint.  Corrections by LCSC part, from JLCPCB's placement
 # preview (its pin-1 dot against our pin 1), so they hold for every board.
 
-# Degrees added to KiCad's rotation.
+# Degrees added to KiCad's rotation (subtracted on the bottom, where KiCad
+# mirrors the footprint).
 [rotation]
 C2763452 = -90  # LEA-M8T-0, 2026-10-26
 C5456198 = -90  # STM32C011F6P6, 2026-10-26
@@ -16,7 +17,7 @@ C7203002 = 90  # Raspberry Pi Pico, 2026-11-02; offset unsettled, 0 to 0.4 mm al
 C7043252 = 180  # REF35125QDBVR, 2026-11-17
 
 # Millimeters added to the position, in the part's own frame (KiCad
-# rotation 0, y up).
+# rotation 0, y up, top side; y negated on the bottom).
 [offset]
 C165948 = [0.0, 1.5]  # HRO TYPE-C-31-M-12: back 1.5 mm from its face, 2026-10-26
 C5665 = [1.27, -5.08]  # BOOMELE 2.54-2*5P: KiCad's zero is pin 1, JLCPCB's the body's center, 2026-11-02

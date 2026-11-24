@@ -63,6 +63,12 @@ placement preview, compare each part's magenta pin-1 dot with our pin 1
 - a part not yet seen in a preview goes in `[unchecked]`, and the tool
   says to check it.
 
+Both are in the part's own frame, as seen on the top.  KiCad places a
+bottom-side footprint as its library footprint mirrored in y, then
+turned by its rotation; so on the bottom the offset's y is negated
+before it is turned, and the rotation correction is subtracted from
+KiCad's rotation, not added.
+
 Then commit in ee_tooling, update the board repository's copy, and
 rebuild with `--force`.  A screenshot of the preview can be measured
 against two features a known distance apart, such as mounting holes.

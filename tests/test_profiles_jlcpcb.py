@@ -123,6 +123,36 @@ def test_cpl_offset_turns_with_the_part(rot: float, x: str, y: str) -> None:
     assert rows[0][3:5] == [x, y]
 
 
+BOTTOM = Corrections(
+    rotation={"C90": 90.0, "C-90": -90.0},
+    offset={"C3": (0.0, 1.5), "C5": (1.0, 2.0)},
+    unchecked={},
+)
+
+
+@pytest.mark.parametrize(
+    ("lcsc", "rot", "row"),
+    [
+        # A rotation correction turns a bottom-side part the other way.
+        ("C90", 0, ["10.0000mm", "20.0000mm", "270"]),
+        ("C90", 90, ["10.0000mm", "20.0000mm", "0"]),
+        ("C-90", 0, ["10.0000mm", "20.0000mm", "90"]),
+        ("C-90", 270, ["10.0000mm", "20.0000mm", "0"]),
+        # An offset's y is mirrored, then turned with the part.
+        ("C3", 0, ["10.0000mm", "18.5000mm", "0"]),
+        ("C3", 90, ["11.5000mm", "20.0000mm", "90"]),
+        ("C5", 90, ["12.0000mm", "21.0000mm", "90"]),
+        ("C5", 30, ["11.8660mm", "18.7679mm", "30"]),
+    ],
+)
+def test_cpl_bottom_corrections_mirror(lcsc: str, rot: float, row: list[str]) -> None:
+    """KiCad's bottom-side footprint is its library footprint mirrored in y,
+    then turned by its rotation (checked against pcbnew: a pad at library
+    (1, -2), y up, flipped and turned 90 deg, is at (-2, 1))."""
+    rows, _ = jlcpcb_cpl([place("J1", 10, 20, rot, "bottom")], {"J1": lcsc}, BOTTOM)
+    assert rows[0][3:6] == row
+
+
 def test_cpl_skips_parts_not_in_bom() -> None:
     rows, placed = jlcpcb_cpl([place("H1", 0, 0, 0)], {"U1": "C1"}, CORRECTIONS)
     assert rows == []
