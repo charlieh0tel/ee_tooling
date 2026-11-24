@@ -246,8 +246,10 @@ require_lcsc = true              # default false
   (`${KICAD10_TEMPLATE_DIR}`, `${KICAD10_3RD_PARTY}`, a user's own), a
   KiCad 5 `$(NAME)` and a home directory (`~`) are refused: their value
   is the user's.  A path is placed with its links followed: a link
-  inside the repository to a library outside it is outside.  An
-  embedded model is not a path.
+  inside the repository to a library outside it is outside, and so is
+  a library directory with a file in it (one level, not its
+  subdirectories) that is a link out of the repository, naming the
+  file.  An embedded model is not a path.
 - A footprint's 3D model path with no variable, relative, is found as
   KiCad 10.0.8 finds it (`kicad-cli pcb export step` on a scratch board:
   a model present only beside the project, or only beside the

@@ -223,6 +223,33 @@ def test_link_out_of_the_repository(tmp_path: Path) -> None:
     assert found.inside == [Path("here.pretty")]
 
 
+def test_link_out_of_the_repository_in_a_library(tmp_path: Path) -> None:
+    """A library inside the repository with a file in it that is a link out
+    of it is outside, its fix naming the file; a link within it is not."""
+    root = tmp_path / "repo"
+    (root / "out.pretty").mkdir(parents=True)
+    (root / "in.pretty").mkdir()
+    (tmp_path / "R.kicad_mod").write_text("(footprint R)\n")
+    (root / "C.kicad_mod").write_text("(footprint C)\n")
+    (root / "out.pretty/R.kicad_mod").symlink_to(tmp_path / "R.kicad_mod")
+    (root / "in.pretty/C.kicad_mod").symlink_to(root / "C.kicad_mod")
+    (tmp_path / "s.kicad_sym").write_text("(kicad_symbol_lib)\n")
+    (root / "s.kicad_sym").symlink_to(tmp_path / "s.kicad_sym")
+    (root / "fp-lib-table").write_text(
+        '(fp_lib_table (lib (name "a")(uri "${KIPRJMOD}/out.pretty"))'
+        ' (lib (name "b")(uri "${KIPRJMOD}/in.pretty")))'
+    )
+    (root / "sym-lib-table").write_text(
+        '(sym_lib_table (lib (name "s")(uri "${KIPRJMOD}/s.kicad_sym")))'
+    )
+    found = libraries(root, Path("."), parse("(kicad_pcb)"))
+    assert found.outside == ["${KIPRJMOD}/out.pretty", "${KIPRJMOD}/s.kicad_sym"]
+    assert found.inside == [Path("in.pretty")]
+    assert found.fixes["${KIPRJMOD}/out.pretty"] == (
+        "its file R.kicad_mod is a link out of the repository: put the file itself in the library"
+    )
+
+
 def test_fixes_by_kind(tmp_path: Path) -> None:
     """A table's path is repointed; a model's relative to its footprint's
     library needs no change once the library is inside; another model's

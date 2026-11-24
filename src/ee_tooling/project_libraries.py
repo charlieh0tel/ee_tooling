@@ -45,6 +45,9 @@ LIBRARY_MODEL_FIX = (
     "a 3D model's, relative to its footprint's library: no change, once that library is in"
     " the repository"
 )
+# A library inside the repository with a file in it, named, that is a link
+# out of it.
+LINK_FIX = "its file {} is a link out of the repository: put the file itself in the library"
 # A 3D model embedded in the board file, not a path.
 EMBEDDED = "kicad-embed://"
 
@@ -151,14 +154,20 @@ def libraries(root: Path, directory: Path, pcb: Expression) -> Libraries:
     def place(path: str, written: Path, fix: str) -> None:
         # Links followed: a link inside the repository may lead out of it.
         resolved = written.resolve()
-        if resolved.is_relative_to(top):
-            # As written too, when a link leads there: the link is an input.
-            plain = Path(os.path.normpath(written))
-            if plain != resolved and plain.is_relative_to(top):
-                inside[plain.relative_to(top)] = None
-            inside[resolved.relative_to(top)] = None
-        else:
+        if not resolved.is_relative_to(top):
             outside[path] = fix
+            return
+        # A library directory's own files, one level: a link among them may
+        # lead out of it too.
+        files = sorted(resolved.iterdir()) if resolved.is_dir() else []
+        if leaving := [f for f in files if f.is_symlink() and not f.resolve().is_relative_to(top)]:
+            outside[path] = LINK_FIX.format(leaving[0].name)
+            return
+        # As written too, when a link leads there: the link is an input.
+        plain = Path(os.path.normpath(written))
+        if plain != resolved and plain.is_relative_to(top):
+            inside[plain.relative_to(top)] = None
+        inside[resolved.relative_to(top)] = None
 
     for table in tables.values():
         for path in table.values():
