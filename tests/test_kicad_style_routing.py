@@ -429,6 +429,28 @@ def test_pad_to_pad() -> None:
     ]
 
 
+def test_pad_to_pad_through_crossing_tracks() -> None:
+    """Two tracks that cross mid-run join there, as do a track ending on
+    another's run."""
+    two = footprint("R2", 12, 8, pad("1", 0, 0, "GND"))
+    vias = [via(10, 10, "GND"), via(12, 8, "GND")]
+    east = segment((10, 10), (14, 10), "GND")
+    expected = ["GND: trace from R1 pad 1 to R2 pad 1 on F.Cu"]
+    crossing = segment((12, 8), (12, 12), "GND")
+    assert check(GND_PLANE, GND_PAD, two, *vias, east, crossing) == expected
+    ending = segment((12, 8), (12, 10), "GND")
+    assert check(GND_PLANE, GND_PAD, two, *vias, east, ending) == expected
+
+
+def test_crossing_on_a_pad_joins_through_it() -> None:
+    """Tracks crossing on a pad join through the pad, not each other: the
+    pin's track and the feed crossing on C1's pad still feed the pin
+    through C1."""
+    feed = [segment((19.25, 12.6), (19.25, 11), "+3V3"), via(19.25, 11, "+3V3")]
+    to_pin = [segment((19.5, 12), (18.5, 12), "+3V3"), *TO_PIN[1:]]
+    assert check(*SUPPLY, *feed, *to_pin, *EN) == []
+
+
 def test_pads_on_each_other() -> None:
     """A footprint's pads on top of each other are one pad."""
     stacked = footprint("J1", 10, 10, pad("A1", 0, 0, "GND"), pad("B12", 0, 0, "GND"))

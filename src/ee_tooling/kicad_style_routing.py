@@ -34,9 +34,10 @@ tangent there.  At RIGHT_ANGLE, within AXIS_TOLERANCE, or sharper is a
 problem.  A track ending on another's run (a T) is a branch, not a bend.
 
 Copper connects so: a track's end on another track of its layer and net
-(within half that track's width); a track's copper over a pad or a via,
-but a via that meets a track on a pad joins that pad instead;
-a via's center on a pad; an item on a zone's fill, tested against the
+(within half that track's width), or two crossing mid-run off any pad or
+via (on one, they join through it); a track's copper over a pad or a
+via, but a via that meets a track on a pad joins that pad instead; a
+via's center on a pad; an item on a zone's fill, tested against the
 fill's polygons when the file has them.  An unfilled zone is taken to
 reach all its net's copper on its layer inside its outline; the check
 says so on stderr, once per zone.  Pads are their rotated rectangles,
@@ -172,6 +173,22 @@ def meets_box(a: Point, b: Point, half: tuple[float, float]) -> bool:
         else:
             high = min(high, q / p)
     return low <= high
+
+
+def crossing(s: Segment, u: Segment) -> Point | None:
+    """Where two segments cross, inside both; None if they do not (or
+    are parallel)."""
+    (ax, ay), (bx, by) = s
+    (cx, cy), (dx, dy) = u
+    rx, ry, qx, qy = bx - ax, by - ay, dx - cx, dy - cy
+    d = rx * qy - ry * qx
+    if d == 0:
+        return None
+    t = ((cx - ax) * qy - (cy - ay) * qx) / d
+    v = ((cx - ax) * ry - (cy - ay) * rx) / d
+    if not (0 < t < 1 and 0 < v < 1):
+        return None
+    return ax + t * rx, ay + t * ry
 
 
 @dataclass(frozen=True)
@@ -556,15 +573,10 @@ class Net:
             t = c.tracks[i]
             # Its ends joining other tracks directly: those on no pad or
             # via, which the tracks join through instead.
-            free = [
-                e
-                for e in t.ends
-                if not any(t.layer in c.pads[j].layers and c.pads[j].contains(e) for j in self.pads)
-                and not any(t.layer in c.vias[j].layers and c.vias[j].touches(e) for j in self.vias)
-            ]
+            free = [e for e in t.ends if not self.on_pad_or_via(t.layer, e)]
             for j in self.tracks:
                 if j != i and c.tracks[j].layer == t.layer:
-                    if any(c.tracks[j].touches(e) for e in free):
+                    if any(c.tracks[j].touches(e) for e in free) or self.crosses(t, c.tracks[j]):
                         self.link(("track", i), ("track", j))
             for j in self.pads:
                 if t.layer in c.pads[j].layers and t.over(c.pads[j]):
@@ -603,6 +615,21 @@ class Net:
                 t = c.tracks[i]
                 if z.reaches(t.layer, t.samples()):
                     self.link(("zone", k), ("track", i))
+
+    def on_pad_or_via(self, layer: str, p: Point) -> bool:
+        c = self.copper
+        return any(layer in c.pads[j].layers and c.pads[j].contains(p) for j in self.pads) or any(
+            layer in c.vias[j].layers and c.vias[j].touches(p) for j in self.vias
+        )
+
+    def crosses(self, t: Track, u: Track) -> bool:
+        """Whether two tracks' center lines cross mid-run off any pad or via,
+        where they would join through it instead."""
+        return any(
+            (p := crossing(a, b)) is not None and not self.on_pad_or_via(t.layer, p)
+            for a in t.pieces()
+            for b in u.pieces()
+        )
 
     def link(self, a: Node, b: Node) -> None:
         self.links[a].add(b)
