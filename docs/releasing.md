@@ -31,7 +31,7 @@ line.  `main` is the current line.  Each earlier line has a branch,
 3. Draft the release notes: what changed for a board repository,
    breaking changes first, each listed precisely.
 4. Run every check: `make hook-test`, `uv run ruff format --check`,
-   `uv run ruff check`, `uv run mypy`, `uv run pytest`, and, once there
+   `uv run ruff check`, `make mypy`, `uv run pytest`, and, once there
    is Rust, `cargo fmt --check`, `cargo clippy`, `cargo test`.
 5. Commit `pyproject.toml` and `uv.lock` as "Release X.Y.Z" and merge
    it to `main`.

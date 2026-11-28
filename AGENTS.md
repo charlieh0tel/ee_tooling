@@ -61,7 +61,7 @@
 - Add deterministic tests for behavior changes and regressions,
   including edge cases.
 - Before commits: `uv run ruff format`, `uv run ruff check`,
-  `uv run mypy`, `uv run pytest`.
+  `make mypy`, `uv run pytest`.
 - Be Pythonic; prefer the stdlib to a hand-rolled helper.
 - ASCII only in code, docs and output.  Ask before using Unicode.
 - Prefer consistency above most other concerns.

@@ -56,7 +56,7 @@ make hooks                 # once per clone
 make hook-test
 uv run ruff format
 uv run ruff check
-uv run mypy
+make mypy                  # mypy (strict): src, tests, tools/odb_current
 uv run pytest
 uv run pytest --cov=ee_tooling --cov-report=term-missing   # coverage
 ```
