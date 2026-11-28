@@ -21,6 +21,8 @@ hotspots and via currents; every --to gets its two-terminal resistance from
 --from.
 """
 
+from __future__ import annotations
+
 import argparse
 import atexit
 import difflib
@@ -32,26 +34,140 @@ import sys
 import tarfile
 import tempfile
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
+import numpy.typing as npt
+
+if TYPE_CHECKING:
+    from shapely.geometry.base import BaseGeometry
 
 RHO_20C = 1.724e-5  # ohm*mm, annealed copper at 20 C
 ALPHA_CU = 0.00393  # 1/C
 MIL2_PER_MM2 = 1 / 0.00064516
+
+# One matrix block: '_kind' (the block name) plus its K=V pairs.
+Block = dict[str, str]
+# A component pin: (pin name, x mm, y mm, net name or "?").
+Pin = tuple[str, float, float, str]
+# A plated hole: (x mm, y mm, drill mm, first copper index, last copper index).
+Hole = tuple[float, float, float, int, int]
+# A feature line split into tokens: (kind, tokens) for P/L/A/T/B, or
+# ("S", tokens, contour lines) for a surface.
+Feature = tuple[str, list[str]] | tuple[str, list[str], list[list[str]]]
+# parse_features' result: (symbol number -> name, features, units).
+Features = tuple[dict[int, str], list[Feature], str]
+# A symbol at the origin: (shape, stroke width mm, round?).
+SymShape = tuple["BaseGeometry", float, bool]
+
+
+class _CopperBase(TypedDict):
+    name: str
+    t: float  # thickness, mm
+    z: float  # center height from the top, mm
+    negative: bool  # negative (plane) polarity
+    type: str  # matrix TYPE
+
+
+class Copper(_CopperBase, total=False):
+    """A copper layer of the stackup, top first."""
+
+    outer: bool  # top or bottom layer
+
+
+class Component(TypedDict):
+    side: str  # "top" or "bot"
+    x: float
+    y: float
+    part: str
+    props: dict[str, str]
+    pins: list[Pin]
+
+
+# A terminal: (role "from"/"to", refdes, its selected pins).
+Terminal = tuple[str, str, list[Pin]]
+
+
+class Source(TypedDict):
+    ref: str
+    pins: list[str]
+
+
+class Result(TypedDict):
+    """Two-terminal resistance from the source to one --to."""
+
+    to: str
+    pins: list[str]
+    r_mohm: float
+
+
+class Barrel(TypedDict):
+    """A via barrel segment carrying the reference current."""
+
+    x: float
+    y: float
+    drill_mm: float
+    between: list[str]
+    current_per_A: float
+    r_mohm: float
+    ipc2221_A_10C: float
+    ipc2221_A_20C: float
+
+
+class Hotspot(TypedDict):
+    """A local maximum of linear current density."""
+
+    layer: str
+    x: float
+    y: float
+    A_per_mm: float
+    eff_width_mm: float
+    area_mil2: float
+    ipc2221_A_10C: float
+    ipc2221_A_20C: float
+    ipc2221_A_30C: float
+
+
+class StackupEntry(TypedDict):
+    layer: str
+    t_um: float
+    z_mm: float
+
+
+class _SolveOutBase(TypedDict):
+    net: str
+    source: Source
+    grid_mm: float
+    plating_mm: float
+    rho_ohm_mm: float
+    stackup: list[StackupEntry]
+    results: list[Result]
+
+
+class SolveOut(_SolveOutBase, total=False):
+    """result.json; keys in output order."""
+
+    barrels: list[Barrel]
+    hotspots: list[Hotspot]
+
+
+# A plotted layer: (name, potential grid V per A, current density A/mm per A).
+Field = tuple[str, npt.NDArray[np.float64], npt.NDArray[np.float64]]
 
 
 # --------------------------------------------------------------------------
 # ODB++ reading
 
 
-def _lines(path):
+def _lines(path: str | Path) -> Iterator[str]:
     with open(path, errors="replace") as f:
         for line in f:
             yield line.rstrip("\r\n")
 
 
-def find_root(odb):
+def find_root(odb: str) -> Path:
     """Return the ODB++ job directory (the one holding matrix/matrix)."""
     p = Path(odb)
     if p.is_file():
@@ -66,9 +182,10 @@ def find_root(odb):
     return hits[0].parent.parent
 
 
-def parse_blocks(path):
+def parse_blocks(path: Path) -> list[Block]:
     """Parse matrix-style 'NAME { K=V ... }' blocks."""
-    out, cur = [], None
+    out: list[Block] = []
+    cur: Block | None = None
     for line in _lines(path):
         s = line.strip()
         if s.endswith("{"):
@@ -82,8 +199,8 @@ def parse_blocks(path):
     return out
 
 
-def read_attrs(path):
-    d = {}
+def read_attrs(path: Path) -> dict[str, str]:
+    d: dict[str, str] = {}
     if path.exists():
         for line in _lines(path):
             if "=" in line:
@@ -93,7 +210,7 @@ def read_attrs(path):
 
 
 class Job:
-    def __init__(self, odb, step=None):
+    def __init__(self, odb: str, step: str | None = None) -> None:
         self.root = find_root(odb)
         steps = sorted(p.name for p in (self.root / "steps").iterdir())
         self.step = step or steps[0]
@@ -102,21 +219,23 @@ class Job:
         self.layers = sorted(
             [b for b in blocks if b["_kind"] == "LAYER"], key=lambda b: int(b["ROW"])
         )
+        # layer name -> its attrlist
+        self.attrs: dict[str, dict[str, str]] = {}
         for b in self.layers:
             b["name"] = b["NAME"].lower()
-            b["attrs"] = read_attrs(self.sdir / "layers" / b["name"] / "attrlist")
+            self.attrs[b["name"]] = read_attrs(self.sdir / "layers" / b["name"] / "attrlist")
         self._stackup()
         self._eda()
 
     # stackup ----------------------------------------------------------
-    def _stackup(self):
-        self.copper = []  # dicts: name, t (mm), z (mm, centre), negative
+    def _stackup(self) -> None:
+        self.copper: list[Copper] = []
         z = 0.0
         for b in self.layers:
             if b.get("CONTEXT") != "BOARD":
                 continue
             typ = b.get("TYPE")
-            a = b["attrs"]
+            a = self.attrs[b["name"]]
             if typ in ("SIGNAL", "POWER_GROUND", "MIXED"):
                 w = float(a.get(".copper_weight", "0") or 0)
                 # Altium writes microns here; true ODB uses ounces.
@@ -137,7 +256,7 @@ class Job:
         for i, c in enumerate(self.copper):
             c["outer"] = i in (0, len(self.copper) - 1)
 
-    def set_copper(self, overrides):
+    def set_copper(self, overrides: dict[str, float]) -> None:
         """Override copper thickness (microns) per layer and recompute z."""
         for c in self.copper:
             if c["name"] in overrides:
@@ -152,12 +271,13 @@ class Job:
                 c["z"] = z + c["t"] / 2
                 z += c["t"]
             elif b.get("TYPE") == "DIELECTRIC":
-                z += float(b["attrs"].get(".layer_dielectric", "0") or 0)
+                z += float(self.attrs[b["name"]].get(".layer_dielectric", "0") or 0)
         self.thickness = z
 
-    def drill_layers(self):
+    def drill_layers(self) -> list[tuple[str, int, int]]:
+        """(drill layer name, first copper index, last copper index)."""
         names = [c["name"] for c in self.copper]
-        out = []
+        out: list[tuple[str, int, int]] = []
         for b in self.layers:
             if b.get("TYPE") != "DRILL" or "non-plated" in b["name"]:
                 continue
@@ -170,10 +290,11 @@ class Job:
         return out
 
     # EDA ----------------------------------------------------------------
-    def _eda(self):
-        self.eda_layers = []
-        self.nets = []
-        self.net_fids = []
+    def _eda(self) -> None:
+        self.eda_layers: list[str] = []
+        self.nets: list[str] = []
+        # per net (parallel to nets): layer name -> feature indexes
+        self.net_fids: list[dict[str, set[int]]] = []
         for line in _lines(self.sdir / "eda" / "data"):
             if line.startswith("LYR "):
                 self.eda_layers = [s.lower() for s in line.split()[1:]]
@@ -185,12 +306,12 @@ class Job:
                 lyr = self.eda_layers[int(li)]
                 self.net_fids[-1].setdefault(lyr, set()).add(int(fi))
 
-    def fids(self, net):
+    def fids(self, net: str) -> dict[str, set[int]]:
         try:
             return self.net_fids[self.nets.index(net)]
         except ValueError:
-
-            def sig(n):  # letters as a set, numbers as a set: V12_IN ~ VIN_12V
+            # letters as a set, numbers as a set: V12_IN ~ VIN_12V
+            def sig(n: str) -> tuple[set[str], set[str]]:
                 n = n.lower()
                 return set(re.findall(r"[a-z]", n)), set(re.findall(r"\d+", n))
 
@@ -199,14 +320,14 @@ class Job:
             close += difflib.get_close_matches(net, self.nets, n=5, cutoff=0.5)
             sys.exit(f"net {net!r} not found. Similar: {sorted(set(close))[:20]}")
 
-    def components(self):
+    def components(self) -> dict[str, Component]:
         """{refdes: dict(side, x, y, part, props, pins=[(name, x, y, net)])}"""
-        comps = {}
+        comps: dict[str, Component] = {}
         for side in ("top", "bot"):
             f = self.sdir / "layers" / f"comp_+_{side}" / "components"
             if not f.exists():
                 continue
-            cur = None
+            cur: Component | None = None
             for line in _lines(f):
                 p = line.split(";")[0].split()
                 if not p:
@@ -228,7 +349,7 @@ class Job:
                     cur["pins"].append((p[8], float(p[2]), float(p[3]), net))
         return comps
 
-    def profile(self):
+    def profile(self) -> BaseGeometry:
         from shapely.ops import unary_union
 
         syms, feats, units = self.parse_features(self.sdir / "profile")
@@ -237,8 +358,11 @@ class Job:
         )
 
     # features -----------------------------------------------------------
-    def parse_features(self, path):
-        syms, feats, cur, units = {}, [], None, "MM"
+    def parse_features(self, path: Path) -> Features:
+        syms: dict[int, str] = {}
+        feats: list[Feature] = []
+        cur: tuple[str, list[str], list[list[str]]] | None = None
+        units = "MM"
         for line in _lines(path):
             if not line or line[0] == "#":
                 continue
@@ -257,24 +381,33 @@ class Job:
                 feats.append((k, tok))
                 cur = None
             elif k == "S":
-                cur = ["S", tok, []]
+                cur = ("S", tok, [])
                 feats.append(cur)
             elif k in ("OB", "OS", "OC", "OE", "SE") and cur is not None:
                 cur[2].append(tok)
         return syms, feats, units
 
-    def layer_features(self, name):
+    def layer_features(self, name: str) -> Features:
         return self.parse_features(self.sdir / "layers" / name / "features")
 
 
 # --------------------------------------------------------------------------
 # geometry
 
-_SYMCACHE = {}
-_NOTED = set()
+_SYMCACHE: dict[str, SymShape] = {}  # user symbol name -> its shape
+_NOTED: set[str] = set()  # symbols already noted on stderr
 
 
-def _arc(xs, ys, xe, ye, xc, yc, cw, per_rad=20):
+def _arc(
+    xs: float,
+    ys: float,
+    xe: float,
+    ye: float,
+    xc: float,
+    yc: float,
+    cw: bool,
+    per_rad: int = 20,
+) -> list[tuple[float, float]]:
     a0 = math.atan2(ys - yc, xs - xc)
     a1 = math.atan2(ye - yc, xe - xc)
     r = math.hypot(xs - xc, ys - yc)
@@ -293,7 +426,7 @@ def _arc(xs, ys, xe, ye, xc, yc, cw, per_rad=20):
     ]
 
 
-def sym_shape(name, units, job):
+def sym_shape(name: str, units: str, job: Job) -> SymShape:
     """Symbol at the origin in mm. Returns (shape, stroke width, round?)."""
     from shapely import affinity
     from shapely.geometry import Point, Polygon, box
@@ -302,7 +435,7 @@ def sym_shape(name, units, job):
     s = 0.001 if units == "MM" else 0.0254  # symbol dims: microns or mils -> mm
     num = r"([\d.]+)"
 
-    def rrect(w, h, r):
+    def rrect(w: float, h: float, r: float) -> BaseGeometry:
         r = min(r, w / 2, h / 2)
         if r <= 0:
             return box(-w / 2, -h / 2, w / 2, h / 2)
@@ -399,11 +532,12 @@ def sym_shape(name, units, job):
     if (sdir / "features").exists():
         if name not in _SYMCACHE:
             syms, feats, u = job.parse_features(sdir / "features")
-            pos, neg = [], []
+            pos: list[BaseGeometry] = []
+            neg: list[BaseGeometry] = []
             for f in feats:
-                g, pol = feature_geom(syms, f, u, job)
-                if g is not None:
-                    (pos if pol == "P" else neg).append(g)
+                fg, pol = feature_geom(syms, f, u, job)
+                if fg is not None:
+                    (pos if pol == "P" else neg).append(fg)
             g = unary_union(pos)
             if neg:
                 g = g.difference(unary_union(neg))
@@ -413,7 +547,7 @@ def sym_shape(name, units, job):
     raise ValueError(f"unsupported symbol {name}")
 
 
-def _orient(shape, rest):
+def _orient(shape: BaseGeometry, rest: list[str]) -> BaseGeometry:
     from shapely import affinity
 
     if not rest:
@@ -428,21 +562,29 @@ def _orient(shape, rest):
     return affinity.rotate(shape, -ang, origin=(0, 0))  # ODB rotation is clockwise
 
 
-def feature_geom(syms, f, units, job):
+def feature_geom(
+    syms: dict[int, str], f: Feature, units: str, job: Job
+) -> tuple[BaseGeometry | None, str]:
     from shapely import affinity
     from shapely.geometry import LineString, Point, Polygon
     from shapely.ops import unary_union
 
     c = 1.0 if units == "MM" else 25.4
     if f[0] == "S":
+        assert len(f) == 3
         _, tok, cont = f
-        outers, holes, ring, kind = [], [], None, "I"
+        outers: list[BaseGeometry] = []
+        holes: list[BaseGeometry] = []
+        ring: list[tuple[float, float]] | None = None
+        kind = "I"
         for t in cont:
             if t[0] == "OB":
                 ring, kind = [(float(t[1]) * c, float(t[2]) * c)], t[3]
             elif t[0] == "OS":
+                assert ring is not None
                 ring.append((float(t[1]) * c, float(t[2]) * c))
             elif t[0] == "OC":
+                assert ring is not None
                 xs, ys = ring[-1]
                 ring += _arc(
                     xs,
@@ -459,6 +601,7 @@ def feature_geom(syms, f, units, job):
         if holes:
             g = g.difference(unary_union(holes))
         return g, tok[1]
+    assert len(f) == 2
     k, tok = f
     try:
         if k == "P":
@@ -486,14 +629,14 @@ def feature_geom(syms, f, units, job):
 # net geometry
 
 
-def net_geometry(job, net):
+def net_geometry(job: Job, net: str) -> tuple[dict[str, BaseGeometry | None], list[Hole]]:
     """Per copper layer: shapely geometry of the net, plus net holes."""
     from shapely.geometry import Point
     from shapely.ops import unary_union
 
     fids = job.fids(net)
-    holes = []  # (x, y, d, first_layer_idx, last_layer_idx)
-    foreign = []
+    holes: list[Hole] = []
+    foreign: list[Hole] = []
     for dname, i, j in job.drill_layers():
         syms, feats, units = job.layer_features(dname)
         c = 1.0 if units == "MM" else 25.4
@@ -509,13 +652,14 @@ def net_geometry(job, net):
             h = (float(f[1][1]) * c, float(f[1][2]) * c, d, i, j)
             (holes if fi in mine else foreign).append(h)
     print(f"net {net}: {len(holes)} plated holes", file=sys.stderr)
-    prof = None
-    geom = {}
+    prof: BaseGeometry | None = None
+    geom: dict[str, BaseGeometry | None] = {}
     for li, cu in enumerate(job.copper):
         name = cu["name"]
         syms, feats, units = job.layer_features(name)
         if not cu["negative"]:
-            pos, neg = [], []
+            pos: list[BaseGeometry] = []
+            neg: list[BaseGeometry] = []
             for i in sorted(fids.get(name, ())):
                 g, pol = feature_geom(syms, feats[i], units, job)
                 if g is not None:
@@ -531,12 +675,12 @@ def net_geometry(job, net):
             prof = job.profile()
         cut = [feature_geom(syms, f, units, job)[0] for f in feats]
         cu_g = prof.difference(unary_union([g for g in cut if g is not None]))
-        parts = list(getattr(cu_g, "geoms", [cu_g]))
-        mine = [h for h in holes if h[3] <= li <= h[4]]
+        parts: list[BaseGeometry] = list(getattr(cu_g, "geoms", [cu_g]))
+        mine_holes = [h for h in holes if h[3] <= li <= h[4]]
         keep = [
             p
             for p in parts
-            if any(p.intersects(Point(x, y).buffer(d / 2 + 0.05)) for x, y, d, *_ in mine)
+            if any(p.intersects(Point(x, y).buffer(d / 2 + 0.05)) for x, y, d, *_ in mine_holes)
         ]
         if keep:
             g = unary_union(keep)
@@ -562,12 +706,13 @@ def net_geometry(job, net):
 # solver
 
 
-def ipc2221(area_mm2, dt, outer):
+def ipc2221(area_mm2: float, dt: float, outer: bool) -> float:
     k = 0.048 if outer else 0.024
-    return k * dt**0.44 * (area_mm2 * MIL2_PER_MM2) ** 0.725
+    amps: float = k * dt**0.44 * (area_mm2 * MIL2_PER_MM2) ** 0.725
+    return amps
 
 
-def parse_term(s, comps, net):
+def parse_term(s: str, comps: dict[str, Component], net: str) -> tuple[str, list[Pin]]:
     """REFDES[:pin,pin] -> (ref, pins). A bare REFDES means its pins on the net."""
     ref, _, pins = s.partition(":")
     if ref not in comps:
@@ -582,7 +727,7 @@ def parse_term(s, comps, net):
     return ref, sel
 
 
-def solve(args):
+def solve(args: argparse.Namespace) -> None:
     import scipy.sparse as sp
     import scipy.sparse.linalg as spl
     import shapely
@@ -594,7 +739,7 @@ def solve(args):
     comps = job.components()
     geom, holes = net_geometry(job, args.net)
     h, plate, rho = args.grid, args.plating, RHO_20C
-    terms = [("from", *parse_term(args.src, comps, args.net))] + [
+    terms: list[Terminal] = [("from", *parse_term(args.src, comps, args.net))] + [
         ("to", *parse_term(t, comps, args.net)) for t in args.to
     ]
     for _, ref, pins in terms:
@@ -614,9 +759,13 @@ def solve(args):
     XX, YY = np.meshgrid(xs, ys)
     holes = [hh for hh in holes if crop.intersects(Point(hh[0], hh[1]))]
     layers = [c for c in job.copper if geom.get(c["name"]) is not None]
-    idx, masks, N = [], [], 0
+    idx: list[npt.NDArray[np.int_]] = []  # per layer: grid -> node, -1 off copper
+    masks: list[npt.NDArray[np.bool_]] = []  # per layer: grid cell on copper
+    N = 0
     for cu in layers:
-        g = geom[cu["name"]].intersection(crop)
+        cu_geom = geom[cu["name"]]
+        assert cu_geom is not None
+        g = cu_geom.intersection(crop)
         li = job.copper.index(cu)
         m = shapely.contains_xy(g, XX, YY)
         for x, y, d, a, b in holes:
@@ -631,9 +780,14 @@ def solve(args):
             f"  {cu['name']:<14} t={cu['t'] * 1000:6.2f} um z={cu['z']:.3f} mm cells={m.sum()}",
             file=sys.stderr,
         )
-    R, C, V = [], [], []
+    # conductance matrix triplets (row, column, value)
+    R: list[npt.NDArray[np.int_]] = []
+    C: list[npt.NDArray[np.int_]] = []
+    V: list[npt.NDArray[np.float64]] = []
 
-    def add(a, b, g):
+    def add(
+        a: npt.NDArray[np.int_], b: npt.NDArray[np.int_], g: float | npt.NDArray[np.float64]
+    ) -> None:
         a, b = np.atleast_1d(a), np.atleast_1d(b)
         g = np.broadcast_to(g, a.shape)
         R.append(np.r_[a, b, a, b])
@@ -641,20 +795,21 @@ def solve(args):
         V.append(np.r_[g, g, -g, -g])
 
     for cu, ids in zip(layers, idx, strict=True):
-        for a, b in ((ids[:, :-1], ids[:, 1:]), (ids[:-1, :], ids[1:, :])):
-            k = (a >= 0) & (b >= 0)
-            add(a[k], b[k], cu["t"] / rho)
+        for ia, ib in ((ids[:, :-1], ids[:, 1:]), (ids[:-1, :], ids[1:, :])):
+            k = (ia >= 0) & (ib >= 0)
+            add(ia[k], ib[k], cu["t"] / rho)
     BIG = 1e4
     nxt = [N]
 
-    def node():
+    def node() -> int:
         nxt[0] += 1
         return nxt[0] - 1
 
-    barrel = {}  # (hole, layer_i) -> node
-    vias = []  # (hole_i, upper node, lower node, R, area)
+    barrel: dict[tuple[int, int], int] = {}  # (hole, layer_i) -> node
+    # (hole_i, upper node, lower node, R, area, upper layer_i, lower layer_i)
+    vias: list[tuple[int, int, int, float, float, int, int]] = []
     for hi, (x, y, d, a, b) in enumerate(holes):
-        prev = None
+        prev: tuple[float, int, int] | None = None  # (z, node, layer_i) above
         for li, cu in enumerate(layers):
             gli = job.copper.index(cu)
             if not a <= gli <= b:
@@ -672,13 +827,13 @@ def solve(args):
                 vias.append((hi, prev[1], n, r, area, prev[2], li))
             prev = (cu["z"], n, li)
 
-    def terminal(ref, pins):
+    def terminal(ref: str, pins: list[Pin]) -> int:
         outer = job.copper[0 if comps[ref]["side"] == "top" else -1]["name"]
         names = [c["name"] for c in layers]
         side_li = names.index(outer) if outer in names else None
         n = node()
         tied = 0
-        pads = []
+        pads: list[BaseGeometry | None] = []
         if side_li is not None:
             syms, feats, units = job.layer_features(outer)
             for fi in job.fids(args.net).get(outer, ()):
@@ -707,7 +862,9 @@ def solve(args):
     src = terminal(terms[0][1], terms[0][2])
     dst = [terminal(ref, pins) for _, ref, pins in terms[1:]]
     NT = nxt[0]
-    G = sp.csr_matrix((np.concatenate(V), (np.concatenate(R), np.concatenate(C))), shape=(NT, NT))
+    G: sp.csr_matrix[np.float64] = sp.csr_matrix(
+        (np.concatenate(V), (np.concatenate(R), np.concatenate(C))), shape=(NT, NT)
+    )
     G = G + sp.identity(NT) * 1e-9  # keeps floating islands from making G singular
     keep = np.ones(NT, bool)
     keep[src] = False
@@ -715,8 +872,8 @@ def solve(args):
     mp[keep] = np.arange(keep.sum())
     print(f"  solving {keep.sum()} nodes ...", file=sys.stderr)
     lu = spl.splu(G[keep][:, keep].tocsc())
-    results = []
-    Vref = None
+    results: list[Result] = []
+    Vref: npt.NDArray[np.float64] | None = None
     for (_, ref, pins), n in zip(terms[1:], dst, strict=True):
         rhs = np.zeros(keep.sum())
         rhs[mp[n]] = 1.0
@@ -727,8 +884,9 @@ def solve(args):
             Vref = np.zeros(NT)
             Vref[keep] = v
     # potentials for 1 A flowing src -> first target: V = Vref[first] - Vref
+    assert Vref is not None
     Vp = Vref[dst[0]] - Vref
-    out = {
+    out: SolveOut = {
         "net": args.net,
         "source": {"ref": terms[0][1], "pins": [p[0] for p in terms[0][2]]},
         "grid_mm": h,
@@ -762,7 +920,7 @@ def solve(args):
         for hi, hh in enumerate(holes)
         if math.hypot(hh[0] - p[1], hh[1] - p[2]) < 0.1
     }
-    vrep = []
+    vrep: list[Barrel] = []
     for hi, na, nb, r, area, la, lb in vias:
         if hi in pin_holes:  # barrel inside a soldered terminal pin
             continue
@@ -783,21 +941,21 @@ def solve(args):
             )
     print(f"\nbarrel segments carrying >1% of current ({terms[0][1]} -> {terms[1][1]}):")
     vrep.sort(key=lambda v: -v["current_per_A"])
-    for v in vrep[:12]:
+    for bv in vrep[:12]:
         print(
-            f"  ({v['x']:.2f},{v['y']:.2f}) d={v['drill_mm']:.3f}"
-            f" {v['between'][0]}->{v['between'][1]}: "
-            f"{v['current_per_A']:.2f} A/A, {v['r_mohm']:.2f} mOhm,"
-            f" IPC-2221 {v['ipc2221_A_10C']} A @+10C"
+            f"  ({bv['x']:.2f},{bv['y']:.2f}) d={bv['drill_mm']:.3f}"
+            f" {bv['between'][0]}->{bv['between'][1]}: "
+            f"{bv['current_per_A']:.2f} A/A, {bv['r_mohm']:.2f} mOhm,"
+            f" IPC-2221 {bv['ipc2221_A_10C']} A @+10C"
         )
     out["barrels"] = vrep
 
     # hotspots: local maxima of linear current density, per layer
-    hot = []
+    hot: list[Hotspot] = []
     exc_all = np.zeros(XX.shape, bool)
     for x, y, d, *_ in holes:
         exc_all |= (XX - x) ** 2 + (YY - y) ** 2 <= (d / 2 + 2 * h) ** 2
-    fields = []
+    fields: list[Field] = []
     for li, cu in enumerate(layers):
         ids, m = idx[li], masks[li]
         Vg = np.where(m, Vp[np.maximum(ids, 0)], np.nan)
@@ -817,17 +975,16 @@ def solve(args):
             w = 1 / k
             area = w * cu["t"]
             hot.append(
-                dict(
+                Hotspot(
                     layer=cu["name"],
                     x=round(x, 2),
                     y=round(y, 2),
                     A_per_mm=round(k, 3),
                     eff_width_mm=round(w, 3),
                     area_mil2=round(area * MIL2_PER_MM2, 1),
-                    **{
-                        f"ipc2221_A_{T}C": round(ipc2221(area, T, cu["outer"]), 2)
-                        for T in (10, 20, 30)
-                    },
+                    ipc2221_A_10C=round(ipc2221(area, 10, cu["outer"]), 2),
+                    ipc2221_A_20C=round(ipc2221(area, 20, cu["outer"]), 2),
+                    ipc2221_A_30C=round(ipc2221(area, 30, cu["outer"]), 2),
                 )
             )
             Kc[(XX - x) ** 2 + (YY - y) ** 2 <= args.hotspot_sep**2] = np.nan
@@ -836,12 +993,12 @@ def solve(args):
     hot = [d for d in hot if d["A_per_mm"] >= args.hotspot_frac * kmax]
     hot.sort(key=lambda d: d["ipc2221_A_10C"])
     print("\ncurrent-density hotspots (holes excluded), weakest first; eff width = 1/(A per mm):")
-    for d in hot:
+    for hs in hot:
         print(
-            f"  {d['layer']:<14} ({d['x']:7.2f},{d['y']:7.2f})  {d['A_per_mm']:5.2f} A/mm"
-            f"  w_eff {d['eff_width_mm']:.3f} mm  "
-            f"{d['area_mil2']:6.1f} mil2  IPC-2221"
-            f" {d['ipc2221_A_10C']}/{d['ipc2221_A_20C']}/{d['ipc2221_A_30C']} A @+10/20/30C"
+            f"  {hs['layer']:<14} ({hs['x']:7.2f},{hs['y']:7.2f})  {hs['A_per_mm']:5.2f} A/mm"
+            f"  w_eff {hs['eff_width_mm']:.3f} mm  "
+            f"{hs['area_mil2']:6.1f} mil2  IPC-2221"
+            f" {hs['ipc2221_A_10C']}/{hs['ipc2221_A_20C']}/{hs['ipc2221_A_30C']} A @+10/20/30C"
         )
     out["hotspots"] = hot
 
@@ -853,12 +1010,21 @@ def solve(args):
         print(f"\nwrote {od}/result.json and plots", file=sys.stderr)
 
 
-def plot(od, fields, xs, ys, holes, terms, comps):
+def plot(
+    od: Path,
+    fields: list[Field],
+    xs: npt.NDArray[np.float64],
+    ys: npt.NDArray[np.float64],
+    holes: list[Hole],
+    terms: list[Terminal],
+    comps: dict[str, Component],
+) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
+    from matplotlib.patches import Circle
 
     ext = [xs[0], xs[-1], ys[0], ys[-1]]
     aspect = (ys[-1] - ys[0]) / (xs[-1] - xs[0])
@@ -880,7 +1046,7 @@ def plot(od, fields, xs, ys, holes, terms, comps):
         axs[1].set_title(f"{name}: linear current density")
         for a in axs:
             for x, y, d, *_ in holes:
-                a.add_patch(plt.Circle((x, y), max(d / 2, 0.15), fill=False, ec="c", lw=0.6))
+                a.add_patch(Circle((x, y), max(d / 2, 0.15), fill=False, ec="c", lw=0.6))
             for role, ref, pins in terms:
                 a.plot(
                     [p[1] for p in pins],
@@ -905,7 +1071,7 @@ def plot(od, fields, xs, ys, holes, terms, comps):
 # info / pins
 
 
-def info(args):
+def info(args: argparse.Namespace) -> None:
     job = Job(args.odb, args.step)
     print(f"job {job.root}  step {job.step}")
     print(f"\ncopper stack (computed thickness {job.thickness:.3f} mm):")
@@ -927,7 +1093,7 @@ def info(args):
         print(f"\n{len(nets)} nets; use --grep to list")
 
 
-def pins(args):
+def pins(args: argparse.Namespace) -> None:
     job = Job(args.odb, args.step)
     comps = job.components()
     for ref in args.refs:
@@ -943,7 +1109,7 @@ def pins(args):
             print(f"  pin {p[0]:<4} ({p[1]:9.3f}, {p[2]:9.3f})  {p[3]}")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
