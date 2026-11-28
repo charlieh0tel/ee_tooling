@@ -78,6 +78,7 @@
   UPPER_CASE enum members, as Python requires).  A Rust rename renames
   the Python name in the same commit; a deliberate difference is
   documented in `docs/python.md`.
+- Use typing and mypy (strict).
 
 ## Rust
 
