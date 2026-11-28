@@ -119,15 +119,21 @@ BOARD = pcb_text(TRACK)
 
 
 def run_stitch(
-    tmp_path: Path, text: str, path: str | None = None
+    tmp_path: Path, text: str, path: str | None = None, options: tuple[str, ...] = ()
 ) -> tuple[Path, subprocess.CompletedProcess[str]]:
-    """stitch run on a board of text, with a project file beside it, and
-    PATH path if given."""
+    """stitch run on a board of text, with a project file beside it, its
+    options, and PATH path if given."""
     pcb = tmp_path / "b.kicad_pcb"
     pcb.write_text(text)
     (tmp_path / "b.kicad_pro").write_text(json.dumps({"meta": {"filename": "b.kicad_pro"}}))
     r = subprocess.run(
-        [sys.executable, "-c", "from ee_tooling.stitch_kicad import main; main()", str(pcb)],
+        [
+            sys.executable,
+            "-c",
+            "from ee_tooling.stitch_kicad import main; main()",
+            str(pcb),
+            *options,
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -187,6 +193,16 @@ def test_stitch_keeps_out_of_own_smd_pad(tmp_path: Path) -> None:
         dx = max(abs(x - 10) - 3, 0.0)
         dy = max(abs(y - 2) - 1.2, 0.0)
         assert math.hypot(dx, dy) >= radius + 0.2 - 1e-6, (x, y)
+
+
+@pytest.mark.skipif(shutil.which("kicad-cli") is None, reason="needs kicad-cli")
+def test_stitch_via_in_pad(tmp_path: Path) -> None:
+    """With --via-in-pad, a via may go in an SMD pad of its own net."""
+    pytest.importorskip("pcbnew")
+    pcb, r = run_stitch(tmp_path, pcb_text(TRACK, SMD_PAD), options=("--via-in-pad",))
+    assert r.returncode == 0, r.stderr
+    vias = via_points(parse(pcb.read_text()))
+    assert any(abs(x - 10) <= 3 and abs(y - 2) <= 1.2 for x, y in vias), vias
 
 
 def test_stitch_without_kicad_cli(tmp_path: Path) -> None:

@@ -19,8 +19,8 @@ made with `uv venv --system-site-packages --python /usr/bin/python3`;
 close the board in KiCad first.
 
 A spot is clear when the via's copper keeps every other net's pad, track
-and via, and every pad of its own net without a hole (an SMD pad), at the
-larger of the two items' own clearances; its hole keeps
+and via, and every pad of its own net without a hole (an SMD pad) unless
+--via-in-pad, at the larger of the two items' own clearances; its hole keeps
 every hole at the board's hole-to-hole minimum; it is on the board, its
 copper the board's copper-to-edge clearance in from every outline; it is
 outside every rule area that forbids vias (the board's or a footprint's)
@@ -86,6 +86,7 @@ class Board:
     outline: list[Segment]
     holes: list[tuple[Point, float]] = field(default_factory=list)  # center, radius
     grounds: list[Point] = field(default_factory=list)  # the net's barrels
+    via_in_pad: bool = False  # the net's SMD pads are no obstacle
 
     def mm(self, v: "pcbnew.VECTOR2I") -> Point:
         return float(self.kicad.ToMM(v.x)), float(self.kicad.ToMM(v.y))
@@ -95,13 +96,16 @@ class Board:
 
     def copper(self) -> list[Any]:
         """Every pad, track and via on another net, and every pad on the
-        net without a hole: a via in an SMD pad is an open via-in-pad."""
+        net without a hole unless via_in_pad: a via in an SMD pad is an
+        open via-in-pad, unless filled and capped."""
         items = [t for t in self.board.GetTracks() if t.GetNetname() != self.net]
         items += [
             p
             for f in self.board.GetFootprints()
             for p in f.Pads()
-            if p.GetNetname() != self.net or not p.GetNetname() or not p.HasHole()
+            if p.GetNetname() != self.net
+            or not p.GetNetname()
+            or not (p.HasHole() or self.via_in_pad)
         ]
         return items
 
@@ -318,6 +322,11 @@ def main() -> None:
     parser.add_argument(
         "--at", type=parse_point, action="append", default=[], help="X,Y: a via here first, mm"
     )
+    parser.add_argument(
+        "--via-in-pad",
+        action="store_true",
+        help="vias in the net's own SMD pads too: for filled, capped vias",
+    )
     for name, help_text in (
         ("pitch", "ring marks this far apart along the outline"),
         ("inset", "ring marks this far in from the outline"),
@@ -347,7 +356,7 @@ def main() -> None:
     via = args.via or Via(
         pcbnew.ToMM(design.GetCurrentViaSize()), pcbnew.ToMM(design.GetCurrentViaDrill())
     )
-    b = Board(pcbnew, board, net, via, edge(expression))
+    b = Board(pcbnew, board, net, via, edge(expression), via_in_pad=args.via_in_pad)
     load_holes(b)
     b.grounds = [p for p, n in barrels(expression) if n == net]
     settings = Settings(

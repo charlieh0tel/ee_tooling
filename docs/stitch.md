@@ -53,13 +53,17 @@ already near it needs none.
 | `--grid` | 10 | the grid's pitch, mm |
 | `--near` | 4 | a grid mark with a ground barrel this close needs no via, mm |
 | `--reach` | 1.5 | a via this far from its mark at most, mm |
+| `--via-in-pad` | off | vias in the net's own SMD pads too |
 
 ## A clear spot
 
 - The via's copper keeps every other net's pad, track and via, and
   every pad of its own net without a hole (an SMD pad: a via in one is
   an open via-in-pad, which DRC passes), at the larger of the two
-  items' own clearances (pcbnew's netclass ones).
+  items' own clearances (pcbnew's netclass ones).  With `--via-in-pad`,
+  the net's own SMD pads are not obstacles, so a via may go in one: for
+  a board whose via-in-pad vias are filled and capped.  Other nets'
+  pads are obstacles either way.
 - Its hole keeps every hole at Board Setup's hole-to-hole minimum.
 - It is on the board, its copper Board Setup's copper-to-edge clearance
   in from every outline.
